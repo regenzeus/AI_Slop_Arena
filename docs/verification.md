@@ -1,4 +1,4 @@
-# Verification: milestone 1
+# Verification: version 1
 
 Checked on 2026-11-02 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 
@@ -7,63 +7,63 @@ Checked on 2026-11-02 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 | Check | Result |
 | --- | --- |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clean |
-| `cargo test --workspace` | 33 passed, 0 failed |
-| `slop_lab determinism` | Seed 42 replayed twice: identical checksum |
-| `slop_lab bench` | 400 slop, up to 355 projectiles: 0.28 ms per tick (budget 2 ms) |
-| `slop_lab wave 200` | Bot clears wave 1 in 82% of runs (target 70% to 90%) |
-| Autoplay screenshots | Title, wave at 8, 30 and 51 seconds, and the end screen all render as intended |
+| `cargo test --workspace` | 65 passed, 0 failed (39 simulation, 22 rules, 4 client) |
+| `slop_lab determinism` | Six waves of a run, played twice by the bots: identical checksums over 15,300 ticks |
+| `slop_lab bench` | 400 slop, up to 360 projectiles, six tier IV weapons: 0.46 ms per tick (budget 2 ms) |
+| `slop_lab balance 100` | Heuristic bot wins 34% (target 20% to 40%); random bot wins 1% (target under 10%) |
+| Autoplay (seed 4) | Title, hero select, waves 1 to 12, level-up, patch notes, shops and the Burnout screen render as intended |
 
 Requirement-to-test mapping: [traceability.md](traceability.md).
 
-## Wave 1 with the bot, 200 seeds
+## Balance: 100 runs per bot
 
-| Measure | Value |
-| --- | --- |
-| Cleared | 82% |
-| Mental Health left when cleared | 71 on average |
-| Burnout happens at | 55 s on average, in the final rush |
-| Slop deleted | 195 |
-| Clout earned | 148 |
-| Damage taken | 42 |
-| Bubbles popped | 70 |
-| Damage by type | Analog 35%, Sarcasm 28%, Grass 26%, Fact 11% |
+| Measure | Heuristic bot | Random bot |
+| --- | --- | --- |
+| Runs won | 34% | 1% |
+| Most common wave of Burnout | 10 (the platform boss) | 10 |
+| Runs won by platform | LinkedOut 9/13, FaceSlop 8/20, MeTube 8/17, Thredd 5/17, InstaSlop 2/15, ClockTok 2/18 | under 1 in 10 everywhere |
 
-The bot only moves; it never toggles weapons. Wave 1 currently gives you all six weapons
-at tier I, which will change in milestone 2 when heroes start with one or two.
+The bots only move by simple rules and buy by a fixed heuristic; a person who flanks, kites
+on purpose and kills the Amen Totems first should do better. Wave 10 is deliberately the
+biggest check of a run.
 
-### Tuning done during the milestone
+### Tuning done in this version
 
-- The Garden Hose first sprayed where you walk. While kiting that is away from the slop,
-  and it did 3% of all damage. It now sprays at the nearest slop and does about a quarter.
-- With all six weapons the first version was too easy (96% cleared, 73 Mental Health left).
-  The spawn rate now ramps from 1.7 to 7.3 spawns per second.
-- The first autoplay run showed walls of overlapping speech bubbles. Only the middle bubble
-  of each fan now carries a line, Bubble Bots fire a little less often, and Listicle packs
-  cost more of the spawn budget.
-- The window grew past 1600 x 900 during one run and the camera showed empty space. The
-  camera now always shows at least 1600 x 900 of the arena, and the HUD scales with the
-  window.
+- **Spawns cost their HP.** With a flat cost per spawn, a Listicle Drone pack and an Elephant
+  cost about the same, and wave 1 threw about 50 slop at one starting weapon. A spawn credit
+  now buys 20 base HP.
+- **Wave-10 bosses at 55% HP**, and a steeper late HP curve: before, the wave-10 boss stopped
+  most runs and everything after it was easy.
+- **The movement bot fights at its weapons' range** and closes in when nothing is in reach;
+  it used to kite melee builds into doing no damage and never walked up to the Content Farm.
+- **Training pressure halved**: one wave with a single Analog weapon gave the slop +30%
+  Analog resistance; it now gives about +16%.
+- **Beauty filters** block 60% of frontal damage instead of 75%; **Amen Totems** heal their
+  boss half as fast; **Content Farm** lays eggs less often; **ClockTok** has a softer beat and
+  20% fewer spawns.
 
 ## Demonstrated in the client
 
-From autoplay screenshots (`slop_game --autoplay --seed 3 --screenshots shots --exit-on-end`):
+From autoplay screenshots (`slop_game --autoplay --seed 4 --screenshots shots --exit-on-end`):
 
 | Requirement | What the screenshots show |
 | --- | --- |
-| UI-02 | The camera follows you and stops at the walls; the dark wall shows at the arena edge. |
-| UI-03 | Red health bars over recently hit slop only. |
-| UI-04 | Damage numbers in red (Analog), blue (Fact), yellow (Sarcasm) and green (Grass). |
-| UI-05 | Mental Health, the red wave progress bar, Clout with a heart, and the six weapon chips. |
-| FAIR-02 | Pink "typing..." spawn warnings and the Lancers' pink aim lines. |
-| FAIR-04 | Only bubbles, em-dashes, aim lines and spawn warnings carry hot pink. |
-| SLOP-01 | Bubble Bots firing fans of three; one bubble per fan carries a line, the others "...". |
-| SLOP-03 | Numbered Listicle packs. |
-| ART-01 | Outlined, anti-aliased sprites for you, all five slop, projectiles and Likes. |
+| UI-05 | Mental Health with a brain, the wave bar or the boss's name and health, Clout with a gold thumbs-up coin, level and XP, weapon chips with tiers. |
+| UI-08 | Hero select with five heroes, their loadouts and quirks. |
+| UI-09, UI-10 | The level-up cards; the patch notes as a changelog with sections and the model's resistances. |
+| UI-11 | The full-screen shop: tier frames, type labels, prices, lock buttons, weapons with sell values, items, stats and the slop's resistance. |
+| UI-12 | The Burnout screen with hero, platform, wave reached, kills by type, Model Collapse and weapons. |
+| SLOP-01, ART-02 | ChadGPT robots, Clawed starbursts, Yes-Bots, numbered Listicle Drones, Filter Influencers, Six-Finger Hands. |
+| BRAIN-02, BRAIN-03 | Brainrot built from parts (sharks with crowns, shrimp with traffic cones), shouting names like "Zing Zing Zing Birillini!". |
+| BOSS-01 | The Influencer Who Doesn't Exist with her clones and the "Phase 2" banner. |
+| FAIR-02, FAIR-04 | Pink bomb markers, aim lines and spawn warnings; only threats are pink. |
 
 ## Not yet verified by a person
 
-- How moving, hitting and dodging **feel**: that is the milestone 1 gate, and it needs you
-  to play.
-- Keyboard control in a real session (autoplay steers with the bot).
-- The sounds, which autoplay cannot listen to.
-- Pausing, switching weapons with 1 to 6, and restarting with Space.
+- How a whole run **feels**: pacing over 40 minutes, how readable boss waves are, whether the
+  shop gives enough interesting choices.
+- Keyboard and mouse control in a real session (autoplay plays with the bots).
+- The sounds, which autoplay cannot hear.
+- Bosses other than the Influencer on screen; all seven are covered by a test that fights
+  each one to the end.
+- The platform spread: ClockTok and InstaSlop are much harder for the bots than LinkedOut.

@@ -1,26 +1,23 @@
-//! The HUD over the arena, plus the title and end screens (UI-05).
-//!
-//! Mental Health top left, the wave timer as a video progress bar top
-//! centre, Clout top right, weapons along the bottom.
+//! The HUD over a wave (UI-05): Mental Health with your statuses, the wave
+//! timer as a video progress bar (or the boss's health), Clout and level,
+//! your weapons, the wave banner, MeTube's ad breaks, pop-ups, and pause.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
-use slop_sim::content::WEAPONS;
-use slop_sim::world::Outcome;
-use slop_sim::{DamageType, Event};
+use slop_rules::Phase;
+use slop_sim::content::BossKind;
+use slop_sim::Event;
 
 use crate::art::Art;
 use crate::play::Simulation;
+use crate::screens::roman;
 use crate::state::{Game, Screen};
 use crate::theme;
 use crate::views::VIEW;
 
-const BAR_W: f32 = 280.0;
+const BAR_W: f32 = 260.0;
 const PROGRESS_W: f32 = 560.0;
-/// Seconds the "how to play" hint stays at the start of a wave.
-const HINT_SECONDS: f32 = 7.0;
-/// Seconds after the wave ends before the end screen appears.
-const END_DELAY: f32 = 1.2;
+const SLOTS: usize = 6;
 
 pub struct HudPlugin;
 
@@ -47,6 +44,8 @@ struct MhFill;
 #[derive(Component)]
 struct MhText;
 #[derive(Component)]
+struct Statuses;
+#[derive(Component)]
 struct WaveText;
 #[derive(Component)]
 struct Progress;
@@ -55,23 +54,29 @@ struct TimeText;
 #[derive(Component)]
 struct CloutText;
 #[derive(Component)]
+struct LevelText;
+#[derive(Component)]
+struct XpFill;
+#[derive(Component)]
 struct Chip(usize);
 #[derive(Component)]
-struct Hint;
+struct ChipText(usize);
 #[derive(Component)]
 struct Paused;
 #[derive(Component)]
 struct Vignette;
 #[derive(Component)]
-struct Title;
+struct Ad;
 #[derive(Component)]
-struct End;
+struct Popup;
 #[derive(Component)]
-struct EndHeading;
+struct PopupClose;
 #[derive(Component)]
-struct EndSub;
+struct Banner;
 #[derive(Component)]
-struct EndStats;
+struct BannerTitle;
+#[derive(Component)]
+struct BannerLine;
 
 fn label(p: &mut ChildSpawnerCommands, words: impl Into<String>, size: f32, color: Color) {
     p.spawn((Text::new(words), TextFont { font_size: size, ..default() }, TextColor(color)));
@@ -90,140 +95,118 @@ fn overlay() -> Node {
     }
 }
 
+fn panel() -> (Node, BackgroundColor) {
+    (Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(6.0), padding: UiRect::all(Val::Px(10.0)), ..default() }, BackgroundColor(theme::PANEL))
+}
+
 fn setup(mut commands: Commands, art: Res<Art>) {
-    // The red flash when you are hurt sits under everything else.
     commands.spawn((Vignette, overlay(), BackgroundColor(Color::NONE), GlobalZIndex(1)));
+    commands.spawn((Ad, overlay(), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.55)), GlobalZIndex(3), Visibility::Hidden)).with_children(|p| {
+        label(p, "AD", 40.0, theme::PAPER);
+        label(p, "Your Mental Health will resume after this message.", 18.0, theme::QUIET);
+    });
+    commands
+        .spawn((
+            Popup,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(560.0),
+                top: Val::Px(150.0),
+                width: Val::Px(480.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(16.0)),
+                row_gap: Val::Px(8.0),
+                border: UiRect::all(Val::Px(3.0)),
+                ..default()
+            },
+            BackgroundColor(theme::PAPER),
+            BorderColor::all(theme::DANGER),
+            GlobalZIndex(4),
+            Visibility::Hidden,
+        ))
+        .with_children(|p| {
+            label(p, "Before you go!", 22.0, theme::INK);
+            label(p, "Subscribe to our newsletter for 10 daily AI tips.", 16.0, theme::INK);
+            p.spawn((PopupClose, Node { position_type: PositionType::Absolute, right: Val::Px(8.0), top: Val::Px(4.0), ..default() }))
+                .with_children(|c| label(c, "x", 22.0, theme::QUIET));
+        });
 
     commands
-        .spawn((Hud, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, GlobalZIndex(2)))
+        .spawn((Hud, Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, GlobalZIndex(2), Visibility::Hidden))
         .with_children(|root| {
-            // Mental Health.
-            root.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: Val::Px(20.0),
-                    top: Val::Px(16.0),
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(6.0),
-                    padding: UiRect::all(Val::Px(10.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::PANEL),
-            ))
-            .with_children(|p| {
-                label(p, "MENTAL HEALTH", 14.0, theme::QUIET);
-                p.spawn((Node { width: Val::Px(BAR_W), height: Val::Px(16.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.25, 0.3))))
-                    .with_children(|b| {
-                        b.spawn((MhFill, Node { width: Val::Px(BAR_W), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::mental_health_color(1.0))));
+            // Mental Health and statuses.
+            root.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(20.0), top: Val::Px(16.0), ..default() },)).with_children(|w| {
+                let (node, bg) = panel();
+                w.spawn((node, bg)).with_children(|p| {
+                    p.spawn(Node { column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }).with_children(|r| {
+                        r.spawn((ImageNode::new(art.brain.clone()), Node { width: Val::Px(24.0), height: Val::Px(24.0), ..default() }));
+                        label(r, "MENTAL HEALTH", 14.0, theme::QUIET);
                     });
-                p.spawn((MhText, Text::new("100 / 100"), TextFont { font_size: 16.0, ..default() }, TextColor(theme::PAPER)));
-            });
-            // The wave timer, as a video progress bar.
-            root.spawn(Node {
-                position_type: PositionType::Absolute,
-                top: Val::Px(16.0),
-                width: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((
-                    Node {
-                        flex_direction: FlexDirection::Column,
-                        align_items: AlignItems::Center,
-                        row_gap: Val::Px(6.0),
-                        padding: UiRect::axes(Val::Px(16.0), Val::Px(8.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::PANEL),
-                ))
-                .with_children(|p| {
-                    p.spawn((WaveText, Text::new("WAVE 1"), TextFont { font_size: 22.0, ..default() }, TextColor(theme::PAPER)));
-                    p.spawn((Node { width: Val::Px(PROGRESS_W), height: Val::Px(8.0), ..default() }, BackgroundColor(Color::srgb(0.32, 0.32, 0.36))))
+                    p.spawn((Node { width: Val::Px(BAR_W), height: Val::Px(16.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.25, 0.3))))
                         .with_children(|b| {
-                            b.spawn((Progress, Node { width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::PLAYER_RED)));
+                            b.spawn((MhFill, Node { width: Val::Px(BAR_W), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::mental_health_color(1.0))));
                         });
-                    p.spawn((TimeText, Text::new("0:00 / 1:00"), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER)));
+                    p.spawn((MhText, Text::new(""), TextFont { font_size: 16.0, ..default() }, TextColor(theme::PAPER)));
+                    p.spawn((Statuses, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::DANGER)));
                 });
             });
-            // Clout.
-            root.spawn((
-                Node {
-                    position_type: PositionType::Absolute,
-                    right: Val::Px(20.0),
-                    top: Val::Px(16.0),
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(8.0),
-                    padding: UiRect::all(Val::Px(10.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::PANEL),
-            ))
-            .with_children(|p| {
-                p.spawn((ImageNode::new(art.like.clone()), Node { width: Val::Px(26.0), height: Val::Px(26.0), ..default() }));
-                p.spawn((CloutText, Text::new("0"), TextFont { font_size: 24.0, ..default() }, TextColor(theme::PAPER)));
-                label(p, "Clout", 14.0, theme::QUIET);
+            // The wave timer, as a video progress bar; or the boss's health.
+            root.spawn(Node { position_type: PositionType::Absolute, top: Val::Px(16.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() })
+                .with_children(|row| {
+                    let (mut node, bg) = panel();
+                    node.align_items = AlignItems::Center;
+                    row.spawn((node, bg)).with_children(|p| {
+                        p.spawn((WaveText, Text::new(""), TextFont { font_size: 22.0, ..default() }, TextColor(theme::PAPER)));
+                        p.spawn((Node { width: Val::Px(PROGRESS_W), height: Val::Px(10.0), ..default() }, BackgroundColor(Color::srgb(0.32, 0.32, 0.36))))
+                            .with_children(|b| {
+                                b.spawn((Progress, Node { width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::PLAYER_RED)));
+                            });
+                        p.spawn((TimeText, Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER)));
+                    });
+                });
+            // Clout and level.
+            root.spawn(Node { position_type: PositionType::Absolute, right: Val::Px(20.0), top: Val::Px(16.0), ..default() }).with_children(|w| {
+                let (node, bg) = panel();
+                w.spawn((node, bg)).with_children(|p| {
+                    p.spawn(Node { column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }).with_children(|r| {
+                        r.spawn((ImageNode::new(art.coin.clone()), Node { width: Val::Px(26.0), height: Val::Px(26.0), ..default() }));
+                        r.spawn((CloutText, Text::new("0"), TextFont { font_size: 24.0, ..default() }, TextColor(theme::PAPER)));
+                        label(r, "Clout", 14.0, theme::QUIET);
+                    });
+                    p.spawn((LevelText, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::QUIET)));
+                    p.spawn((Node { width: Val::Px(160.0), height: Val::Px(5.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.25, 0.3))))
+                        .with_children(|b| {
+                            b.spawn((XpFill, Node { width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.95, 0.76, 0.19))));
+                        });
+                });
             });
             // Weapons.
-            root.spawn(Node {
-                position_type: PositionType::Absolute,
-                bottom: Val::Px(16.0),
-                width: Val::Percent(100.0),
-                justify_content: JustifyContent::Center,
-                column_gap: Val::Px(8.0),
-                ..default()
-            })
-            .with_children(|p| {
-                for (i, w) in WEAPONS.iter().enumerate() {
-                    p.spawn((
-                        Chip(i),
-                        Node {
-                            padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)),
-                            border: UiRect::all(Val::Px(3.0)),
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            ..default()
-                        },
-                        BackgroundColor(theme::PANEL),
-                        BorderColor::all(theme::type_color(w.kind)),
-                    ))
-                    .with_children(|c| {
-                        label(c, format!("{}  {}", i + 1, w.name), 16.0, theme::PAPER);
-                        label(c, w.kind.name(), 12.0, theme::type_color(w.kind));
-                    });
-                }
-            });
-            // How to play, fading after a few seconds.
-            root.spawn((Hint, Node { position_type: PositionType::Absolute, top: Val::Px(110.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() }))
+            root.spawn(Node { position_type: PositionType::Absolute, bottom: Val::Px(16.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, column_gap: Val::Px(8.0), ..default() })
                 .with_children(|p| {
-                    p.spawn((Text::new("WASD or arrows to move. Your weapons fire on their own. Survive the wave."), TextFont { font_size: 20.0, ..default() }, TextColor(theme::INK)));
+                    for i in 0..SLOTS {
+                        p.spawn((
+                            Chip(i),
+                            Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)), border: UiRect::all(Val::Px(3.0)), ..default() },
+                            BackgroundColor(theme::PANEL),
+                            BorderColor::all(theme::QUIET),
+                        ))
+                        .with_children(|c| {
+                            c.spawn((ChipText(i), Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER)));
+                        });
+                    }
                 });
         });
 
-    commands.spawn((Paused, overlay(), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)), GlobalZIndex(5), Visibility::Hidden)).with_children(|p| {
+    commands.spawn((Banner, overlay(), GlobalZIndex(6), Visibility::Hidden)).with_children(|p| {
+        p.spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(28.0), Val::Px(14.0)), row_gap: Val::Px(6.0), ..default() }, BackgroundColor(theme::PANEL)))
+            .with_children(|b| {
+                b.spawn((BannerTitle, Text::new(""), TextFont { font_size: 46.0, ..default() }, TextColor(theme::PAPER)));
+                b.spawn((BannerLine, Text::new(""), TextFont { font_size: 18.0, ..default() }, TextColor(theme::QUIET)));
+            });
+    });
+    commands.spawn((Paused, overlay(), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)), GlobalZIndex(8), Visibility::Hidden)).with_children(|p| {
         label(p, "PAUSED", 48.0, theme::PAPER);
-        label(p, "P to resume    1-6 switch weapons    Q to quit", 18.0, theme::QUIET);
-    });
-
-    commands.spawn((Title, overlay(), BackgroundColor(Color::srgba(0.09, 0.09, 0.13, 0.86)), GlobalZIndex(10))).with_children(|p| {
-        label(p, "AI SLOP ARENA", 84.0, theme::PAPER);
-        label(p, "One human. Endless slop. Protect your Mental Health.", 24.0, theme::QUIET);
-        p.spawn(Node { height: Val::Px(30.0), ..default() });
-        for line in ["WASD or arrows: move", "Your weapons fire on their own", "1-6: switch a weapon on or off", "P: pause"] {
-            label(p, line, 20.0, theme::PAPER);
-        }
-        p.spawn(Node { height: Val::Px(30.0), ..default() });
-        label(p, "Press Space to start", 30.0, theme::LIKE);
-        label(p, "Milestone 1 prototype: one wave, six weapons, five kinds of slop", 15.0, theme::QUIET);
-    });
-
-    commands.spawn((End, overlay(), BackgroundColor(Color::srgba(0.09, 0.09, 0.13, 0.86)), GlobalZIndex(10), Visibility::Hidden)).with_children(|p| {
-        p.spawn((EndHeading, Text::new(""), TextFont { font_size: 72.0, ..default() }, TextColor(theme::PAPER)));
-        p.spawn((EndSub, Text::new(""), TextFont { font_size: 22.0, ..default() }, TextColor(theme::QUIET)));
-        p.spawn(Node { height: Val::Px(16.0), ..default() });
-        p.spawn((EndStats, Text::new(""), TextFont { font_size: 20.0, ..default() }, TextColor(theme::PAPER), TextLayout::new_with_justify(Justify::Center)));
-        p.spawn(Node { height: Val::Px(16.0), ..default() });
-        label(p, "Space: try again    Q: quit", 22.0, theme::LIKE);
+        label(p, "P to resume    Q to quit", 18.0, theme::QUIET);
     });
 }
 
@@ -236,113 +219,150 @@ fn clock(seconds: f32) -> String {
 fn update(
     game: Res<Game>,
     time: Res<Time>,
-    mut vignette_alpha: Local<f32>,
+    mut vignette: Local<f32>,
     mut nodes: ParamSet<(
         Query<(&mut Node, &mut BackgroundColor), With<MhFill>>,
         Query<&mut Node, With<Progress>>,
-        Query<(&Chip, &mut BackgroundColor)>,
+        Query<&mut Node, With<XpFill>>,
         Query<&mut BackgroundColor, With<Vignette>>,
+        Query<&mut Node, With<PopupClose>>,
     )>,
     mut texts: ParamSet<(
         Query<&mut Text, With<MhText>>,
+        Query<&mut Text, With<Statuses>>,
+        Query<&mut Text, With<WaveText>>,
         Query<&mut Text, With<TimeText>>,
         Query<&mut Text, With<CloutText>>,
-        Query<&mut Text, With<EndHeading>>,
-        Query<(&mut Text, &mut TextColor), With<EndSub>>,
-        Query<&mut Text, With<EndStats>>,
+        Query<&mut Text, With<LevelText>>,
+        Query<(&ChipText, &mut Text)>,
+        Query<&mut Text, With<BannerTitle>>,
     )>,
+    mut banner_line: Query<&mut Text, (With<BannerLine>, Without<BannerTitle>, Without<ChipText>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>)>,
     mut shown: ParamSet<(
         Query<&mut Visibility, With<Hud>>,
-        Query<&mut Visibility, With<Title>>,
-        Query<&mut Visibility, With<End>>,
         Query<&mut Visibility, With<Paused>>,
-        Query<&mut Visibility, With<Hint>>,
+        Query<&mut Visibility, With<Ad>>,
+        Query<&mut Visibility, With<Popup>>,
+        Query<&mut Visibility, With<Banner>>,
+        Query<(&Chip, &mut BorderColor, &mut Visibility)>,
     )>,
-    mut heading_color: Query<&mut TextColor, (With<EndHeading>, Without<EndSub>)>,
 ) {
-    let world = &game.world;
+    let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
+    let run_screen = game.screen == Screen::Run;
+    let between = game.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::Shop | Phase::Over { .. }));
+    let Some(run) = game.run.as_ref().filter(|_| run_screen) else {
+        if let Ok(mut v) = shown.p0().single_mut() {
+            *v = Visibility::Hidden;
+        }
+        return;
+    };
+    let Some(world) = run.world.as_ref() else { return };
     let p = &world.player;
     let share = (p.mental_health / p.stats.max_mental_health).clamp(0.0, 1.0);
-    let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
+    let in_wave = matches!(run.phase, Phase::Wave);
 
     if let Ok((mut node, mut bg)) = nodes.p0().single_mut() {
         node.width = Val::Px(BAR_W * share);
         bg.0 = theme::mental_health_color(share);
     }
+    let boss = world.boss.as_ref().and_then(|b| world.boss_health().map(|h| (b.kind, h)));
     if let Ok(mut node) = nodes.p1().single_mut() {
-        node.width = Val::Px(PROGRESS_W * world.progress());
+        node.width = Val::Px(PROGRESS_W * boss.map_or(world.progress(), |(_, h)| h));
     }
-    for (chip, mut bg) in &mut nodes.p2() {
-        let on = p.weapons.get(chip.0).is_some_and(|w| w.enabled);
-        bg.0 = if on { theme::PANEL } else { Color::srgba(0.3, 0.3, 0.3, 0.4) };
+    let need = slop_rules::levels::xp_for(run.level + 1) as f32;
+    let xp = (run.xp + if in_wave { world.clout } else { 0 }) as f32;
+    if let Ok(mut node) = nodes.p2().single_mut() {
+        node.width = Val::Px(160.0 * (xp / need).min(1.0));
+    }
+    for (chip, mut border, mut v) in &mut shown.p5() {
+        match p.weapons.get(chip.0) {
+            Some(w) => {
+                *v = Visibility::Inherited;
+                *border = BorderColor::all(theme::type_color(w.def().kind));
+            }
+            None => *v = Visibility::Hidden,
+        }
     }
     if game.events.iter().any(|e| matches!(e, Event::PlayerHurt { .. })) {
-        *vignette_alpha = 0.28;
+        *vignette = 0.28;
     }
-    *vignette_alpha = (*vignette_alpha - time.delta_secs() * 0.9).max(0.0);
+    *vignette = (*vignette - time.delta_secs() * 0.9).max(0.0);
     if let Ok(mut bg) = nodes.p3().single_mut() {
-        bg.0 = theme::DANGER.with_alpha(*vignette_alpha);
+        bg.0 = theme::DANGER.with_alpha(*vignette);
+    }
+    if let Ok(mut node) = nodes.p4().single_mut() {
+        // The close button runs away from your mouse. And from you.
+        node.right = Val::Px(8.0 + 60.0 * (time.elapsed_secs() * 3.0).sin().abs());
     }
 
     if let Ok(mut t) = texts.p0().single_mut() {
         **t = format!("{:.0} / {:.0}", p.mental_health.ceil(), p.stats.max_mental_health);
     }
     if let Ok(mut t) = texts.p1().single_mut() {
-        **t = format!("{} / {}", clock(world.elapsed()), clock(world.wave.seconds));
+        let s = &p.status;
+        let mut list = Vec::new();
+        if s.anxiety > 0 {
+            list.push(format!("Anxiety x{}", s.anxiety));
+        }
+        if s.doomscroll > 0 {
+            list.push("Doomscroll".into());
+        }
+        if s.ratio > 0 {
+            list.push("Ratio'd".into());
+        }
+        if s.brainrot > 0 {
+            list.push("BRAINROT".into());
+        }
+        if p.grabbed > 0 {
+            list.push(format!("Grabbed x{}", p.grabbed));
+        }
+        **t = list.join("  ");
     }
     if let Ok(mut t) = texts.p2().single_mut() {
-        **t = world.clout.to_string();
+        **t = match boss {
+            Some((kind, _)) => kind.name().to_uppercase(),
+            None => format!("WAVE {}  -  {}", world.setup.number, run.platform.name()),
+        };
     }
-
-    let ended = game.screen == Screen::End && game.since_end > END_DELAY;
-    if ended {
-        let cleared = world.outcome == Outcome::Cleared;
-        if let Ok(mut t) = texts.p3().single_mut() {
-            **t = if cleared { "WAVE CLEARED".into() } else { "BURNOUT".into() };
+    if let Ok(mut t) = texts.p3().single_mut() {
+        **t = match boss {
+            Some((BossKind::TheModel, h)) => format!("Model Collapse {:.0}%    {:.0}% left", world.setup.model.collapse * 100.0, h * 100.0),
+            Some((_, h)) => format!("{:.0}% left", h * 100.0),
+            None => format!("{} / {}", clock(world.elapsed()), clock(world.setup.seconds)),
+        };
+    }
+    if let Ok(mut t) = texts.p4().single_mut() {
+        **t = (run.clout + if in_wave { world.clout } else { 0 }).to_string();
+    }
+    if let Ok(mut t) = texts.p5().single_mut() {
+        **t = format!("Level {}", run.level);
+    }
+    for (chip, mut t) in &mut texts.p6() {
+        if let Some(w) = p.weapons.get(chip.0) {
+            **t = format!("{} {}", w.def().name, roman(w.tier));
         }
-        if let Ok(mut c) = heading_color.single_mut() {
-            c.0 = if cleared { theme::mental_health_color(1.0) } else { theme::DANGER };
-        }
-        if let Ok((mut t, mut c)) = texts.p4().single_mut() {
-            **t = if cleared { "The slop is retraining on your data.".into() } else { "Your account has been suspended.".into() };
-            c.0 = theme::QUIET;
-        }
-        if let Ok(mut t) = texts.p5().single_mut() {
-            let tally = &world.tally;
-            let total: f32 = tally.damage_dealt.iter().sum::<f32>().max(1.0);
-            let shares: Vec<String> = DamageType::ALL
-                .iter()
-                .map(|d| format!("{} {:.0}%", d.name(), 100.0 * tally.damage_dealt[*d as usize] / total))
-                .collect();
-            **t = format!(
-                "Survived {} of {}\nSlop deleted {}\nClout earned {}\nMental Health left {:.0} / {:.0}\nBubbles popped {}    Dodges {}\nDamage by type: {}",
-                clock(world.elapsed()),
-                clock(world.wave.seconds),
-                tally.kills,
-                world.clout,
-                p.mental_health.ceil(),
-                p.stats.max_mental_health,
-                tally.bubbles_popped,
-                tally.dodges,
-                shares.join(", ")
-            );
+    }
+    let banner = game.banner.as_ref().filter(|_| !between);
+    if let (Some((title, line, _)), Ok(mut t)) = (banner, texts.p7().single_mut()) {
+        **t = title.clone();
+        if let Ok(mut l) = banner_line.single_mut() {
+            **l = line.clone();
         }
     }
 
-    let in_wave = game.screen != Screen::Title;
     if let Ok(mut v) = shown.p0().single_mut() {
-        *v = vis(in_wave);
+        *v = vis(!between);
     }
     if let Ok(mut v) = shown.p1().single_mut() {
-        *v = vis(game.screen == Screen::Title);
+        *v = vis(game.paused && in_wave);
     }
     if let Ok(mut v) = shown.p2().single_mut() {
-        *v = vis(ended);
+        *v = vis(in_wave && world.ad_break > 0);
     }
     if let Ok(mut v) = shown.p3().single_mut() {
-        *v = vis(game.screen == Screen::Wave && game.paused);
+        *v = vis(in_wave && p.status.popup > 0);
     }
     if let Ok(mut v) = shown.p4().single_mut() {
-        *v = vis(game.screen == Screen::Wave && world.elapsed() < HINT_SECONDS);
+        *v = vis(banner.is_some());
     }
 }

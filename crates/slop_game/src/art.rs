@@ -1,59 +1,83 @@
 //! Every sprite in the game, drawn in code at startup (ART-01).
 //!
-//! Shapes are described by signed distance functions and painted with a thick
-//! outline and anti-aliased edges, at twice the size they are shown, so the
-//! game ships without a single bought asset. Each slop also gets a white copy
-//! for hit flashes.
+//! Shapes are signed distance functions painted with a thick outline and
+//! anti-aliased edges, at twice the size they are shown. The pictures
+//! themselves are in `draw`; this module holds the painter and the handles.
+//! Each character also gets a white copy for hit flashes.
 
 use std::collections::HashMap;
 
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use slop_sim::content::{Look, SlopKind};
+use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Object, Platform};
+
+use crate::draw;
 
 /// Canvas pixels per world unit.
 pub const DENSITY: f32 = 2.0;
 
-type Rgba = [f32; 4];
+pub type Rgba = [f32; 4];
 
-const INK: Rgba = [0.13, 0.12, 0.17, 1.0];
+pub const INK: Rgba = [0.13, 0.12, 0.17, 1.0];
+pub const WHITE: Rgba = [1.0, 1.0, 1.0, 1.0];
 /// Anything that hurts you is outlined in this pink, and nothing else is (FAIR-04).
 pub const DANGER: Rgba = [1.0, 0.18, 0.58, 1.0];
 
-fn hex(h: u32) -> Rgba {
+pub fn hex(h: u32) -> Rgba {
     [((h >> 16) & 255) as f32 / 255.0, ((h >> 8) & 255) as f32 / 255.0, (h & 255) as f32 / 255.0, 1.0]
 }
 
-fn alpha(c: Rgba, a: f32) -> Rgba {
+pub fn alpha(c: Rgba, a: f32) -> Rgba {
     [c[0], c[1], c[2], c[3] * a]
 }
 
 // Signed distances: negative inside.
 
-fn circle(x: f32, y: f32, cx: f32, cy: f32, r: f32) -> f32 {
+pub fn circle(x: f32, y: f32, cx: f32, cy: f32, r: f32) -> f32 {
     ((x - cx).powi(2) + (y - cy).powi(2)).sqrt() - r
 }
 
-fn ellipse(x: f32, y: f32, cx: f32, cy: f32, rx: f32, ry: f32) -> f32 {
+pub fn ellipse(x: f32, y: f32, cx: f32, cy: f32, rx: f32, ry: f32) -> f32 {
     let (dx, dy) = ((x - cx) / rx, (y - cy) / ry);
     ((dx * dx + dy * dy).sqrt() - 1.0) * rx.min(ry)
 }
 
-fn rbox(x: f32, y: f32, cx: f32, cy: f32, hw: f32, hh: f32, r: f32) -> f32 {
+pub fn rbox(x: f32, y: f32, cx: f32, cy: f32, hw: f32, hh: f32, r: f32) -> f32 {
     let qx = (x - cx).abs() - hw + r;
     let qy = (y - cy).abs() - hh + r;
     (qx.max(0.0).powi(2) + qy.max(0.0).powi(2)).sqrt() + qx.max(qy).min(0.0) - r
 }
 
-fn capsule(x: f32, y: f32, ax: f32, ay: f32, bx: f32, by: f32, r: f32) -> f32 {
+pub fn capsule(x: f32, y: f32, ax: f32, ay: f32, bx: f32, by: f32, r: f32) -> f32 {
     let (px, py, vx, vy) = (x - ax, y - ay, bx - ax, by - ay);
     let h = ((px * vx + py * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
     ((px - vx * h).powi(2) + (py - vy * h).powi(2)).sqrt() - r
 }
 
+/// A triangle with corners a, b, c.
+pub fn triangle(x: f32, y: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> f32 {
+    let edge = |p0: (f32, f32), p1: (f32, f32)| {
+        let (ex, ey) = (p1.0 - p0.0, p1.1 - p0.1);
+        let (wx, wy) = (x - p0.0, y - p0.1);
+        let h = ((wx * ex + wy * ey) / (ex * ex + ey * ey)).clamp(0.0, 1.0);
+        let d = ((wx - ex * h).powi(2) + (wy - ey * h).powi(2)).sqrt();
+        (d, ex * wy - ey * wx)
+    };
+    let (d0, s0) = edge(a, b);
+    let (d1, s1) = edge(b, c);
+    let (d2, s2) = edge(c, a);
+    let d = d0.min(d1).min(d2);
+    let inside = (s0 >= 0.0 && s1 >= 0.0 && s2 >= 0.0) || (s0 <= 0.0 && s1 <= 0.0 && s2 <= 0.0);
+    if inside {
+        -d
+    } else {
+        d
+    }
+}
+
 /// A wedge from (cx, cy) pointing right, `half` radians each side.
-fn wedge(x: f32, y: f32, cx: f32, cy: f32, r: f32, half: f32) -> f32 {
+pub fn wedge(x: f32, y: f32, cx: f32, cy: f32, r: f32, half: f32) -> f32 {
     let (dx, dy) = (x - cx, y - cy);
     let d = (dx * dx + dy * dy).sqrt();
     let off = dy.atan2(dx).abs() - half;
@@ -62,8 +86,8 @@ fn wedge(x: f32, y: f32, cx: f32, cy: f32, r: f32, half: f32) -> f32 {
 
 /// An RGBA painting surface; colours are sRGB with straight alpha.
 pub struct Canvas {
-    w: usize,
-    h: usize,
+    pub w: usize,
+    pub h: usize,
     px: Vec<Rgba>,
 }
 
@@ -97,6 +121,17 @@ impl Canvas {
         self.shape(sdf, color, color, 0.0);
     }
 
+    /// Paints with a per-pixel colour (gradients, fades).
+    pub fn paint(&mut self, f: impl Fn(f32, f32) -> Option<Rgba>) {
+        for y in 0..self.h {
+            for x in 0..self.w {
+                if let Some(c) = f(x as f32 + 0.5, y as f32 + 0.5) {
+                    self.over(x, y, c);
+                }
+            }
+        }
+    }
+
     fn over(&mut self, x: usize, y: usize, src: Rgba) {
         let dst = &mut self.px[y * self.w + x];
         let a = src[3] + dst[3] * (1.0 - src[3]);
@@ -127,270 +162,152 @@ impl Canvas {
     }
 }
 
+/// A canvas drawn in a 100-unit design space, scaled to `size` pixels, with
+/// a standard outline. Keeps the pictures in `draw` short.
+pub struct Pen {
+    pub c: Canvas,
+    pub k: f32,
+    pub line: f32,
+}
+
+impl Pen {
+    pub fn new(size: f32) -> Pen {
+        let s = size.ceil().max(8.0) as usize;
+        Pen { c: Canvas::new(s, s), k: s as f32 / 100.0, line: 3.5 * s as f32 / 100.0 }
+    }
+
+    pub fn circle(&mut self, cx: f32, cy: f32, r: f32, fill: Rgba) {
+        let k = self.k;
+        self.c.shape(|x, y| circle(x, y, cx * k, cy * k, r * k), fill, INK, self.line);
+    }
+
+    pub fn ellipse(&mut self, cx: f32, cy: f32, rx: f32, ry: f32, fill: Rgba) {
+        let k = self.k;
+        self.c.shape(|x, y| ellipse(x, y, cx * k, cy * k, rx * k, ry * k), fill, INK, self.line);
+    }
+
+    pub fn rect(&mut self, cx: f32, cy: f32, hw: f32, hh: f32, r: f32, fill: Rgba) {
+        let k = self.k;
+        self.c.shape(|x, y| rbox(x, y, cx * k, cy * k, hw * k, hh * k, r * k), fill, INK, self.line);
+    }
+
+    pub fn stick(&mut self, ax: f32, ay: f32, bx: f32, by: f32, r: f32, fill: Rgba) {
+        let k = self.k;
+        self.c.shape(|x, y| capsule(x, y, ax * k, ay * k, bx * k, by * k, r * k), fill, INK, self.line);
+    }
+
+    pub fn tri(&mut self, a: (f32, f32), b: (f32, f32), c: (f32, f32), fill: Rgba) {
+        let k = self.k;
+        let s = |p: (f32, f32)| (p.0 * k, p.1 * k);
+        self.c.shape(|x, y| triangle(x, y, s(a), s(b), s(c)), fill, INK, self.line);
+    }
+
+    /// A filled dot with no outline (eyes, details).
+    pub fn dot(&mut self, cx: f32, cy: f32, r: f32, color: Rgba) {
+        let k = self.k;
+        self.c.fill(|x, y| circle(x, y, cx * k, cy * k, r * k), color);
+    }
+
+    /// A line with no outline.
+    pub fn line(&mut self, ax: f32, ay: f32, bx: f32, by: f32, r: f32, color: Rgba) {
+        let k = self.k;
+        self.c.fill(|x, y| capsule(x, y, ax * k, ay * k, bx * k, by * k, r * k), color);
+    }
+
+    /// A smile: the lower part of a ring.
+    pub fn smile(&mut self, cx: f32, cy: f32, r: f32, color: Rgba) {
+        let k = self.k;
+        self.c.fill(|x, y| circle(x, y, cx * k, cy * k, r * k).max(-circle(x, y, cx * k, (cy - r * 0.5) * k, r * 1.05 * k)), color);
+    }
+}
+
 /// The human's face for each band of Mental Health, best first.
 pub const FACES: usize = 4;
+/// World size of slop sprites relative to their collision radius.
+pub const SLOP_SCALE: f32 = 2.7;
+pub const HUMAN_SIZE: f32 = 52.0;
+/// Size of the speech bubble frame's corners, in canvas pixels.
+pub const BUBBLE_BORDER: f32 = 14.0;
+
+/// A sprite and its white flash copy.
+pub type Pair = (Handle<Image>, Handle<Image>);
 
 #[derive(Resource)]
 pub struct Art {
     /// Faces from calm to the thousand-yard stare.
     pub human: [Handle<Image>; FACES],
     pub human_flash: Handle<Image>,
-    pub slop: HashMap<SlopKind, (Handle<Image>, Handle<Image>)>,
+    pub archetypes: HashMap<Archetype, Pair>,
+    pub bodies: HashMap<Body, Pair>,
+    pub objects: HashMap<Object, Pair>,
+    pub accessories: HashMap<Accessory, Pair>,
+    pub bosses: HashMap<BossKind, Pair>,
+    pub floors: HashMap<Platform, Handle<Image>>,
     pub shots: HashMap<Look, Handle<Image>>,
     pub bubble: Handle<Image>,
-    pub like: Handle<Image>,
+    pub coin: Handle<Image>,
+    pub brain: Handle<Image>,
     pub shadow: Handle<Image>,
     pub typing: Handle<Image>,
     pub swing: Handle<Image>,
     pub spray: Handle<Image>,
-    pub floor: Handle<Image>,
+    pub ring: Handle<Image>,
+    pub danger_ring: Handle<Image>,
     pub dot: Handle<Image>,
+    pub dog: Handle<Image>,
+    pub halo: Handle<Image>,
+    pub shield: Handle<Image>,
+    pub swirl: Handle<Image>,
+    pub seed: Handle<Image>,
+    pub bomb: Handle<Image>,
+    pub downvote: Handle<Image>,
+    pub filter: Handle<Image>,
 }
-
-/// World size each slop is drawn at, relative to its collision radius.
-pub const SLOP_SCALE: f32 = 2.7;
-pub const HUMAN_SIZE: f32 = 52.0;
-/// Size of the speech bubble frame's corners, in canvas pixels.
-pub const BUBBLE_BORDER: f32 = 14.0;
 
 impl Art {
     pub fn build(images: &mut Assets<Image>) -> Art {
-        let mut add = |c: &Canvas| images.add(c.image());
-        let faces: Vec<Canvas> = (0..FACES).map(human).collect();
-        let human_flash = add(&faces[0].whitened());
-        let human = [add(&faces[0]), add(&faces[1]), add(&faces[2]), add(&faces[3])];
-        let mut slop_art = HashMap::new();
-        for kind in SlopKind::ALL {
-            let c = slop(kind);
-            slop_art.insert(kind, (add(&c), add(&c.whitened())));
-        }
-        let mut shots = HashMap::new();
-        for look in [Look::Rock, Look::Bullet, Look::Pen, Look::EyeRoll, Look::EmDash] {
-            shots.insert(look, add(&shot(look)));
-        }
+        let faces: Vec<Canvas> = (0..FACES).map(draw::human).collect();
+        let human_flash = images.add(faces[0].whitened().image());
+        let human = [images.add(faces[0].image()), images.add(faces[1].image()), images.add(faces[2].image()), images.add(faces[3].image())];
+        let mut pair = |c: Canvas| (images.add(c.image()), images.add(c.whitened().image()));
+        let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(draw::archetype(a)))).collect();
+        let bodies = Body::ALL.iter().map(|&b| (b, pair(draw::body(b)))).collect();
+        let objects = Object::ALL.iter().map(|&o| (o, pair(draw::object(o)))).collect();
+        let accessories = Accessory::ALL.iter().map(|&a| (a, pair(draw::accessory(a)))).collect();
+        let bosses = BossKind::ALL.iter().map(|&b| (b, pair(draw::boss(b)))).collect();
+        let mut add = |c: Canvas| images.add(c.image());
+        let floors = Platform::ALL.iter().map(|&p| (p, add(draw::floor(p)))).collect();
+        let shots = Look::ALL.iter().filter(|l| **l != Look::Bubble && **l != Look::Post).map(|&l| (l, add(draw::shot(l)))).collect();
         Art {
             human,
             human_flash,
-            slop: slop_art,
+            archetypes,
+            bodies,
+            objects,
+            accessories,
+            bosses,
+            floors,
             shots,
-            bubble: add(&bubble()),
-            like: add(&like()),
-            shadow: add(&shadow()),
-            typing: add(&typing()),
-            swing: add(&sector(1.05, [1.0, 1.0, 1.0, 0.85])),
-            spray: add(&sector(0.45, [0.45, 0.75, 1.0, 0.8])),
-            floor: add(&floor()),
-            dot: add(&dot()),
+            bubble: add(draw::bubble()),
+            coin: add(draw::coin()),
+            brain: add(draw::brain()),
+            shadow: add(draw::shadow()),
+            typing: add(draw::typing()),
+            swing: add(draw::sector(1.05, [1.0, 1.0, 1.0, 0.85])),
+            spray: add(draw::sector(0.45, [0.45, 0.75, 1.0, 0.8])),
+            ring: add(draw::ring(WHITE)),
+            danger_ring: add(draw::ring(DANGER)),
+            dot: add(draw::dot()),
+            dog: add(draw::dog()),
+            halo: add(draw::halo()),
+            shield: add(draw::shield()),
+            swirl: add(draw::swirl()),
+            seed: add(draw::seed_patch()),
+            bomb: add(draw::bomb_marker()),
+            downvote: add(draw::downvote()),
+            filter: add(draw::filter()),
         }
     }
-}
-
-/// The human: a round head over a hoodie, headphones around the neck.
-fn human(face: usize) -> Canvas {
-    let s = HUMAN_SIZE * DENSITY;
-    let mut c = Canvas::new(s as usize, s as usize);
-    let k = s / 104.0;
-    let hoodie = hex(0xF28C38);
-    let skin = hex(0xF6D2B0);
-    c.shape(|x, y| rbox(x, y, 52.0 * k, 78.0 * k, 30.0 * k, 22.0 * k, 16.0 * k), hoodie, INK, 3.0 * k);
-    c.fill(|x, y| capsule(x, y, 52.0 * k, 64.0 * k, 52.0 * k, 96.0 * k, 1.5 * k), alpha(INK, 0.35));
-    c.shape(|x, y| circle(x, y, 52.0 * k, 40.0 * k, 28.0 * k), skin, INK, 3.0 * k);
-    // Headphones resting on the neck.
-    c.shape(|x, y| capsule(x, y, 30.0 * k, 66.0 * k, 74.0 * k, 66.0 * k, 5.0 * k), hex(0x3A3D4D), INK, 2.0 * k);
-    c.shape(|x, y| circle(x, y, 28.0 * k, 66.0 * k, 8.0 * k), hex(0x3A3D4D), INK, 2.0 * k);
-    c.shape(|x, y| circle(x, y, 76.0 * k, 66.0 * k, 8.0 * k), hex(0x3A3D4D), INK, 2.0 * k);
-    let eye_r = if face == 3 { 5.5 } else { 4.0 };
-    for ex in [41.0, 63.0] {
-        if face == 3 {
-            // Dark circles and tiny pupils: the thousand-yard stare.
-            c.fill(|x, y| ellipse(x, y, ex * k, 44.0 * k, 8.0 * k, 4.0 * k), alpha(hex(0x8A6A9A), 0.6));
-            c.shape(|x, y| circle(x, y, ex * k, 38.0 * k, eye_r * k), [1.0; 4], INK, 1.5 * k);
-            c.fill(|x, y| circle(x, y, ex * k, 38.0 * k, 1.5 * k), INK);
-        } else {
-            c.fill(|x, y| circle(x, y, ex * k, 38.0 * k, eye_r * k), INK);
-        }
-    }
-    match face {
-        0 => c.fill(|x, y| circle(x, y, 52.0 * k, 46.0 * k, 9.0 * k).max(-circle(x, y, 52.0 * k, 41.0 * k, 10.0 * k)), INK),
-        1 => c.fill(|x, y| capsule(x, y, 45.0 * k, 52.0 * k, 59.0 * k, 52.0 * k, 1.8 * k), INK),
-        2 => {
-            c.fill(|x, y| ellipse(x, y, 52.0 * k, 54.0 * k, 6.0 * k, 5.0 * k), INK);
-            c.shape(|x, y| circle(x, y, 80.0 * k, 30.0 * k, 6.0 * k).min(capsule(x, y, 80.0 * k, 22.0 * k, 80.0 * k, 28.0 * k, 3.0 * k)), hex(0x8FD3FF), INK, 1.5 * k);
-        }
-        _ => c.fill(|x, y| capsule(x, y, 46.0 * k, 54.0 * k, 58.0 * k, 54.0 * k, 1.5 * k), INK),
-    }
-    c
-}
-
-fn slop(kind: SlopKind) -> Canvas {
-    let s = kind.def().radius * SLOP_SCALE * DENSITY;
-    let mut c = Canvas::new(s as usize, s as usize);
-    let k = s / 100.0;
-    let w = 3.5 * k;
-    match kind {
-        SlopKind::BubbleBot => {
-            // A chat window that is always typing.
-            c.shape(|x, y| rbox(x, y, 50.0 * k, 46.0 * k, 34.0 * k, 26.0 * k, 10.0 * k).min(capsule(x, y, 34.0 * k, 66.0 * k, 26.0 * k, 82.0 * k, 5.0 * k)), hex(0x8FE3F0), INK, w);
-            c.fill(|x, y| rbox(x, y, 50.0 * k, 26.0 * k, 31.0 * k, 5.0 * k, 3.0 * k), hex(0x4FB8CC));
-            for dx in [36.0, 50.0, 64.0] {
-                c.fill(|x, y| circle(x, y, dx * k, 50.0 * k, 5.0 * k), INK);
-            }
-        }
-        SlopKind::EmDashLancer => {
-            c.shape(|x, y| rbox(x, y, 50.0 * k, 54.0 * k, 24.0 * k, 36.0 * k, 22.0 * k), hex(0x9B6BFF), INK, w);
-            c.shape(|x, y| rbox(x, y, 50.0 * k, 40.0 * k, 18.0 * k, 8.0 * k, 6.0 * k), hex(0x2A2240), INK, 2.0 * k);
-            c.fill(|x, y| rbox(x, y, 56.0 * k, 40.0 * k, 9.0 * k, 3.0 * k, 3.0 * k), DANGER);
-            c.fill(|x, y| capsule(x, y, 30.0 * k, 72.0 * k, 70.0 * k, 72.0 * k, 3.0 * k), alpha(INK, 0.5));
-        }
-        SlopKind::Listicle => {
-            // A sticky note with a folded corner; its number is drawn as text.
-            c.shape(|x, y| rbox(x, y, 50.0 * k, 50.0 * k, 34.0 * k, 34.0 * k, 4.0 * k), hex(0xFFE066), INK, w);
-            c.fill(|x, y| capsule(x, y, 72.0 * k, 72.0 * k, 82.0 * k, 82.0 * k, 7.0 * k), hex(0xE0B83A));
-        }
-        SlopKind::YesBot => {
-            c.shape(|x, y| circle(x, y, 46.0 * k, 52.0 * k, 32.0 * k), hex(0x7BE07B), INK, w);
-            for ex in [36.0, 56.0] {
-                c.fill(|x, y| circle(x, y, ex * k, 44.0 * k, 4.5 * k), INK);
-            }
-            c.fill(|x, y| circle(x, y, 46.0 * k, 58.0 * k, 14.0 * k).max(-circle(x, y, 46.0 * k, 50.0 * k, 16.0 * k)), INK);
-            // A thumb up.
-            c.shape(|x, y| rbox(x, y, 82.0 * k, 60.0 * k, 9.0 * k, 9.0 * k, 4.0 * k).min(capsule(x, y, 80.0 * k, 50.0 * k, 80.0 * k, 34.0 * k, 5.0 * k)), hex(0xF6D2B0), INK, 2.5 * k);
-        }
-        SlopKind::SixFingerHand => {
-            let skin = hex(0xF0C9A0);
-            c.shape(
-                |x, y| {
-                    let mut d = rbox(x, y, 50.0 * k, 64.0 * k, 22.0 * k, 18.0 * k, 9.0 * k);
-                    for f in 0..6 {
-                        let a = -2.4 + f as f32 * 0.33;
-                        let (tx, ty) = (50.0 + a.cos() * 40.0, 58.0 + a.sin() * 40.0);
-                        d = d.min(capsule(x, y, 50.0 * k, 56.0 * k, tx * k, ty * k, 5.5 * k));
-                    }
-                    d
-                },
-                skin,
-                INK,
-                w,
-            );
-        }
-    }
-    c
-}
-
-fn shot(look: Look) -> Canvas {
-    match look {
-        Look::Rock => {
-            let mut c = Canvas::new(40, 40);
-            c.shape(|x, y| circle(x, y, 18.0, 21.0, 12.0).min(circle(x, y, 25.0, 17.0, 9.0)), hex(0x9A9A9A), INK, 2.5);
-            c
-        }
-        Look::Bullet => {
-            let mut c = Canvas::new(32, 16);
-            c.shape(|x, y| capsule(x, y, 6.0, 8.0, 26.0, 8.0, 5.0), hex(0xFFD24A), INK, 2.0);
-            c
-        }
-        Look::Pen => {
-            let mut c = Canvas::new(48, 16);
-            c.shape(|x, y| capsule(x, y, 6.0, 8.0, 34.0, 8.0, 5.0), hex(0xE23B3B), INK, 2.0);
-            c.shape(|x, y| capsule(x, y, 34.0, 8.0, 43.0, 8.0, 2.5), hex(0x3A3D4D), INK, 1.0);
-            c
-        }
-        Look::EyeRoll => {
-            let mut c = Canvas::new(44, 44);
-            c.shape(|x, y| circle(x, y, 22.0, 22.0, 18.0), [1.0; 4], INK, 2.5);
-            c.fill(|x, y| circle(x, y, 22.0, 10.0, 7.0).max(circle(x, y, 22.0, 22.0, 16.0)), hex(0x4A7BD0));
-            c
-        }
-        Look::EmDash => {
-            let mut c = Canvas::new(96, 20);
-            c.shape(|x, y| capsule(x, y, 8.0, 10.0, 88.0, 10.0, 6.0), hex(0x2A2240), DANGER, 3.0);
-            c
-        }
-        Look::Bubble => bubble(),
-    }
-}
-
-/// A white speech-bubble frame, outlined in danger pink, drawn as nine slices.
-fn bubble() -> Canvas {
-    let mut c = Canvas::new(48, 40);
-    c.shape(|x, y| rbox(x, y, 24.0, 20.0, 22.0, 18.0, 12.0), [1.0; 4], DANGER, 3.5);
-    c
-}
-
-fn like() -> Canvas {
-    let mut c = Canvas::new(36, 36);
-    c.shape(
-        |x, y| {
-            let lobes = circle(x, y, 12.0, 14.0, 7.5).min(circle(x, y, 24.0, 14.0, 7.5));
-            // The point of the heart: a square turned 45 degrees.
-            let k = std::f32::consts::FRAC_1_SQRT_2;
-            let (u, v) = ((x - 18.0 + y - 19.0) * k, (x - 18.0 - (y - 19.0)) * k);
-            lobes.min(rbox(u, v, 0.0, 0.0, 8.5, 8.5, 1.5))
-        },
-        hex(0xFF4F6D),
-        [1.0; 4],
-        2.5,
-    );
-    c
-}
-
-fn shadow() -> Canvas {
-    let mut c = Canvas::new(64, 24);
-    c.fill(|x, y| ellipse(x, y, 32.0, 12.0, 30.0, 10.0), [0.0, 0.0, 0.0, 0.22]);
-    c
-}
-
-/// The "typing..." indicator that warns of a spawn.
-fn typing() -> Canvas {
-    let mut c = Canvas::new(64, 40);
-    c.shape(|x, y| rbox(x, y, 32.0, 20.0, 28.0, 16.0, 14.0), [0.93, 0.93, 0.95, 0.95], DANGER, 3.0);
-    for dx in [20.0, 32.0, 44.0] {
-        c.fill(|x, y| circle(x, y, dx, 20.0, 4.5), INK);
-    }
-    c
-}
-
-/// A fading wedge for swings and sprays, pointing right from the left edge's middle.
-fn sector(half: f32, color: Rgba) -> Canvas {
-    let (w, h) = (256usize, 256usize);
-    let mut c = Canvas::new(w, h);
-    let (cx, cy, r) = (128.0, 128.0, 126.0);
-    for y in 0..h {
-        for x in 0..w {
-            let (px, py) = (x as f32 + 0.5, y as f32 + 0.5);
-            let d = wedge(px, py, cx, cy, r, half);
-            let cover = (0.5 - d).clamp(0.0, 1.0);
-            if cover > 0.0 {
-                let dist = ((px - cx).powi(2) + (py - cy).powi(2)).sqrt() / r;
-                c.over(x, y, alpha(color, cover * dist.powf(1.5)));
-            }
-        }
-    }
-    c
-}
-
-/// One tile of the arena floor: a faint feed of posts nobody asked for.
-fn floor() -> Canvas {
-    let mut c = Canvas::new(256, 256);
-    c.fill(|_, _| -1.0, hex(0xEFECE6));
-    let card = [1.0, 1.0, 1.0, 0.4];
-    let faint = alpha(hex(0xB9B4AA), 0.3);
-    c.shape(|x, y| rbox(x, y, 128.0, 128.0, 104.0, 104.0, 14.0), card, faint, 2.0);
-    c.fill(|x, y| circle(x, y, 52.0, 56.0, 14.0), faint);
-    c.fill(|x, y| rbox(x, y, 120.0, 50.0, 46.0, 5.0, 5.0), faint);
-    c.fill(|x, y| rbox(x, y, 100.0, 66.0, 26.0, 4.0, 4.0), faint);
-    for (i, w) in [86.0f32, 70.0, 80.0].iter().enumerate() {
-        let y0 = 104.0 + i as f32 * 18.0;
-        c.fill(|x, y| rbox(x, y, 48.0 + w, y0, *w, 4.0, 4.0), faint);
-    }
-    c.fill(|x, y| rbox(x, y, 128.0, 186.0, 82.0, 18.0, 8.0), alpha(hex(0xD8D3C9), 0.5));
-    c
-}
-
-fn dot() -> Canvas {
-    let mut c = Canvas::new(8, 8);
-    c.fill(|_, _| -1.0, [1.0; 4]);
-    c
 }
 
 #[cfg(test)]
@@ -408,7 +325,23 @@ mod tests {
         assert_eq!(at(0, 0)[3], 0.0, "transparent outside");
         let edge = at(20, 5)[3];
         assert!(edge > 0.0 && edge < 1.0, "anti-aliased edge, alpha {edge}");
-        let white = c.whitened();
-        assert_eq!(white.px[20 * 40 + 20], [1.0, 1.0, 1.0, 1.0]);
+        assert_eq!(c.whitened().px[20 * 40 + 20], [1.0, 1.0, 1.0, 1.0]);
+        assert!(triangle(5.0, 5.0, (0.0, 0.0), (10.0, 0.0), (5.0, 10.0)) < 0.0);
+        assert!(triangle(20.0, 20.0, (0.0, 0.0), (10.0, 0.0), (5.0, 10.0)) > 0.0);
+    }
+
+    // REQ: ART-02
+    #[test]
+    fn every_character_is_drawn_and_not_empty() {
+        let opaque = |c: &Canvas| c.px.iter().filter(|p| p[3] > 0.5).count();
+        for a in Archetype::ALL {
+            assert!(opaque(&draw::archetype(a)) > 200, "{a:?}");
+        }
+        for b in Body::ALL {
+            assert!(opaque(&draw::body(b)) > 200, "{b:?}");
+        }
+        for b in BossKind::ALL {
+            assert!(opaque(&draw::boss(b)) > 1000, "{b:?}");
+        }
     }
 }

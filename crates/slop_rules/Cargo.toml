@@ -1,0 +1,9 @@
+[package]
+name = "slop_rules"
+description = "The run of AI Slop Arena: waves, shop, items, heroes, levels and training"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+slop_sim = { path = "../slop_sim" }

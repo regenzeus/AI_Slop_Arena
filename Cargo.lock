@@ -4212,11 +4212,20 @@ name = "slop_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "slop_rules",
  "slop_sim",
 ]
 
 [[package]]
 name = "slop_lab"
+version = "0.1.0"
+dependencies = [
+ "slop_rules",
+ "slop_sim",
+]
+
+[[package]]
+name = "slop_rules"
 version = "0.1.0"
 dependencies = [
  "slop_sim",

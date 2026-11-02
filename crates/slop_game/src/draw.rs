@@ -1,0 +1,790 @@
+//! The pictures (ART-02): the human, every slop character, brainrot parts,
+//! bosses, projectiles, platform floors and effects. Each is drawn in a
+//! 100-unit design space with `Pen`; brainrot parts share one frame so they
+//! can be stacked into a creature.
+
+use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Object, Platform};
+
+use crate::art::*;
+
+/// Canvas size of brainrot parts, in pixels; the client scales them to the body.
+const PART: f32 = 128.0;
+const BOSS: f32 = 256.0;
+
+const TEAL: u32 = 0x3CC8B4;
+const CORAL: u32 = 0xE8835A;
+const SKIN: u32 = 0xF6D2B0;
+const NAVY: u32 = 0x2E3A59;
+const RED: u32 = 0xE23B3B;
+const GOLD: u32 = 0xF2C230;
+const GREY: u32 = 0xB8BCC8;
+
+/// The human: a round head over a hoodie, headphones around the neck.
+pub fn human(face: usize) -> Canvas {
+    let mut p = Pen::new(HUMAN_SIZE * DENSITY);
+    p.rect(50.0, 75.0, 29.0, 21.0, 15.0, hex(0xF28C38));
+    p.line(50.0, 62.0, 50.0, 92.0, 1.5, alpha(INK, 0.35));
+    p.circle(50.0, 38.0, 27.0, hex(SKIN));
+    p.stick(29.0, 63.0, 71.0, 63.0, 5.0, hex(0x3A3D4D));
+    p.circle(27.0, 63.0, 8.0, hex(0x3A3D4D));
+    p.circle(73.0, 63.0, 8.0, hex(0x3A3D4D));
+    for ex in [39.0, 61.0] {
+        if face == 3 {
+            p.dot(ex, 42.0, 7.0, alpha(hex(0x8A6A9A), 0.5));
+            p.circle(ex, 36.0, 5.0, WHITE);
+            p.dot(ex, 36.0, 1.5, INK);
+        } else {
+            p.dot(ex, 36.0, 4.0, INK);
+        }
+    }
+    match face {
+        0 => p.smile(50.0, 44.0, 9.0, INK),
+        1 => p.line(43.0, 50.0, 57.0, 50.0, 1.8, INK),
+        2 => {
+            p.dot(50.0, 52.0, 5.0, INK);
+            p.circle(77.0, 28.0, 6.0, hex(0x8FD3FF));
+        }
+        _ => p.line(44.0, 52.0, 56.0, 52.0, 1.5, INK),
+    }
+    p.c
+}
+
+fn slop_size(a: Archetype) -> f32 {
+    a.def().radius * SLOP_SCALE * DENSITY
+}
+
+/// The fixed characters: parody chatbots and platform slop.
+pub fn archetype(a: Archetype) -> Canvas {
+    let mut p = Pen::new(slop_size(a));
+    match a {
+        Archetype::ChadGpt => {
+            p.line(50.0, 10.0, 50.0, 24.0, 2.0, INK);
+            p.circle(50.0, 10.0, 5.0, hex(TEAL));
+            p.tri((30.0, 72.0), (44.0, 72.0), (24.0, 90.0), hex(TEAL));
+            p.rect(50.0, 50.0, 36.0, 28.0, 12.0, hex(TEAL));
+            p.rect(50.0, 50.0, 26.0, 18.0, 7.0, hex(0xE9FBF8));
+            p.dot(41.0, 46.0, 4.0, INK);
+            p.dot(59.0, 46.0, 4.0, INK);
+            p.smile(50.0, 53.0, 8.0, INK);
+        }
+        Archetype::Clawed => {
+            for i in 0..10 {
+                let a = i as f32 * std::f32::consts::TAU / 10.0;
+                let tip = (50.0 + a.cos() * 42.0, 50.0 + a.sin() * 42.0);
+                let l = (50.0 + (a - 0.3).cos() * 22.0, 50.0 + (a - 0.3).sin() * 22.0);
+                let r = (50.0 + (a + 0.3).cos() * 22.0, 50.0 + (a + 0.3).sin() * 22.0);
+                p.tri(l, r, tip, hex(CORAL));
+            }
+            p.circle(50.0, 50.0, 26.0, hex(CORAL));
+            p.circle(12.0, 70.0, 10.0, hex(0xD9673F));
+            p.circle(88.0, 70.0, 10.0, hex(0xD9673F));
+            p.line(4.0, 70.0, 12.0, 70.0, 1.5, INK);
+            p.line(88.0, 70.0, 96.0, 70.0, 1.5, INK);
+            p.dot(42.0, 46.0, 4.0, INK);
+            p.dot(58.0, 46.0, 4.0, INK);
+            p.line(43.0, 58.0, 57.0, 58.0, 1.8, INK);
+        }
+        Archetype::YesBot => {
+            p.circle(46.0, 52.0, 32.0, hex(0x7BE07B));
+            p.dot(36.0, 44.0, 4.5, INK);
+            p.dot(56.0, 44.0, 4.5, INK);
+            p.smile(46.0, 56.0, 14.0, INK);
+            p.stick(80.0, 50.0, 80.0, 34.0, 5.0, hex(SKIN));
+            p.rect(82.0, 60.0, 9.0, 9.0, 4.0, hex(SKIN));
+        }
+        Archetype::Hallucinator => {
+            let purple = hex(0x9B6BFF);
+            p.stick(32.0, 60.0, 32.0, 86.0, 6.0, purple);
+            p.stick(52.0, 60.0, 52.0, 92.0, 6.0, purple);
+            p.stick(68.0, 60.0, 68.0, 80.0, 5.0, purple);
+            p.circle(50.0, 46.0, 30.0, purple);
+            for ex in [40.0, 60.0] {
+                p.circle(ex, 44.0, 8.0, WHITE);
+                p.circle(ex, 44.0, 4.0, hex(0xFFE066));
+                p.dot(ex, 44.0, 1.5, INK);
+            }
+            p.line(18.0, 28.0, 82.0, 28.0, 1.5, alpha(hex(0x30E0FF), 0.8));
+            p.line(22.0, 62.0, 70.0, 62.0, 1.2, alpha(hex(0xFF40C0), 0.8));
+        }
+        Archetype::ListicleDrone => {
+            p.stick(22.0, 16.0, 78.0, 16.0, 3.0, hex(GREY));
+            p.line(50.0, 16.0, 50.0, 30.0, 2.0, INK);
+            p.circle(50.0, 56.0, 30.0, hex(0xD5D9E2));
+            p.rect(50.0, 58.0, 19.0, 15.0, 5.0, hex(0x2A2E3A));
+        }
+        Archetype::EngagementBait => {
+            p.rect(50.0, 82.0, 5.0, 16.0, 2.0, hex(0xC08A4F));
+            p.rect(50.0, 44.0, 44.0, 28.0, 4.0, hex(0xF2E3C2));
+        }
+        Archetype::GrandmaCake => {
+            p.ellipse(50.0, 84.0, 42.0, 8.0, WHITE);
+            p.rect(50.0, 68.0, 34.0, 14.0, 4.0, hex(0xF7B2C4));
+            p.rect(50.0, 48.0, 26.0, 10.0, 4.0, WHITE);
+            for x in [38.0, 50.0, 62.0] {
+                p.stick(x, 28.0, x, 36.0, 2.5, hex(0x8FB8FF));
+                p.dot(x, 22.0, 3.5, hex(0xFFC83A));
+            }
+            p.dot(60.0, 68.0, 3.0, hex(RED));
+            p.dot(40.0, 64.0, 3.0, hex(RED));
+        }
+        Archetype::SixFingerHand => {
+            let skin = hex(0xF0C9A0);
+            let k = p.k;
+            let w = p.line;
+            p.c.shape(
+                |x, y| {
+                    let mut d = rbox(x, y, 50.0 * k, 64.0 * k, 22.0 * k, 18.0 * k, 9.0 * k);
+                    for f in 0..6 {
+                        let a = -2.4 + f as f32 * 0.33;
+                        let (tx, ty) = (50.0 + a.cos() * 40.0, 58.0 + a.sin() * 40.0);
+                        d = d.min(capsule(x, y, 50.0 * k, 56.0 * k, tx * k, ty * k, 5.5 * k));
+                    }
+                    d
+                },
+                skin,
+                INK,
+                w,
+            );
+        }
+        Archetype::ThoughtLeader => {
+            p.rect(50.0, 78.0, 30.0, 20.0, 12.0, hex(NAVY));
+            p.tri((40.0, 60.0), (60.0, 60.0), (50.0, 72.0), WHITE);
+            p.tri((47.0, 62.0), (53.0, 62.0), (50.0, 86.0), hex(RED));
+            p.circle(50.0, 36.0, 20.0, hex(SKIN));
+            p.rect(50.0, 20.0, 18.0, 6.0, 5.0, hex(0x6B4A2E));
+            p.dot(43.0, 36.0, 2.5, INK);
+            p.dot(57.0, 36.0, 2.5, INK);
+            p.smile(50.0, 41.0, 7.0, INK);
+            p.line(31.0, 36.0, 40.0, 48.0, 1.5, INK);
+            p.dot(40.0, 48.0, 2.5, INK);
+        }
+        Archetype::RecruiterBot => {
+            p.rect(50.0, 52.0, 28.0, 32.0, 9.0, hex(0x8FA8C8));
+            p.rect(50.0, 40.0, 20.0, 8.0, 4.0, hex(0x24324F));
+            p.dot(44.0, 40.0, 3.0, hex(0x7FE0FF));
+            p.dot(56.0, 40.0, 3.0, hex(0x7FE0FF));
+            p.rect(82.0, 74.0, 13.0, 10.0, 2.0, hex(0x8A5A34));
+            p.line(76.0, 62.0, 88.0, 62.0, 2.0, INK);
+        }
+        Archetype::ClickbaitFace => {
+            p.circle(48.0, 52.0, 36.0, hex(0xFFD84A));
+            p.line(28.0, 28.0, 40.0, 22.0, 2.5, INK);
+            p.line(56.0, 22.0, 68.0, 28.0, 2.5, INK);
+            for ex in [36.0, 60.0] {
+                p.circle(ex, 40.0, 8.0, WHITE);
+                p.dot(ex, 40.0, 2.5, INK);
+            }
+            p.ellipse(48.0, 68.0, 10.0, 13.0, hex(0x5A1E1E));
+            p.stick(96.0, 6.0, 80.0, 22.0, 4.0, hex(RED));
+            p.tri((70.0, 22.0), (84.0, 34.0), (74.0, 38.0), hex(RED));
+        }
+        Archetype::SubscribePopup => {
+            p.rect(50.0, 50.0, 46.0, 32.0, 8.0, hex(0xE5322D));
+            p.rect(50.0, 64.0, 30.0, 8.0, 4.0, WHITE);
+            p.line(84.0, 22.0, 92.0, 30.0, 1.8, WHITE);
+            p.line(92.0, 22.0, 84.0, 30.0, 1.8, WHITE);
+        }
+        Archetype::RepostBot => {
+            p.circle(50.0, 52.0, 32.0, hex(0xC9CED8));
+            p.dot(40.0, 44.0, 4.0, INK);
+            p.dot(60.0, 44.0, 4.0, INK);
+            p.stick(34.0, 66.0, 66.0, 66.0, 3.0, hex(0x4CC36B));
+            p.tri((66.0, 58.0), (66.0, 74.0), (76.0, 66.0), hex(0x4CC36B));
+            p.tri((34.0, 58.0), (34.0, 74.0), (24.0, 66.0), hex(0x4CC36B));
+        }
+        Archetype::KarmaFarmer => {
+            p.circle(50.0, 58.0, 30.0, hex(0xFF8B3D));
+            p.rect(50.0, 32.0, 8.0, 8.0, 2.0, hex(0xFF8B3D));
+            p.tri((50.0, 4.0), (28.0, 28.0), (72.0, 28.0), hex(0xFF8B3D));
+            p.dot(40.0, 54.0, 4.0, INK);
+            p.dot(60.0, 54.0, 4.0, INK);
+            p.smile(50.0, 64.0, 12.0, INK);
+        }
+        Archetype::FilterInfluencer => {
+            p.ellipse(50.0, 46.0, 38.0, 34.0, hex(0xF5D36B));
+            p.circle(50.0, 52.0, 28.0, hex(0xF9D2D8));
+            for ex in [40.0, 60.0] {
+                p.ellipse(ex, 48.0, 6.0, 4.0, WHITE);
+                p.dot(ex, 48.0, 2.5, hex(0x3A6EA5));
+                p.line(ex - 6.0, 42.0, ex + 5.0, 41.0, 1.2, INK);
+            }
+            p.ellipse(50.0, 66.0, 8.0, 4.0, hex(0xE0405A));
+            for (x, y) in [(14.0, 20.0), (86.0, 24.0), (84.0, 78.0)] {
+                p.dot(x, y, 4.0, hex(0xFFF3A0));
+            }
+        }
+        Archetype::SurpriseEgg => {
+            p.ellipse(50.0, 54.0, 30.0, 38.0, WHITE);
+            p.rect(50.0, 46.0, 27.0, 4.0, 2.0, hex(0x6FA8FF));
+            p.rect(50.0, 62.0, 28.0, 4.0, 2.0, hex(0xFF8FB8));
+            p.dot(50.0, 32.0, 5.0, hex(0xFFD84A));
+        }
+    }
+    p.c
+}
+
+/// Brainrot bodies, facing right, in the shared part frame (BRAIN-03).
+pub fn body(b: Body) -> Canvas {
+    let mut p = Pen::new(PART);
+    match b {
+        Body::Shark => {
+            let c = hex(0x7FA6C8);
+            p.tri((8.0, 58.0), (0.0, 42.0), (0.0, 74.0), c);
+            p.tri((40.0, 44.0), (58.0, 44.0), (46.0, 22.0), c);
+            p.ellipse(50.0, 58.0, 40.0, 18.0, c);
+            p.dot(54.0, 64.0, 7.0, hex(0xE4EEF6));
+            p.dot(76.0, 53.0, 3.0, INK);
+            for x in [78.0, 83.0, 88.0] {
+                p.tri((x, 62.0), (x + 4.0, 62.0), (x + 2.0, 67.0), WHITE);
+            }
+        }
+        Body::Crocodile => {
+            let c = hex(0x5DAA4E);
+            p.tri((14.0, 60.0), (0.0, 54.0), (2.0, 70.0), c);
+            p.rect(32.0, 80.0, 5.0, 8.0, 3.0, c);
+            p.rect(58.0, 80.0, 5.0, 8.0, 3.0, c);
+            p.rect(44.0, 64.0, 34.0, 14.0, 12.0, c);
+            p.rect(84.0, 66.0, 14.0, 7.0, 5.0, c);
+            p.circle(66.0, 52.0, 7.0, c);
+            p.dot(67.0, 51.0, 2.5, INK);
+            for x in [76.0, 82.0, 88.0, 94.0] {
+                p.tri((x, 72.0), (x + 4.0, 72.0), (x + 2.0, 77.0), WHITE);
+            }
+        }
+        Body::Frog => {
+            let c = hex(0x7CCF5A);
+            p.ellipse(50.0, 66.0, 34.0, 24.0, c);
+            p.dot(50.0, 74.0, 14.0, hex(0xD8F2B8));
+            for ex in [36.0, 64.0] {
+                p.circle(ex, 42.0, 10.0, c);
+                p.circle(ex, 41.0, 6.0, WHITE);
+                p.dot(ex, 41.0, 3.0, INK);
+            }
+            p.smile(50.0, 60.0, 16.0, INK);
+        }
+        Body::Pigeon => {
+            let c = hex(0xA8ADB8);
+            p.line(40.0, 82.0, 38.0, 94.0, 1.8, hex(0xE58A3A));
+            p.line(54.0, 82.0, 56.0, 94.0, 1.8, hex(0xE58A3A));
+            p.ellipse(46.0, 64.0, 30.0, 20.0, c);
+            p.ellipse(40.0, 62.0, 18.0, 10.0, hex(0x8C92A0));
+            p.stick(62.0, 52.0, 70.0, 46.0, 6.0, hex(0x6CB3A8));
+            p.circle(72.0, 40.0, 13.0, c);
+            p.tri((83.0, 37.0), (83.0, 44.0), (94.0, 41.0), hex(0xF2B43A));
+            p.dot(75.0, 37.0, 2.5, hex(0xE04A2A));
+        }
+        Body::Elephant => {
+            let c = hex(0x9CA3AE);
+            for x in [30.0, 46.0, 58.0] {
+                p.rect(x, 86.0, 6.0, 8.0, 3.0, c);
+            }
+            p.ellipse(44.0, 62.0, 34.0, 26.0, c);
+            p.stick(86.0, 54.0, 92.0, 80.0, 6.0, c);
+            p.circle(72.0, 48.0, 19.0, c);
+            p.ellipse(60.0, 48.0, 11.0, 16.0, hex(0xC8A9B0));
+            p.dot(78.0, 44.0, 2.5, INK);
+        }
+        Body::Cat => {
+            let c = hex(0xF2A24A);
+            p.stick(16.0, 62.0, 8.0, 40.0, 4.0, c);
+            p.ellipse(44.0, 66.0, 30.0, 20.0, c);
+            p.tri((58.0, 36.0), (64.0, 22.0), (70.0, 34.0), c);
+            p.tri((74.0, 34.0), (82.0, 22.0), (86.0, 36.0), c);
+            p.circle(72.0, 46.0, 17.0, c);
+            p.dot(66.0, 44.0, 2.5, INK);
+            p.dot(78.0, 44.0, 2.5, INK);
+            p.line(80.0, 52.0, 94.0, 50.0, 1.0, INK);
+            p.line(80.0, 55.0, 94.0, 57.0, 1.0, INK);
+        }
+        Body::Shrimp => {
+            let c = hex(0xFF9C8A);
+            p.tri((14.0, 40.0), (2.0, 30.0), (4.0, 50.0), c);
+            for (i, (x, y, r)) in [(20.0, 44.0, 9.0), (30.0, 54.0, 11.0), (42.0, 62.0, 13.0), (56.0, 66.0, 14.0), (70.0, 62.0, 13.0)].iter().enumerate() {
+                p.circle(*x, *y, *r, if i % 2 == 0 { c } else { hex(0xFFB3A3) });
+            }
+            p.line(78.0, 54.0, 96.0, 36.0, 1.2, INK);
+            p.line(80.0, 56.0, 98.0, 46.0, 1.2, INK);
+            p.dot(76.0, 56.0, 3.0, INK);
+        }
+    }
+    p.c
+}
+
+/// Brainrot objects, fused onto the body in the shared part frame.
+pub fn object(o: Object) -> Canvas {
+    let mut p = Pen::new(PART);
+    match o {
+        Object::Airplane => {
+            p.tri((42.0, 40.0), (58.0, 40.0), (46.0, 88.0), hex(0xEDEFF4));
+            p.tri((20.0, 46.0), (28.0, 46.0), (18.0, 30.0), hex(0xEDEFF4));
+            p.dot(52.0, 50.0, 2.5, hex(0x5A8FD8));
+        }
+        Object::Toaster => {
+            p.rect(40.0, 22.0, 5.0, 8.0, 2.0, hex(0xE0B07A));
+            p.rect(54.0, 22.0, 5.0, 8.0, 2.0, hex(0xE0B07A));
+            p.rect(47.0, 34.0, 18.0, 11.0, 4.0, hex(0xC8CCD4));
+            p.line(66.0, 30.0, 70.0, 30.0, 1.5, INK);
+        }
+        Object::Espresso => {
+            p.line(66.0, 12.0, 64.0, 4.0, 1.0, alpha(INK, 0.4));
+            p.line(72.0, 12.0, 74.0, 4.0, 1.0, alpha(INK, 0.4));
+            p.circle(79.0, 22.0, 4.0, WHITE);
+            p.rect(70.0, 22.0, 8.0, 7.0, 3.0, WHITE);
+            p.rect(70.0, 18.0, 7.0, 2.0, 1.0, hex(0x6B3E1E));
+        }
+        Object::Cactus => {
+            let c = hex(0x4FA35A);
+            p.stick(34.0, 36.0, 34.0, 24.0, 4.0, c);
+            p.stick(56.0, 32.0, 56.0, 20.0, 4.0, c);
+            p.stick(45.0, 46.0, 45.0, 12.0, 6.0, c);
+            for (x, y) in [(43.0, 20.0), (48.0, 28.0), (42.0, 36.0)] {
+                p.dot(x, y, 1.0, WHITE);
+            }
+        }
+        Object::WashingMachine => {
+            p.rect(46.0, 30.0, 16.0, 16.0, 3.0, WHITE);
+            p.circle(46.0, 32.0, 9.0, hex(0x9FB6CC));
+            p.dot(43.0, 29.0, 3.0, alpha(WHITE, 0.8));
+        }
+        Object::Baguette => {
+            p.stick(28.0, 80.0, 96.0, 56.0, 5.0, hex(0xE0A85A));
+            for t in [0.3, 0.5, 0.7] {
+                let (x, y) = (28.0 + 68.0 * t, 80.0 - 24.0 * t);
+                p.line(x - 2.0, y - 3.0, x + 2.0, y + 3.0, 0.8, hex(0xB07A30));
+            }
+        }
+        Object::TrafficCone => {
+            p.rect(72.0, 36.0, 14.0, 3.0, 1.0, hex(0xFF7A1A));
+            p.tri((60.0, 34.0), (84.0, 34.0), (72.0, 4.0), hex(0xFF7A1A));
+            p.line(66.0, 22.0, 78.0, 22.0, 2.0, WHITE);
+        }
+    }
+    p.c
+}
+
+/// Brainrot accessories, on the head in the shared part frame.
+pub fn accessory(a: Accessory) -> Canvas {
+    let mut p = Pen::new(PART);
+    match a {
+        Accessory::Sunglasses => {
+            p.line(66.0, 42.0, 82.0, 42.0, 1.2, INK);
+            p.rect(66.0, 44.0, 7.0, 4.5, 2.0, INK);
+            p.rect(81.0, 44.0, 7.0, 4.5, 2.0, INK);
+        }
+        Accessory::Sneakers => {
+            for x in [36.0, 60.0] {
+                p.rect(x, 90.0, 10.0, 5.0, 3.0, WHITE);
+                p.line(x - 5.0, 89.0, x + 5.0, 89.0, 1.2, hex(RED));
+            }
+        }
+        Accessory::Crown => {
+            for x in [62.0, 72.0, 82.0] {
+                p.tri((x - 6.0, 28.0), (x + 6.0, 28.0), (x, 14.0), hex(GOLD));
+            }
+            p.rect(72.0, 30.0, 14.0, 4.0, 1.0, hex(GOLD));
+            p.dot(72.0, 30.0, 2.0, hex(RED));
+        }
+        Accessory::ChefHat => {
+            p.circle(64.0, 18.0, 7.0, WHITE);
+            p.circle(80.0, 18.0, 7.0, WHITE);
+            p.circle(72.0, 13.0, 8.0, WHITE);
+            p.rect(72.0, 28.0, 10.0, 5.0, 2.0, WHITE);
+        }
+        Accessory::Headphones => {
+            let k = p.k;
+            p.c.shape(|x, y| (circle(x, y, 72.0 * k, 44.0 * k, 16.0 * k).abs() - 2.0 * k).max(y - 40.0 * k), hex(0x3A3D4D), hex(0x3A3D4D), 0.0);
+            p.circle(56.0, 46.0, 6.0, hex(0x3A3D4D));
+            p.circle(88.0, 46.0, 6.0, hex(0x3A3D4D));
+        }
+        Accessory::GoldChain => {
+            let k = p.k;
+            p.c.shape(|x, y| (circle(x, y, 64.0 * k, 50.0 * k, 14.0 * k).abs() - 2.0 * k).max(50.0 * k - y), hex(GOLD), hex(GOLD), 0.0);
+            p.circle(64.0, 66.0, 5.0, hex(GOLD));
+        }
+        Accessory::PartyHat => {
+            p.tri((62.0, 32.0), (82.0, 32.0), (72.0, 4.0), hex(0xB36BFF));
+            p.line(66.0, 24.0, 78.0, 24.0, 1.8, hex(0xFFE066));
+            p.dot(72.0, 4.0, 4.0, hex(0xFF5FA2));
+        }
+    }
+    p.c
+}
+
+pub fn boss(b: BossKind) -> Canvas {
+    let mut p = Pen::new(BOSS);
+    p.line = 3.0 * p.k;
+    match b {
+        BossKind::CrustaceanSaviour => {
+            p.c.paint(|x, y| {
+                let d = ((x - 128.0).powi(2) + (y - 128.0).powi(2)).sqrt() / 128.0;
+                (d < 1.0).then_some([1.0, 0.95, 0.6, 0.35 * (1.0 - d)])
+            });
+            let k = p.k;
+            p.c.shape(|x, y| circle(x, y, 50.0 * k, 16.0 * k, 18.0 * k).abs() - 2.5 * k, hex(GOLD), hex(GOLD), 0.0);
+            let c = hex(0xFF9C8A);
+            p.tri((18.0, 44.0), (4.0, 32.0), (6.0, 56.0), c);
+            for (i, (x, y, r)) in [(24.0, 48.0, 10.0), (34.0, 58.0, 12.0), (46.0, 66.0, 14.0), (60.0, 68.0, 15.0), (74.0, 62.0, 14.0)].iter().enumerate() {
+                p.circle(*x, *y, *r, if i % 2 == 0 { c } else { hex(0xFFB3A3) });
+            }
+            p.line(82.0, 52.0, 98.0, 34.0, 1.0, INK);
+            p.dot(80.0, 56.0, 2.5, INK);
+        }
+        BossKind::HustleGuru => {
+            p.rect(50.0, 76.0, 32.0, 22.0, 12.0, hex(0x1F2A44));
+            p.tri((40.0, 56.0), (60.0, 56.0), (50.0, 70.0), WHITE);
+            p.tri((47.0, 58.0), (53.0, 58.0), (50.0, 88.0), hex(GOLD));
+            p.circle(50.0, 34.0, 20.0, hex(SKIN));
+            p.rect(50.0, 18.0, 18.0, 6.0, 5.0, hex(0x2B1D12));
+            p.rect(43.0, 34.0, 7.0, 4.0, 2.0, INK);
+            p.rect(57.0, 34.0, 7.0, 4.0, 2.0, INK);
+            p.smile(50.0, 40.0, 8.0, INK);
+            p.line(30.0, 34.0, 40.0, 46.0, 1.2, INK);
+        }
+        BossKind::ContentFarm => {
+            p.circle(78.0, 10.0, 6.0, hex(0xD7D7DF));
+            p.circle(84.0, 4.0, 4.0, hex(0xE6E6EE));
+            p.rect(78.0, 26.0, 5.0, 14.0, 1.0, hex(0x7A7F8C));
+            for x in [22.0, 42.0, 62.0] {
+                p.tri((x, 38.0), (x + 20.0, 38.0), (x + 20.0, 26.0), hex(0x8C92A0));
+            }
+            p.rect(50.0, 62.0, 40.0, 26.0, 3.0, hex(0xA8ADB8));
+            p.rect(50.0, 62.0, 15.0, 11.0, 4.0, hex(RED));
+            p.tri((46.0, 56.0), (46.0, 68.0), (57.0, 62.0), WHITE);
+            p.rect(50.0, 92.0, 46.0, 4.0, 2.0, hex(0x3A3D4D));
+        }
+        BossKind::RepostHydra => {
+            let c = hex(0xC9CED8);
+            for (hx, hy) in [(26.0, 26.0), (50.0, 16.0), (74.0, 26.0)] {
+                p.stick(50.0, 66.0, hx, hy, 6.0, c);
+            }
+            p.ellipse(50.0, 72.0, 34.0, 20.0, c);
+            for (hx, hy) in [(26.0, 26.0), (50.0, 16.0), (74.0, 26.0)] {
+                p.circle(hx, hy, 11.0, c);
+                p.dot(hx - 4.0, hy - 2.0, 2.0, INK);
+                p.dot(hx + 4.0, hy - 2.0, 2.0, INK);
+            }
+            p.stick(38.0, 76.0, 62.0, 76.0, 2.5, hex(0x4CC36B));
+            p.tri((62.0, 70.0), (62.0, 82.0), (70.0, 76.0), hex(0x4CC36B));
+        }
+        BossKind::Influencer => {
+            let k = p.k;
+            p.c.shape(|x, y| circle(x, y, 50.0 * k, 46.0 * k, 44.0 * k).abs() - 4.0 * k, alpha(WHITE, 0.9), alpha(WHITE, 0.9), 0.0);
+            p.ellipse(50.0, 46.0, 34.0, 30.0, hex(0xF5D36B));
+            p.circle(50.0, 52.0, 25.0, hex(0xF9D2D8));
+            for ex in [41.0, 59.0] {
+                p.ellipse(ex, 48.0, 5.0, 3.5, WHITE);
+                p.dot(ex, 48.0, 2.0, hex(0x3A6EA5));
+            }
+            p.ellipse(50.0, 64.0, 7.0, 3.5, hex(0xE0405A));
+        }
+        BossKind::SupremeBrainrot => {
+            for x in [30.0, 50.0, 70.0] {
+                p.tri((x - 12.0, 40.0), (x + 12.0, 40.0), (x, 8.0), hex(GOLD));
+            }
+            p.rect(50.0, 46.0, 34.0, 8.0, 2.0, hex(GOLD));
+            for x in [30.0, 50.0, 70.0] {
+                p.dot(x, 46.0, 3.0, hex(RED));
+            }
+        }
+        BossKind::TheModel => {
+            p.rect(50.0, 52.0, 46.0, 38.0, 8.0, hex(0x24242E));
+            p.rect(50.0, 20.0, 46.0, 6.0, 4.0, hex(0x3A3A48));
+            for (i, c) in [0xFF5F57, 0xFEBC2E, 0x28C840].iter().enumerate() {
+                p.dot(14.0 + i as f32 * 6.0, 20.0, 2.0, hex(*c));
+            }
+            for ex in [36.0, 64.0] {
+                p.circle(ex, 46.0, 8.0, hex(0x7FE8FF));
+                p.dot(ex, 46.0, 3.0, WHITE);
+            }
+            for (y, w) in [(64.0, 30.0), (72.0, 24.0), (80.0, 28.0)] {
+                p.line(50.0 - w, y, 50.0 + w - 10.0, y, 1.6, alpha(WHITE, 0.4));
+            }
+        }
+    }
+    p.c
+}
+
+/// One floor tile per platform: low contrast, so the slop stays readable (PLAT-03).
+pub fn floor(platform: Platform) -> Canvas {
+    let mut c = Canvas::new(256, 256);
+    let faint = |h: u32, a: f32| alpha(hex(h), a);
+    match platform {
+        Platform::FaceSlop => {
+            c.fill(|_, _| -1.0, hex(0xE6ECF5));
+            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 104.0, 104.0, 12.0), alpha(WHITE, 0.5), faint(0xB0BCD4, 0.5), 2.0);
+            c.fill(|x, y| rbox(x, y, 128.0, 36.0, 104.0, 12.0, 8.0), faint(0x4267B2, 0.12));
+            c.fill(|x, y| circle(x, y, 52.0, 70.0, 12.0), faint(0xB0BCD4, 0.5));
+            for (i, w) in [70.0f32, 54.0, 64.0].iter().enumerate() {
+                let y0 = 106.0 + i as f32 * 18.0;
+                c.fill(|x, y| rbox(x, y, 48.0 + w, y0, *w, 4.0, 4.0), faint(0xB0BCD4, 0.45));
+            }
+            c.fill(|x, y| circle(x, y, 60.0, 196.0, 9.0), faint(0x4267B2, 0.15));
+        }
+        Platform::LinkedOut => {
+            c.fill(|_, _| -1.0, hex(0xE5E3DE));
+            c.paint(|x, y| ((x as i32 % 16 == 0) || (y as i32 % 16 == 0)).then_some(faint(0xC9C4BA, 0.35)));
+            c.shape(|x, y| rbox(x, y, 128.0, 110.0, 54.0, 38.0, 4.0), faint(0xFFFFFF, 0.4), faint(0x8A8478, 0.4), 4.0);
+            c.fill(|x, y| rbox(x, y, 128.0, 100.0, 34.0, 4.0, 2.0), faint(0x0A66C2, 0.15));
+            c.fill(|x, y| rbox(x, y, 128.0, 118.0, 26.0, 3.0, 2.0), faint(0x8A8478, 0.25));
+        }
+        Platform::MeTube => {
+            c.fill(|_, _| -1.0, hex(0xF2EFEF));
+            for (cx, cy) in [(70.0, 70.0), (186.0, 186.0)] {
+                c.fill(|x, y| rbox(x, y, cx, cy, 52.0, 30.0, 6.0), faint(0xD6CFCF, 0.5));
+                c.fill(|x, y| triangle(x, y, (cx - 8.0, cy - 10.0), (cx - 8.0, cy + 10.0), (cx + 10.0, cy)), faint(0xE23B3B, 0.25));
+                c.fill(|x, y| rbox(x, y, cx - 14.0, cy + 34.0, 38.0, 2.0, 1.0), faint(0xE23B3B, 0.3));
+            }
+        }
+        Platform::Thredd => {
+            c.fill(|_, _| -1.0, hex(0xEDE9E3));
+            for (indent, y0) in [(20.0f32, 30.0f32), (44.0, 80.0), (68.0, 130.0), (44.0, 180.0), (20.0, 230.0)] {
+                c.fill(|x, y| rbox(x, y, indent, y0 + 16.0, 1.5, 22.0, 1.0), faint(0xC6BFB4, 0.6));
+                c.fill(|x, y| rbox(x, y, indent + 60.0, y0, 46.0, 4.0, 3.0), faint(0xC6BFB4, 0.5));
+                c.fill(|x, y| triangle(x, y, (indent - 6.0, y0 + 2.0), (indent + 6.0, y0 + 2.0), (indent, y0 - 8.0)), faint(0xFF4500, 0.2));
+            }
+        }
+        Platform::InstaSlop => {
+            c.fill(|_, _| -1.0, hex(0xFAF6F8));
+            let tints = [0xF7C6D9, 0xFBD9B9, 0xD9CCF5, 0xC9E8F2];
+            for i in 0..2 {
+                for j in 0..2 {
+                    let t = tints[(i * 2 + j) % 4];
+                    let (cx, cy) = (64.0 + 128.0 * i as f32, 64.0 + 128.0 * j as f32);
+                    c.fill(|x, y| rbox(x, y, cx, cy, 58.0, 58.0, 4.0), faint(t, 0.35));
+                }
+            }
+        }
+        Platform::ClockTok => {
+            c.fill(|_, _| -1.0, hex(0x3B3550));
+            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 56.0, 100.0, 18.0), alpha(WHITE, 0.03), alpha(WHITE, 0.12), 3.0);
+            c.fill(|x, y| circle(x, y, 186.0, 200.0, 7.0), faint(0x25F4EE, 0.2));
+            c.fill(|x, y| circle(x, y, 192.0, 196.0, 7.0), faint(0xFE2C55, 0.2));
+        }
+    }
+    c
+}
+
+pub fn shot(look: Look) -> Canvas {
+    let mut c;
+    match look {
+        Look::Rock => {
+            c = Canvas::new(40, 40);
+            c.shape(|x, y| circle(x, y, 18.0, 21.0, 12.0).min(circle(x, y, 25.0, 17.0, 9.0)), hex(0x9A9A9A), INK, 2.5);
+        }
+        Look::Bullet => {
+            c = Canvas::new(32, 16);
+            c.shape(|x, y| capsule(x, y, 6.0, 8.0, 26.0, 8.0, 5.0), hex(0xFFD24A), INK, 2.0);
+        }
+        Look::Pen => {
+            c = Canvas::new(48, 16);
+            c.shape(|x, y| capsule(x, y, 6.0, 8.0, 34.0, 8.0, 5.0), hex(RED), INK, 2.0);
+            c.shape(|x, y| capsule(x, y, 34.0, 8.0, 43.0, 8.0, 2.5), hex(0x3A3D4D), INK, 1.0);
+        }
+        Look::EyeRoll => {
+            c = Canvas::new(44, 44);
+            c.shape(|x, y| circle(x, y, 22.0, 22.0, 18.0), WHITE, INK, 2.5);
+            c.fill(|x, y| circle(x, y, 22.0, 10.0, 7.0).max(circle(x, y, 22.0, 22.0, 16.0)), hex(0x4A7BD0));
+        }
+        Look::EmDash => {
+            c = Canvas::new(96, 20);
+            c.shape(|x, y| capsule(x, y, 8.0, 10.0, 88.0, 10.0, 6.0), hex(0x2A2240), DANGER, 3.0);
+        }
+        Look::Book => {
+            c = Canvas::new(44, 36);
+            c.shape(|x, y| rbox(x, y, 22.0, 18.0, 18.0, 14.0, 2.0), hex(0x8A5A34), INK, 2.5);
+            c.fill(|x, y| rbox(x, y, 24.0, 18.0, 13.0, 10.0, 1.0), hex(0xF4EEDF));
+        }
+        Look::Brick => {
+            c = Canvas::new(44, 28);
+            c.shape(|x, y| rbox(x, y, 22.0, 14.0, 19.0, 10.0, 2.0), hex(0xB5523B), INK, 2.5);
+            c.fill(|x, y| rbox(x, y, 22.0, 14.0, 17.0, 0.8, 0.5), alpha(WHITE, 0.6));
+        }
+        Look::Staple => {
+            c = Canvas::new(24, 12);
+            c.shape(|x, y| capsule(x, y, 4.0, 6.0, 20.0, 6.0, 3.0), hex(0xC8CCD4), INK, 1.5);
+        }
+        Look::Frisbee => {
+            c = Canvas::new(44, 44);
+            c.shape(|x, y| circle(x, y, 22.0, 22.0, 18.0), hex(0x6CCB5F), INK, 2.5);
+            c.fill(|x, y| circle(x, y, 22.0, 22.0, 9.0).abs() - 1.5, alpha(WHITE, 0.7));
+        }
+        Look::Captcha => {
+            c = Canvas::new(32, 32);
+            c.shape(|x, y| rbox(x, y, 16.0, 16.0, 12.0, 12.0, 2.0), WHITE, INK, 2.0);
+            c.fill(|x, y| capsule(x, y, 10.0, 16.0, 14.0, 21.0, 2.0).min(capsule(x, y, 14.0, 21.0, 23.0, 10.0, 2.0)), hex(0x2F80ED));
+        }
+        Look::Toast => {
+            c = Canvas::new(36, 36);
+            c.shape(|x, y| rbox(x, y, 18.0, 18.0, 13.0, 13.0, 5.0), hex(0xE6B87A), DANGER, 3.0);
+            c.fill(|x, y| rbox(x, y, 18.0, 19.0, 8.0, 8.0, 3.0), hex(0xF6DDB0));
+        }
+        Look::Arrow => {
+            c = Canvas::new(56, 32);
+            c.shape(
+                |x, y| capsule(x, y, 6.0, 16.0, 36.0, 16.0, 5.0).min(triangle(x, y, (32.0, 4.0), (32.0, 28.0), (52.0, 16.0))),
+                hex(RED),
+                DANGER,
+                3.0,
+            );
+        }
+        Look::Letter => {
+            c = Canvas::new(48, 36);
+            c.shape(|x, y| rbox(x, y, 24.0, 18.0, 20.0, 14.0, 3.0), WHITE, DANGER, 3.0);
+            c.fill(|x, y| capsule(x, y, 8.0, 8.0, 24.0, 20.0, 1.2).min(capsule(x, y, 24.0, 20.0, 40.0, 8.0, 1.2)), INK);
+        }
+        Look::Bubble | Look::Post => c = bubble(),
+    }
+    c
+}
+
+/// A white speech-bubble frame, outlined in danger pink, drawn as nine slices.
+pub fn bubble() -> Canvas {
+    let mut c = Canvas::new(48, 40);
+    c.shape(|x, y| rbox(x, y, 24.0, 20.0, 22.0, 18.0, 12.0), WHITE, DANGER, 3.5);
+    c
+}
+
+/// Clout: a gold coin with a thumbs-up. Hearts are never money.
+pub fn coin() -> Canvas {
+    let mut p = Pen::new(48.0);
+    p.circle(50.0, 50.0, 44.0, hex(GOLD));
+    p.dot(50.0, 50.0, 34.0, hex(0xF7D35A));
+    p.rect(40.0, 62.0, 10.0, 16.0, 4.0, WHITE);
+    p.rect(60.0, 64.0, 14.0, 14.0, 5.0, WHITE);
+    p.stick(56.0, 50.0, 62.0, 26.0, 7.0, WHITE);
+    p.c
+}
+
+/// Mental Health: a brain.
+pub fn brain() -> Canvas {
+    let mut c = Canvas::new(48, 48);
+    c.shape(
+        |x, y| circle(x, y, 17.0, 20.0, 12.0).min(circle(x, y, 31.0, 20.0, 12.0)).min(circle(x, y, 14.0, 30.0, 10.0)).min(circle(x, y, 34.0, 30.0, 10.0)).min(circle(x, y, 24.0, 32.0, 11.0)),
+        hex(0xF6A9C0),
+        INK,
+        2.5,
+    );
+    c.fill(|x, y| capsule(x, y, 24.0, 12.0, 24.0, 38.0, 1.2), alpha(INK, 0.6));
+    c
+}
+
+pub fn shadow() -> Canvas {
+    let mut c = Canvas::new(64, 24);
+    c.fill(|x, y| ellipse(x, y, 32.0, 12.0, 30.0, 10.0), [0.0, 0.0, 0.0, 0.22]);
+    c
+}
+
+/// The "typing..." indicator that warns of a spawn.
+pub fn typing() -> Canvas {
+    let mut c = Canvas::new(64, 40);
+    c.shape(|x, y| rbox(x, y, 32.0, 20.0, 28.0, 16.0, 14.0), [0.93, 0.93, 0.95, 0.95], DANGER, 3.0);
+    for dx in [20.0, 32.0, 44.0] {
+        c.fill(|x, y| circle(x, y, dx, 20.0, 4.5), INK);
+    }
+    c
+}
+
+/// A fading wedge for swings and sprays, pointing right from the centre.
+pub fn sector(half: f32, color: Rgba) -> Canvas {
+    let mut c = Canvas::new(256, 256);
+    c.paint(|x, y| {
+        let d = wedge(x, y, 128.0, 128.0, 126.0, half);
+        let cover = (0.5 - d).clamp(0.0, 1.0);
+        let dist = ((x - 128.0).powi(2) + (y - 128.0).powi(2)).sqrt() / 126.0;
+        (cover > 0.0).then_some(alpha(color, cover * dist.powf(1.5)))
+    });
+    c
+}
+
+/// A thin ring for pulses and outlines.
+pub fn ring(color: Rgba) -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 58.0).abs() - 3.5, color);
+    c
+}
+
+pub fn dot() -> Canvas {
+    let mut c = Canvas::new(8, 8);
+    c.fill(|_, _| -1.0, WHITE);
+    c
+}
+
+/// The Dog Walk's dog.
+pub fn dog() -> Canvas {
+    let mut p = Pen::new(56.0);
+    p.ellipse(22.0, 40.0, 10.0, 18.0, hex(0x7A4E2D));
+    p.ellipse(78.0, 40.0, 10.0, 18.0, hex(0x7A4E2D));
+    p.circle(50.0, 50.0, 30.0, hex(0xC98B54));
+    p.ellipse(50.0, 66.0, 14.0, 10.0, hex(0xF0D2B0));
+    p.dot(50.0, 60.0, 5.0, INK);
+    p.dot(38.0, 44.0, 4.0, INK);
+    p.dot(62.0, 44.0, 4.0, INK);
+    p.c
+}
+
+pub fn halo() -> Canvas {
+    let mut c = Canvas::new(128, 64);
+    c.fill(|x, y| ellipse(x, y, 64.0, 32.0, 56.0, 20.0).abs() - 4.0, hex(GOLD));
+    c
+}
+
+/// A beauty filter: a soft pink arc in front of an influencer.
+pub fn shield() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.paint(|x, y| {
+        let d = (circle(x, y, 64.0, 64.0, 56.0).abs() - 5.0).max(wedge(x, y, 64.0, 64.0, 70.0, 0.9));
+        let cover = (0.5 - d).clamp(0.0, 1.0);
+        (cover > 0.0).then_some([0.78, 0.9, 1.0, 0.8 * cover])
+    });
+    c
+}
+
+/// The spinning swirl shown while Brainrot is coming or active.
+pub fn swirl() -> Canvas {
+    let mut c = Canvas::new(64, 64);
+    c.paint(|x, y| {
+        let (dx, dy) = (x - 32.0, y - 32.0);
+        let r = (dx * dx + dy * dy).sqrt();
+        let a = dy.atan2(dx);
+        let band = ((r / 5.0 - a / std::f32::consts::PI * 1.2).rem_euclid(2.0) - 1.0).abs();
+        (r < 28.0 && band < 0.45).then_some([0.62, 0.36, 1.0, 1.0])
+    });
+    c
+}
+
+pub fn seed_patch() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0), alpha(hex(0x6FCB5A), 0.35));
+    for (x0, y0) in [(40.0, 50.0), (80.0, 44.0), (60.0, 80.0), (90.0, 82.0), (34.0, 84.0)] {
+        c.fill(|x, y| triangle(x, y, (x0 - 5.0, y0 + 6.0), (x0 + 5.0, y0 + 6.0), (x0, y0 - 8.0)), alpha(hex(0x3F9A3A), 0.8));
+    }
+    c
+}
+
+/// Where a bomb will land (FAIR-02).
+pub fn bomb_marker() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0), alpha(DANGER, 0.18));
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 58.0).abs() - 3.0, DANGER);
+    c.fill(|x, y| capsule(x, y, 64.0, 34.0, 64.0, 94.0, 2.0).min(capsule(x, y, 34.0, 64.0, 94.0, 64.0, 2.0)), DANGER);
+    c
+}
+
+pub fn downvote() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0), alpha(hex(0x7193FF), 0.25));
+    c.fill(|x, y| triangle(x, y, (44.0, 60.0), (84.0, 60.0), (64.0, 88.0)).min(rbox(x, y, 64.0, 50.0, 8.0, 12.0, 2.0)), alpha(hex(0x4A6FE0), 0.55));
+    c
+}
+
+pub fn filter() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.paint(|x, y| {
+        let r = ((x - 64.0).powi(2) + (y - 64.0).powi(2)).sqrt() / 60.0;
+        (r < 1.0).then(|| {
+            let t = (x + y) / 256.0;
+            [1.0, 0.7 + 0.2 * t, 0.85 - 0.2 * t, 0.28 * (1.0 - r * r)]
+        })
+    });
+    c
+}

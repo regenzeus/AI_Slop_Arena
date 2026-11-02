@@ -1,73 +1,79 @@
 # Architecture
 
 AI Slop Arena follows the split that worked for Lineage: a deterministic simulation with no
-engine code, headless tools on top of it, and a thin Bevy client that only draws the
-simulation and feeds it input.
+engine code, the rules of a run on top of it, headless tools, and a Bevy client that only
+draws and takes input.
 
 ```text
-slop_lab ──┐
-           ├──> slop_sim  (World::step, one tick at a time)
-slop_game ─┘
+slop_lab ───┐
+            ├──> slop_rules (Run: 20 waves, shop, items, heroes, levels, training)
+slop_game ──┘         │
+                      └──> slop_sim (World::step, one tick at a time)
 ```
 
-`slop_rules` joins in milestone 2 and owns everything between waves: the run, the shop,
-items, levels and heroes. The simulation will stay unaware of all of that; a wave is
-started from a `WaveConfig` and the player's loadout.
+## slop_sim: one wave
 
-## slop_sim
+A `World` is one wave: you, the slop, projectiles, Clout coins, zones and an optional boss.
+It is built from a `WaveSetup` (who spawns, how fast, the platform, the boss) and your
+`Loadout` (weapons with tiers, stats, perks), both made by the rules.
 
 | Module | Responsibility |
 | --- | --- |
-| `world` | `World`: you, the slop, projectiles, Likes, spawn warnings, and `step(input)`. |
-| `content` | Weapons, slop and their lines as data tables. |
-| `stats` | The ten stats, the four damage types, Composure and Scepticism formulas. |
-| `bot` | A movement bot: kites, dodges bubbles, avoids walls, collects Likes. |
-| `events` | What happened in a tick, for the client's effects and sounds. |
-| `spatial` | A uniform grid over the arena for neighbour queries. |
-| `rng`, `math`, `vec` | PCG32 random numbers, libm maths and a small 2D vector, all deterministic. |
+| `world` | State, spawning from the spawn table, deaths, coins, the end of a wave, checksum. |
+| `spec` | `SlopSpec`: look, movement, attack, numbers and trait flags of one kind of slop. Fixed characters, generated brainrot and bosses all become specs. |
+| `ai` | Slop movement, attacks and traits; contact damage and grabs. |
+| `combat` | All 22 weapon patterns, projectiles, the damage formula, zones. |
+| `player` | Your movement, status effects, getting hurt, actives. |
+| `boss` | The seven bosses and their two phases. |
+| `hazards` | Each platform's hazard and the ClockTok beat. |
+| `content` | Weapons, archetypes, brainrot parts, bosses, platforms and lines, as data. |
+| `bot` | A movement bot that fights at its weapons' range, dodges and collects coins. |
+| `stats`, `events`, `spatial`, `rng`, `math`, `vec` | Stats, events for the client, a uniform grid, PCG32 random numbers, libm maths, a 2D vector. |
 
 ### One tick
 
-`World::step` runs these stages in order:
-
-1. Move you, easing towards the input direction; heal by Self-Care.
-2. Count down spawn warnings into slop, and queue new warnings from the spawn budget.
-3. Rebuild the spatial grid.
-4. Each slop thinks and moves: Listicles rush or scatter, Bubble Bots keep their distance
-   and fire, Lancers aim and throw, Yes-Bots follow and agree, Hands chase or hold on.
-5. Separate overlapping slop.
-6. Contact damage and grabs.
-7. Weapons whose cooldown is up attack the nearest slop in range.
-8. Projectiles move, hit, pierce, bounce and pop bubbles.
-9. Dead slop are removed and drop Likes; Listicle packs scatter.
-10. Likes within Curiosity fly to you.
-11. Timers count down; the wave ends on Burnout or when its time is up.
+1. Move you (input, dash, banners, downvote zones); statuses and item side effects.
+2. Turn spawn warnings into slop and queue new warnings from the spawn budget, where every
+   spawn costs its base HP.
+3. Rebuild the spatial grid; platform hazards; the boss thinks; every slop thinks.
+4. Separate crowds; contact damage and grabs; actives; weapons attack.
+5. Projectiles move and hit; zones tick; queued slop (splits, hatchlings) is placed.
+6. The dead are removed: coins, explosions, reposts, scattering packs.
+7. Coins fly to you; timers count down; the wave ends on Burnout, on time, or with the boss.
 
 ### Determinism
 
-Randomness comes from three PCG32 streams (spawning, combat, slop behaviour), so adding a
-roll to one system does not shift the others. Transcendental functions go through `libm`.
-`World::checksum` fingerprints the state; the lab and a test replay a wave twice and
-compare. The client sends one input per tick, so a seed plus the input log replays a wave.
+Randomness comes from three PCG32 streams (spawning, combat, slop behaviour);
+transcendental functions go through `libm`. A seed plus one input per tick replays a wave,
+and `slop_lab determinism` replays six waves of a run with the bots and compares checksums.
 
-Ids are stable: every slop, projectile and Like keeps its id for life, which is how the
-client matches its sprites to the simulation.
-
-## slop_game
+## slop_rules: the run
 
 | Module | Responsibility |
 | --- | --- |
-| `play` | Keys to input; steps the simulation at 60 ticks per second; collects the events. |
-| `views` | Camera, floor and walls; one view per simulation object, spawned and despawned by id. |
-| `fx` | Effects from events: damage numbers, deletions, pops, swings, warnings, shake. |
-| `hud` | Mental Health, wave timer, Clout, weapons; title, pause and end screens; UI scaling. |
-| `art` | A small signed-distance rasteriser that draws every sprite at startup. |
-| `audio` | Sound effects synthesised into WAV clips at startup, rate-limited when played. |
-| `autoplay` | The bot plays and the client saves screenshots, for checking without a human. |
+| `run` | The run's state machine: wave, level-ups, patch notes, shop, over. Clout, interest, XP. |
+| `waves` | The 20-wave curve, spawn tables per platform with house rules, bosses, viral waves, elites. |
+| `training` | The base model's zero-sum resistances, the brainrot genome pool, selection, mutation, names, patch notes, Model Collapse. |
+| `shop` | Offers, tier odds, prices, rerolls. |
+| `items`, `heroes`, `levels` | Items as data with modifiers, the five heroes, level-up offers. |
+| `bot` | Heuristic and random policies that make every choice between waves. |
 
-Systems run in a fixed order each frame: `Simulation` (keys, step) first, then views,
-effects, HUD and sound, which only read the simulation. Effects never change the wave.
+Between waves the run books the wave's tally: Clout and XP, then a training run that moves
+the base model's resistances towards your kill share and breeds the brainrot that hurt you.
+The next wave's specs are built from the trained model and genome pool.
 
-The camera uses an `AutoMin` projection: every window shows at least 1600 x 900 of the
-arena, and the HUD's `UiScale` follows the window size, so a larger window shows the same
-game, larger.
+## slop_game: the client
+
+| Module | Responsibility |
+| --- | --- |
+| `state` | Screens, the run, and `UiAction`: everything a button or key can ask for. |
+| `play` | Keys to input and actions; steps the wave at 60 ticks per second; bot decisions in autoplay. |
+| `views` | Camera, platform floor, and one view per simulation object, spawned and despawned by id. Brainrot is stacked from three part sprites. |
+| `fx` | Effects from events: numbers, deletions, names, pops, swings, beams, chains, rings, statuses. |
+| `hud` | Mental Health, statuses, wave timer or boss bar, Clout, level, weapons, banners, ads, pop-ups. |
+| `screens` | Title, hero select, level-up, patch notes, shop and end screens, rebuilt on change. |
+| `art`, `draw` | A signed-distance rasteriser and every picture, drawn at startup. |
+| `audio` | Sounds synthesised into WAV clips at startup. |
+| `autoplay` | The bots play a whole run and the client saves screenshots. |
+
+Effects, views and the HUD only read the simulation; only `play` and `state` change it.

@@ -2,18 +2,21 @@
 //!
 //! ```text
 //! slop_game                          play
-//! slop_game --autoplay               watch the bot play a wave
-//!   --seed N                         choose the seed of the wave
-//!   --screenshots DIR                save screenshots of the title, the wave and the end
-//!   --exit-on-end                    close when the wave ends
+//! slop_game --autoplay               watch the bots play a whole run
+//!   --seed N                         choose the run's seed
+//!   --screenshots DIR                save a screenshot of every kind of screen
+//!   --exit-on-end                    close when the run ends
+//!   --speed N                        autoplay fast-forward (default 8)
 //! ```
 
 mod art;
 mod audio;
 mod autoplay;
+mod draw;
 mod fx;
 mod hud;
 mod play;
+mod screens;
 mod state;
 mod theme;
 mod views;
@@ -30,10 +33,11 @@ struct Args {
     exit_on_end: bool,
     screenshots: Option<PathBuf>,
     seed: Option<u64>,
+    speed: u32,
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { autoplay: false, exit_on_end: false, screenshots: None, seed: None };
+    let mut a = Args { autoplay: false, exit_on_end: false, screenshots: None, seed: None, speed: 8 };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -41,6 +45,7 @@ fn parse_args() -> Args {
             "--exit-on-end" => a.exit_on_end = true,
             "--screenshots" => a.screenshots = it.next().map(PathBuf::from),
             "--seed" => a.seed = it.next().and_then(|v| v.parse().ok()),
+            "--speed" => a.speed = it.next().and_then(|v| v.parse().ok()).unwrap_or(8),
             other => eprintln!("ignoring unknown argument {other}"),
         }
     }
@@ -66,7 +71,7 @@ fn main() {
     }))
     .insert_resource(ClearColor(theme::VOID))
     .insert_resource(game)
-    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, audio::AudioFxPlugin));
+    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, audio::AudioFxPlugin));
 
     if args.autoplay {
         if let Some(dir) = &args.screenshots {
@@ -74,8 +79,7 @@ fn main() {
                 eprintln!("cannot create {}: {e}", dir.display());
             }
         }
-        app.insert_resource(autoplay::Autoplay::new(args.screenshots, args.exit_on_end))
-            .add_plugins(autoplay::AutoplayPlugin);
+        app.insert_resource(autoplay::Autoplay::new(args.screenshots, args.exit_on_end, args.speed)).add_plugins(autoplay::AutoplayPlugin);
     }
     app.run();
 }

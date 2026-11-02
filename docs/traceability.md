@@ -6,35 +6,72 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 
 | Requirement | Test | File |
 | --- | --- | --- |
+| ACT-01 | `actives_fire_on_their_triggers` | crates/slop_sim/src/tests.rs |
 | ART-01 | `shapes_have_soft_edges_and_outlines` | crates/slop_game/src/art.rs |
+| ART-02 | `every_character_is_drawn_and_not_empty` | crates/slop_game/src/art.rs |
+| BOSS-01 | `every_boss_fights_and_can_be_beaten` | crates/slop_sim/src/tests.rs |
+| BOSS-07 | `the_model_regenerates_unless_your_build_was_varied` | crates/slop_sim/src/tests.rs |
+| BRAIN-01 | `brainrot_parts_shape_the_spec` | crates/slop_sim/src/tests.rs |
+| BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
-| DMG-01 | `marks_and_resistance_scale_damage` | crates/slop_sim/src/tests.rs |
+| EVO-01 | `resistance_rises_against_what_you_use_and_stays_zero_sum` | crates/slop_rules/src/training.rs |
+| EVO-02 | `brainrot_that_hurt_you_breeds` | crates/slop_rules/src/training.rs |
+| EVO-03 | `the_slop_trains_between_waves` | crates/slop_rules/src/tests.rs |
+| EVO-04 | `collapse_measures_how_varied_your_kills_were` | crates/slop_rules/src/training.rs |
 | FAIR-01 | `slop_far_away_never_shoots` | crates/slop_sim/src/tests.rs |
-| FAIR-02 | `lancers_aim_before_they_throw` | crates/slop_sim/src/tests.rs |
-| FAIR-02 | `spawns_are_telegraphed_away_from_you` | crates/slop_sim/src/tests.rs |
+| FAIR-02 | `em_dashes_and_bombs_are_telegraphed` | crates/slop_sim/src/tests.rs |
 | FAIR-03 | `a_hit_gives_brief_invulnerability` | crates/slop_sim/src/tests.rs |
 | FEEL-02 | `sounds_are_valid_wav` | crates/slop_game/src/audio.rs |
-| LIKE-01 | `likes_fly_to_you_within_curiosity` | crates/slop_sim/src/tests.rs |
+| HERO-01 | `a_run_starts_with_the_heroes_loadout_and_walks_through_the_phases` | crates/slop_rules/src/tests.rs |
+| HERO-01 | `heroes_start_with_real_weapons_and_items` | crates/slop_rules/src/heroes.rs |
+| ITEM-01 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
+| LEVEL-01 | `four_different_offers_and_luck_helps` | crates/slop_rules/src/levels.rs |
+| LEVEL-01 | `level_ups_raise_the_chosen_stat` | crates/slop_rules/src/tests.rs |
+| LIKE-01 | `likes_fly_to_you_and_fakes_explode` | crates/slop_sim/src/tests.rs |
+| PLAT-01 | `boss_waves_carry_their_boss_and_the_model_learns_your_weapons` | crates/slop_rules/src/waves.rs |
+| PLAT-02 | `every_platform_has_its_hazard` | crates/slop_sim/src/tests.rs |
+| RUN-01 | `a_run_starts_with_the_heroes_loadout_and_walks_through_the_phases` | crates/slop_rules/src/tests.rs |
+| RUN-02 | `items_and_heroes_shape_the_loadout` | crates/slop_rules/src/tests.rs |
+| RUN-03 | `burnout_ends_the_run` | crates/slop_rules/src/tests.rs |
+| RUN-03 | `clearing_a_wave_pays_clout_interest_and_xp` | crates/slop_rules/src/tests.rs |
+| SHOP-01 | `buying_upgrades_owned_weapons_and_respects_slots` | crates/slop_rules/src/tests.rs |
+| SHOP-01 | `shops_offer_your_damage_type_loot_boxes_and_mercy` | crates/slop_rules/src/tests.rs |
+| SHOP-02 | `later_waves_and_luck_bring_better_tiers` | crates/slop_rules/src/shop.rs |
+| SHOP-03 | `prices_rise_with_waves_and_discounts_apply` | crates/slop_rules/src/shop.rs |
+| SHOP-04 | `locked_offers_survive_rerolls_and_the_next_shop` | crates/slop_rules/src/tests.rs |
 | SIM-01 | `same_seed_and_inputs_replay_exactly` | crates/slop_sim/src/tests.rs |
 | SIM-02 | `you_stay_inside_the_arena` | crates/slop_sim/src/tests.rs |
-| SIM-03 | `movement_eases_to_full_speed` | crates/slop_sim/src/tests.rs |
-| SLOP-01 | `bubble_bots_fire_fans_of_three_with_lines` | crates/slop_sim/src/tests.rs |
+| SIM-03 | `movement_eases_to_full_speed_and_diagonals_are_not_faster` | crates/slop_sim/src/tests.rs |
+| SLOP-01 | `chadgpt_fires_fans_of_three_and_only_one_talks` | crates/slop_sim/src/tests.rs |
 | SLOP-02 | `hands_grab_slow_and_hurt_you` | crates/slop_sim/src/tests.rs |
-| SLOP-03 | `killing_number_one_first_scatters_the_pack` | crates/slop_sim/src/tests.rs |
-| SLOP-04 | `yes_bots_buff_nearby_slop` | crates/slop_sim/src/tests.rs |
+| SLOP-03 | `killing_drone_number_one_first_scatters_the_pack` | crates/slop_sim/src/tests.rs |
+| SLOP-04 | `yes_bots_buff_and_cakes_heal` | crates/slop_sim/src/tests.rs |
+| SLOP-05 | `traits_split_repost_and_dodge` | crates/slop_sim/src/tests.rs |
+| SLOP-06 | `the_wave_ramps_up_and_elites_drop_loot_boxes` | crates/slop_sim/src/tests.rs |
 | STAT-01 | `fifteen_composure_halves_damage` | crates/slop_sim/src/stats.rs |
 | STAT-01 | `scepticism_is_capped` | crates/slop_sim/src/stats.rs |
-| WAVE-01 | `a_wave_clears_on_time_and_credits_half_the_leftovers` | crates/slop_sim/src/tests.rs |
-| WAVE-01 | `burnout_ends_the_wave` | crates/slop_sim/src/tests.rs |
-| WAVE-02 | `the_wave_ramps_up_and_mixes_kinds` | crates/slop_sim/src/tests.rs |
-| WPN-01 | `every_weapon_damages_slop_in_range` | crates/slop_sim/src/tests.rs |
+| STATUS-01 | `statuses_hurt_reverse_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
+| UI-08 | `actions_walk_from_title_to_a_run_and_report_rule_errors` | crates/slop_game/src/state.rs |
+| WAVE-01 | `a_wave_clears_on_time_and_burnout_ends_it` | crates/slop_sim/src/tests.rs |
+| WAVE-02 | `the_wave_ramps_up_and_elites_drop_loot_boxes` | crates/slop_sim/src/tests.rs |
+| WAVE-03 | `twenty_waves_ramp_up_with_bosses_at_ten_and_twenty` | crates/slop_rules/src/waves.rs |
+| WAVE-04 | `house_rules_shape_the_spawn_table` | crates/slop_rules/src/waves.rs |
+| WAVE-05 | `boss_waves_carry_their_boss_and_the_model_learns_your_weapons` | crates/slop_rules/src/waves.rs |
+| WPN-01 | `every_weapon_damages_slop` | crates/slop_sim/src/tests.rs |
 | WPN-02 | `swings_only_hit_in_front` | crates/slop_sim/src/tests.rs |
-| WPN-03 | `eye_rolls_bounce_between_slop` | crates/slop_sim/src/tests.rs |
-| WPN-04 | `red_pen_marks_and_marks_add_damage` | crates/slop_sim/src/tests.rs |
+| WPN-03 | `eye_rolls_bounce_and_air_quotes_chain` | crates/slop_sim/src/tests.rs |
+| WPN-04 | `marks_resistance_and_type_bonus_scale_damage` | crates/slop_sim/src/tests.rs |
+| WPN-05 | `bricks_splash_and_ban_hammers_delete_small_slop` | crates/slop_sim/src/tests.rs |
+| WPN-06 | `fact_checks_strip_beauty_filters` | crates/slop_sim/src/tests.rs |
+| WPN-07 | `frisbees_come_back_and_reflected_bubbles_hurt_slop` | crates/slop_sim/src/tests.rs |
+| WPN-08 | `seed_bombs_heal_you_and_the_dog_orbits` | crates/slop_sim/src/tests.rs |
 
 ## Requirements without an automated test
 
+- ART-03
 - BAL-01
+- BAL-02
+- BRAIN-03
 - FAIR-04
 - FEEL-01
 - SIM-04
@@ -45,3 +82,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - UI-05
 - UI-06
 - UI-07
+- UI-09
+- UI-10
+- UI-11
+- UI-12

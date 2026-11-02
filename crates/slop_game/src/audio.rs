@@ -185,6 +185,10 @@ fn play(mut commands: Commands, game: Res<Game>, sounds: Res<Sounds>, time: Res<
             Event::Agreed { .. } => Sound::Agree,
             Event::Grabbed => Sound::Grab,
             Event::WaveCleared => Sound::Cleared,
+            Event::Splash { .. } | Event::Slam { .. } => Sound::Hit,
+            Event::Reflected { .. } | Event::ActiveUsed { .. } => Sound::Agree,
+            Event::Status { .. } => Sound::Grab,
+            Event::BossIntro { .. } | Event::Regenerate { .. } => Sound::Burnout,
             Event::Burnout => Sound::Burnout,
             _ => continue,
         };
