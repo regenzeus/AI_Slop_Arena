@@ -1,0 +1,9 @@
+[package]
+name = "slop_lab"
+description = "Headless tools for AI Slop Arena: benchmark, determinism check, wave statistics"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+slop_sim = { path = "../slop_sim" }

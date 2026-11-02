@@ -1,0 +1,9 @@
+[package]
+name = "slop_sim"
+description = "Deterministic arena simulation for AI Slop Arena"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+libm.workspace = true

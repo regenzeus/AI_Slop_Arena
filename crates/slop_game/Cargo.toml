@@ -1,0 +1,10 @@
+[package]
+name = "slop_game"
+description = "AI Slop Arena desktop client (Bevy)"
+edition.workspace = true
+version.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+bevy = { version = "=0.17.3", features = ["wav"] }
+slop_sim = { path = "../slop_sim" }
