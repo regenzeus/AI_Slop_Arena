@@ -129,6 +129,7 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 Phase::Vending { .. } => Some("vending".into()),
                 Phase::Shrine { .. } => Some("shrine".into()),
                 Phase::Glitch(_) => Some("glitch".into()),
+                Phase::Recycle { .. } => Some("recycle".into()),
                 Phase::Over { .. } if settled => Some("over".into()),
                 Phase::Over { .. } => None,
             };

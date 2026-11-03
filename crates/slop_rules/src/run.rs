@@ -33,7 +33,7 @@ const CHOICES: usize = 3;
 /// Seconds between retunes of the spawn table, retraining, and elites.
 const RETUNE_EVERY: f32 = 20.0;
 const RETRAIN_EVERY: f32 = 120.0;
-const ELITE_EVERY: f32 = 50.0;
+const ELITE_EVERY: f32 = 30.0;
 const FREE_REROLLS: u32 = 1;
 const COMMENT_ELITES: u32 = 6;
 /// Drawbacks never take your maximum Mental Health below this.
@@ -48,8 +48,10 @@ const SWARM_FIRST: f32 = 75.0;
 const SWARM_EVERY: (f32, f32) = (70.0, 110.0);
 const RING_FIRST: f32 = 200.0;
 const RING_EVERY: (f32, f32) = (140.0, 200.0);
-const LIVE_FIRST: f32 = 330.0;
+const LIVE_FIRST: f32 = 540.0;
 const LIVE_EVERY: (f32, f32) = (260.0, 360.0);
+const GOBLIN_FIRST: f32 = 150.0;
+const GOBLIN_EVERY: (f32, f32) = (150.0, 220.0);
 const LIVE_RADIUS: f32 = 430.0;
 const LIVE_SECONDS: f32 = 28.0;
 /// A glitch card turns up on a level-up this often, plus Luck (GLITCH-01).
@@ -142,6 +144,8 @@ pub enum Phase {
     Shrine { prop: u32, offers: Vec<usize> },
     /// After a boss: pick one of three glitches (GLITCH-01).
     Glitch(Vec<usize>),
+    /// A recycle bin: pick one of your items to throw away for Clout (MAP-05).
+    Recycle { prop: u32, items: Vec<usize> },
     Over { victory: bool },
 }
 
@@ -211,6 +215,9 @@ pub struct Run {
     clout_tens: u32,
     /// A merge was announced as ready.
     merge_told: bool,
+    /// Spawn multiplier from a Cursed Feed; the surge multiplies it.
+    spawn_curse: f32,
+    next_goblin: f32,
     trained: Tally,
 }
 
@@ -274,7 +281,7 @@ impl Run {
             clout_seen: 0,
             next_retune: 0.0,
             next_retrain: RETRAIN_EVERY,
-            next_elite: ELITE_EVERY,
+            next_elite: 90.0,
             next_minute: 60.0,
             next_swarm: SWARM_FIRST,
             next_ring: RING_FIRST,
@@ -282,6 +289,8 @@ impl Run {
             pending_glitch: false,
             clout_tens: 0,
             merge_told: false,
+            spawn_curse: 1.0,
+            next_goblin: GOBLIN_FIRST,
             trained: Tally::default(),
         };
         let mut l = Loadout { weapons: vec![], stats: run.base, perks: Default::default() };
@@ -318,6 +327,7 @@ impl Run {
         run.next_swarm += run.offset;
         run.next_ring += run.offset;
         run.next_live += run.offset;
+        run.next_goblin += run.offset;
         run.platform_since = run.offset;
         run.sync();
         if let Some(w) = run.world.as_mut() {
@@ -417,6 +427,7 @@ impl Run {
         let l = self.loadout();
         // A Cursed Feed brings more slop (GLITCH-01).
         let curse: f32 = self.mods().iter().map(|m| if let Mod::Curse(v) = m { *v } else { 0.0 }).sum();
+        self.spawn_curse = 1.0 + curse;
         self.clout_tens = self.clout / 10;
         let Some(w) = self.world.as_mut() else { return };
         w.spawn_boost = 1.0 + curse;
@@ -528,9 +539,9 @@ impl Run {
             let bonus = self.sum(|m| if let Mod::CloutBonus(v) | Mod::Curse(v) = m { *v } else { 0.0 });
             self.clout += (coins as f32 * (1.0 + bonus).max(0.1)).round() as u32;
         }
+        // The floor and the HUD say where you are; no announcement.
         if biome != self.biome {
             self.biome = biome;
-            self.toasts.push(format!("Entering {}: {}", biome.name(), biome.hazard()));
             self.retune();
         }
         // Hoarders get stronger as their Clout grows.
@@ -562,7 +573,7 @@ impl Run {
         if self.ready_merge().is_some() {
             if !self.merge_told {
                 self.merge_told = true;
-                self.toasts.push("MERGE READY: open a chest to merge. Elites and bosses drop them; one is on its way.".into());
+                self.toasts.push("MERGE READY: the next chest merges them.".into());
                 self.next_elite = self.next_elite.min(t + 8.0);
             }
         } else {
@@ -570,7 +581,13 @@ impl Run {
         }
         if t >= self.next_elite {
             self.next_elite += ELITE_EVERY;
-            self.elite(1, None, 0);
+            // More elites as the Feed goes on (ELITE-02).
+            let n = 1 + (self.minutes() / 8.0).min(2.0) as u32;
+            self.elite(n, None, 0);
+        }
+        // The crowd surges and ebbs (EVENT-03).
+        if let Some(w) = self.world.as_mut() {
+            w.spawn_boost = self.spawn_curse * waves::surge(t);
         }
         self.director(t);
         self.schedule_boss(t);
@@ -619,49 +636,64 @@ impl Run {
         let minutes = self.minutes();
         let stage = waves::stage(minutes);
         let calm = self.boss_out.is_some() || self.world.as_ref().is_none_or(|w| w.arena.is_some());
+        // During a boss or a livestream, events wait a little.
+        if calm {
+            self.next_swarm = self.next_swarm.max(t + 15.0);
+            self.next_ring = self.next_ring.max(t + 15.0);
+            self.next_live = self.next_live.max(t + 15.0);
+        }
         if t >= self.next_swarm {
             self.next_swarm = t + self.rng.range(SWARM_EVERY.0, SWARM_EVERY.1);
-            if !calm {
-                let mut kinds = vec![(Archetype::TrampolineBunny, "Trampoline Bunnies"), (Archetype::ListicleDrone, "a Listicle flood")];
+            {
+                // Seen, not announced: the swarm is its own warning.
+                let mut kinds = vec![Archetype::TrampolineBunny, Archetype::ListicleDrone];
                 if minutes >= 4.0 {
-                    kinds.push((Archetype::SixFingerHand, "a hand of Six-Finger Hands"));
-                    kinds.push((Archetype::GlassFruit, "Glass Fruit"));
+                    kinds.push(Archetype::SixFingerHand);
+                    kinds.push(Archetype::GlassFruit);
                 }
                 if minutes >= 7.0 {
-                    kinds.push((Archetype::Gusello, "Bombombini Gusellos"));
+                    kinds.push(Archetype::Gusello);
                 }
-                let (kind, name) = kinds[self.rng.below(kinds.len() as u32) as usize];
+                let kind = kinds[self.rng.below(kinds.len() as u32) as usize];
                 let (hp, dmg, speed) = waves::scaling(stage, self.biome);
                 let mut spec = SlopSpec::archetype(kind).scaled(hp * 0.6, dmg, speed).sweeping();
                 spec.resist = self.training.model;
-                let count = (24.0 + 2.5 * minutes).min(64.0) as u32;
+                let count = (36.0 + 3.0 * minutes).min(90.0) as u32;
                 if let Some(w) = self.world.as_mut() {
                     let i = w.add_spec(spec);
                     w.sweep(i, count);
                 }
-                self.toasts.push(format!("TREND ALERT: {name} incoming!"));
             }
         }
         if t >= self.next_ring {
             self.next_ring = t + self.rng.range(RING_EVERY.0, RING_EVERY.1);
-            if !calm {
+            {
                 let (hp, dmg, speed) = waves::scaling(stage, self.biome);
-                let mut spec = SlopSpec::archetype(Archetype::SubscribePopup).scaled(hp * 0.45, dmg, speed);
-                spec.name = "Pop-up Wall".into();
-                spec.speed *= 0.8;
+                // A networking event: Recruiter Bots ring you and close in.
+                let mut spec = SlopSpec::archetype(Archetype::RecruiterBot).scaled(hp * 0.8, dmg, speed);
+                spec.name = "Networking Event".into();
+                spec.speed *= 0.6;
                 spec.resist = self.training.model;
-                let count = (14.0 + minutes * 0.6).min(28.0) as u32;
+                let count = (12.0 + minutes * 0.8).min(36.0) as u32;
                 if let Some(w) = self.world.as_mut() {
                     let i = w.add_spec(spec);
                     w.encircle(i, count, 560.0);
                 }
-                self.toasts.push("POP-UP WALL: they close in from every side. Break out, or dash through.".into());
             }
         }
         if t >= self.next_live {
             self.next_live = t + self.rng.range(LIVE_EVERY.0, LIVE_EVERY.1);
-            if !calm {
-                self.go_live();
+            self.go_live();
+        }
+        // The loot goblin: a Crypto Bro runs past with a bag of Clout.
+        if t >= self.next_goblin {
+            self.next_goblin = t + self.rng.range(GOBLIN_EVERY.0, GOBLIN_EVERY.1);
+            let (hp, _, _) = waves::scaling(stage, self.biome);
+            let spec = SlopSpec::archetype(Archetype::LootGoblin).scaled(hp, 1.0, 1.0);
+            if let Some(w) = self.world.as_mut() {
+                let i = w.add_spec(spec);
+                let near = w.player.pos;
+                w.summon(i, 1, Some(near), 0);
             }
         }
     }
@@ -671,7 +703,6 @@ impl Run {
         if let Some(w) = self.world.as_mut() {
             w.start_arena(LIVE_RADIUS, LIVE_SECONDS);
         }
-        self.toasts.push(format!("YOU'RE LIVE: survive {LIVE_SECONDS:.0} s inside the ring for a big chest."));
     }
 
     /// An elite with an affix, off-screen or around `near` (ELITE-01).
@@ -795,6 +826,34 @@ impl Run {
             }
             PropKind::DataCenter => self.toasts.push("Uploading... stay inside the data center. The slop wants it too.".into()),
             PropKind::GoLive => self.go_live(),
+            PropKind::RecycleBin if matches!(self.phase, Phase::Playing) => {
+                let items: Vec<usize> = self.items.iter().map(|(i, _)| *i).collect();
+                if !items.is_empty() {
+                    self.phase = Phase::Recycle { prop: id, items };
+                }
+            }
+            // The fine-tuning station sells weapon levels, like a vending machine.
+            PropKind::FineTuning if matches!(self.phase, Phase::Playing) => {
+                let mut offers = Vec::new();
+                for w in self.weapons.clone() {
+                    if w.level < MAX_LEVEL && !WEAPONS[w.def].evolved {
+                        let price = self.price(20.0 + 6.0 * w.level as f32 + 1.5 * minutes);
+                        offers.push((Choice::WeaponLevel(w.def), price));
+                    }
+                }
+                if !offers.is_empty() {
+                    self.phase = Phase::Vending { prop: id, offers };
+                }
+            }
+            // The data broker buys 15 maximum Mental Health for a rare item.
+            PropKind::DataBroker if matches!(self.phase, Phase::Playing) => {
+                self.base.max_mental_health -= 15.0;
+                self.done(id);
+                let upgrades = self.rare_item();
+                let best = upgrades.iter().map(|c| c.rarity()).max().unwrap_or(1);
+                self.phase = Phase::Chest(Reward { title: "Data sold", merged: None, upgrades, clout: 0, best });
+                self.sync();
+            }
             _ => {}
         }
     }
@@ -924,7 +983,7 @@ impl Run {
         }
         if !items_only {
             while out.len() < n {
-                out.push(if out.contains(&Choice::Heal) { Choice::Clout(10 + 2 * self.minutes() as u32) } else { Choice::Heal });
+                out.push(if out.contains(&Choice::Heal) { self.limit_break() } else { Choice::Heal });
             }
             // Now and then a glitch takes the last card (GLITCH-01).
             if self.rng.chance(GLITCH_CHANCE + luck.max(0.0) * 0.003) {
@@ -946,6 +1005,54 @@ impl Run {
             out.push(pool.swap_remove(self.rng.below(pool.len() as u32) as usize));
         }
         out
+    }
+
+    /// An epic or legendary item you do not have, or a level of one you do.
+    fn rare_item(&mut self) -> Vec<Choice> {
+        let room = self.items.len() < ITEM_SLOTS;
+        let pool: Vec<usize> = (0..ITEMS.len())
+            .filter(|&i| ITEMS[i].tier >= 3)
+            .filter(|&i| match self.owned_item(i) {
+                Some(n) => n < ITEMS[i].max_level(),
+                None => room,
+            })
+            .collect();
+        let c = if pool.is_empty() { self.limit_break() } else {
+            let i = pool[self.rng.below(pool.len() as u32) as usize];
+            if self.owned_item(i).is_some() { Choice::ItemLevel(i) } else { Choice::NewItem(i) }
+        };
+        self.apply(c);
+        vec![c]
+    }
+
+    /// Throws item `i` of a recycle bin's offer away for Clout (MAP-05).
+    pub fn recycle(&mut self, i: usize) -> Result<(), RuleError> {
+        let Phase::Recycle { prop, items } = &self.phase else { return Err(RuleError::WrongPhase) };
+        let item = *items.get(i).ok_or(RuleError::NoSuchOffer)?;
+        let prop = *prop;
+        let level = self.owned_item(item).unwrap_or(1);
+        self.items.retain(|(it, _)| *it != item);
+        self.clout += tier_price(ITEMS[item].tier) * level / 2 + 5;
+        self.sync();
+        self.done(prop);
+        self.phase = Phase::Playing;
+        if self.pending_levels > 0 {
+            self.start_level_up();
+        }
+        Ok(())
+    }
+
+    /// A good stat-up for a build with nothing left to level (CHEST-02).
+    fn limit_break(&mut self) -> Choice {
+        // A plain stat-up: no Luck, so a maxed build creeps up rather than
+        // snowballing.
+        match levels::stat_up(&mut self.rng, -100.0, &[]) {
+            Some(mut up) => {
+                up.amount *= 0.5;
+                Choice::Stat(up)
+            }
+            None => Choice::Clout(15),
+        }
     }
 
     /// Takes glitch offer `i` after a boss (GLITCH-01).
@@ -1073,7 +1180,8 @@ impl Run {
             if pool.is_empty() {
                 pool = cands[1].iter().chain(cands[3].iter()).map(|c| c.0).collect();
             }
-            let c = if pool.is_empty() { Choice::Clout(15) } else { pool[self.rng.below(pool.len() as u32) as usize] };
+            // Everything maxed: a small stat-up instead.
+            let c = if pool.is_empty() { self.limit_break() } else { pool[self.rng.below(pool.len() as u32) as usize] };
             self.apply(c);
             out.push(c);
         }
@@ -1091,6 +1199,17 @@ impl Run {
     /// Opens a chest: a merge if one is ready, otherwise upgrades (CHEST-01).
     fn open_chest(&mut self, value: u32, title: &'static str) {
         let merged = self.ready_merge();
+        // Nothing left to upgrade: the chest pays out without stopping the
+        // game (CHEST-02).
+        let cands = self.candidates(false);
+        if merged.is_none() && cands[..4].iter().all(|c| c.is_empty()) {
+            self.clout += 20 + 15 * value;
+            if let Some(w) = self.world.as_mut() {
+                let p = &mut w.player;
+                p.mental_health = (p.mental_health + p.stats.max_mental_health * 0.3).min(p.stats.max_mental_health);
+            }
+            return;
+        }
         let mut upgrades = Vec::new();
         if let Some((a, b, into)) = merged {
             let slot = self.weapons.iter().position(|w| w.def == a).unwrap_or(0);
@@ -1129,7 +1248,7 @@ impl Run {
     /// chest is followed by a pick of glitches (GLITCH-01).
     pub fn close(&mut self) -> Result<(), RuleError> {
         match self.phase {
-            Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } => {
+            Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Recycle { .. } => {
                 let chest = matches!(self.phase, Phase::Chest(_));
                 self.phase = Phase::Playing;
                 if self.pending_glitch && chest {

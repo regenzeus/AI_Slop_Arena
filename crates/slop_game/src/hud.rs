@@ -125,14 +125,8 @@ fn extras(
         **t = if controls.pad { "Start: pause, build and stats   A/RB/RT: dash".into() } else { "P: pause, build and stats   Space/Shift: dash".into() };
     }
     if let Ok(mut t) = texts.p2().single_mut() {
-        let s = &p.status;
-        **t = if s.brainrot > 0 {
-            format!("BRAINROT: CONTROLS REVERSED  {:.1} s", s.brainrot as f32 / 60.0)
-        } else if s.brainrot_warning > 0 {
-            "BRAINROT INCOMING: your controls flip in a moment".into()
-        } else {
-            String::new()
-        };
+        // Statuses only slow you now; the panel lists them, nothing shouts.
+        **t = String::new();
     }
     if let Ok(mut t) = texts.p3().single_mut() {
         **t = match world.arena {
@@ -278,7 +272,7 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                     b.spawn((XpFill, Node { width: Val::Percent(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.38, 0.75, 1.0))));
                 });
             // News: patch notes, the next platform.
-            root.spawn((Toasts, Text::new(""), TextFont { font_size: 17.0, ..default() }, TextColor(theme::PAPER), TextLayout::new_with_justify(Justify::Center), Node { position_type: PositionType::Absolute, top: Val::Px(118.0), width: Val::Percent(100.0), ..default() }));
+            root.spawn((Toasts, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::QUIET), TextLayout::new_with_justify(Justify::Center), Node { position_type: PositionType::Absolute, bottom: Val::Px(34.0), width: Val::Percent(100.0), ..default() }));
             // The way to your build: pause shows everything.
             root.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(20.0), bottom: Val::Px(14.0), ..default() }, BackgroundColor(Color::NONE)))
                 .with_children(|h| {
@@ -286,7 +280,7 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                 });
             // Why your controls are reversed, right where you look (STATUS-02).
             root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(150.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|r| {
-                r.spawn((Reversed, Text::new(""), TextFont { font_size: 30.0, ..default() }, TextColor(Color::srgb(0.75, 0.55, 1.0)), TextLayout::new_with_justify(Justify::Center)));
+                r.spawn((Reversed, Text::new(""), TextFont { font_size: 18.0, ..default() }, TextColor(Color::srgb(0.75, 0.55, 1.0)), TextLayout::new_with_justify(Justify::Center)));
             });
             // A livestream's clock (EVENT-02).
             root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(196.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|r| {
@@ -298,13 +292,14 @@ fn setup(mut commands: Commands, art: Res<Art>) {
             }
         });
 
-    commands.spawn((Banner, overlay(), GlobalZIndex(6), Visibility::Hidden)).with_children(|p| {
-        p.spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::Center, padding: UiRect::axes(Val::Px(28.0), Val::Px(14.0)), row_gap: Val::Px(6.0), ..default() }, BackgroundColor(theme::PANEL)))
-            .with_children(|b| {
-                b.spawn((BannerTitle, Text::new(""), TextFont { font_size: 46.0, ..default() }, TextColor(theme::PAPER)));
-                b.spawn((BannerLine, Text::new(""), TextFont { font_size: 18.0, ..default() }, TextColor(theme::QUIET)));
-            });
-    });
+    // Banners (a boss, its defeat) are a strip under the clock, never over
+    // the middle of the Feed (FAIR-05).
+    commands
+        .spawn((Banner, Node { position_type: PositionType::Absolute, top: Val::Px(122.0), width: Val::Percent(100.0), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(2.0), ..default() }, GlobalZIndex(6), Visibility::Hidden))
+        .with_children(|b| {
+            b.spawn((BannerTitle, Text::new(""), TextFont { font_size: 24.0, ..default() }, TextColor(theme::PAPER)));
+            b.spawn((BannerLine, Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::QUIET)));
+        });
 }
 
 fn clock(seconds: f32) -> String {
@@ -391,13 +386,13 @@ fn update(
             list.push(format!("Anxiety x{}", s.anxiety));
         }
         if s.doomscroll > 0 {
-            list.push("Doomscroll".into());
+            list.push("Doomscroll (slowed)".into());
         }
         if s.ratio > 0 {
             list.push("Ratio'd".into());
         }
         if s.brainrot > 0 {
-            list.push("BRAINROT (reversed)".into());
+            list.push("Brainrot (slowed)".into());
         }
         if p.grabbed > 0 {
             list.push(format!("Grabbed x{}", p.grabbed));
@@ -440,10 +435,13 @@ fn update(
         *v = vis(!between && !game.paused);
     }
     if let Ok(mut v) = shown.p1().single_mut() {
-        *v = vis(in_wave && world.ad_break > 0);
+        // Nothing covers the Feed (FAIR-05): no ad overlay.
+        *v = Visibility::Hidden;
+        let _ = in_wave;
     }
     if let Ok(mut v) = shown.p2().single_mut() {
-        *v = vis(in_wave && p.status.popup > 0 && !game.paused);
+        // No pop-up dialog either.
+        *v = Visibility::Hidden;
     }
     if let Ok(mut v) = shown.p3().single_mut() {
         *v = vis(banner.is_some() && !game.paused);

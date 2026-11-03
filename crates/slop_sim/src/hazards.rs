@@ -3,7 +3,7 @@
 //! parts of the map are fenced off for a while (MAP-04).
 
 use crate::content::{Look, Platform};
-use crate::events::{Event, StatusKind};
+use crate::events::Event;
 use crate::vec::V2;
 use crate::world::*;
 
@@ -12,7 +12,6 @@ pub const BEAT_INTERVAL: u16 = 36;
 const LETTER_SPEED: f32 = 170.0;
 const LETTER_DAMAGE: f32 = 8.0;
 const BANNER_SPEED: f32 = 150.0;
-const AD_TICKS: u16 = 180;
 /// Ticks between maintenance fences, and their warning.
 const MAINTENANCE_EVERY: u32 = 60 * 50;
 const FENCE_WARNING: u16 = 150;
@@ -56,10 +55,15 @@ impl World {
                 600
             }
             Platform::MeTube => {
-                self.ad_break = AD_TICKS;
+                // Buffering patches on the floor: they slow you, they never
+                // cover the screen (FAIR-05).
+                for _ in 0..2 {
+                    let at = self.near(me, 160.0, 480.0);
+                    let id = self.id();
+                    self.zones.push(Zone::new(id, ZoneKind::Buffering, at, 100.0, 540));
+                }
                 self.events.push(Event::AdBreak);
-                self.apply_status(StatusKind::Popup);
-                900
+                540
             }
             Platform::Thredd => {
                 // Downvotes come in every shape: puddles, strips and rings.

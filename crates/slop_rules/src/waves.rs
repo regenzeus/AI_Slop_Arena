@@ -22,9 +22,10 @@ pub fn stage(minutes: f32) -> f32 {
 /// HP, damage and speed multipliers of slop at `stage`.
 pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
     let w = (stage - 1.0).max(0.0);
-    // Fragile at first, like a horde should be; steep later.
-    let hp = 0.3 + 0.14 * w + 0.065 * w * w + 0.004 * w * w * w;
-    let damage = 1.0 + 0.12 * w + 0.008 * w * w;
+    // Fragile, like a horde should be: many weak slop rather than a few
+    // strong ones, and steep later.
+    let hp = 0.7 * (0.3 + 0.14 * w + 0.065 * w * w + 0.008 * w * w * w);
+    let damage = 0.55 + 0.14 * w + 0.008 * w * w;
     let mut speed = 1.0 + 0.01 * w.min(30.0);
     if platform == Platform::LinkedOut {
         speed += 0.15;
@@ -35,7 +36,25 @@ pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
 /// Spawn credits per second at `stage`; a credit buys 20 base HP of slop.
 pub fn rate(stage: f32) -> f32 {
     let w = stage - 1.0;
-    2.0 + 0.7 * w + 0.05 * w * w
+    1.8 + 0.85 * w + 0.07 * w * w
+}
+
+/// How hard the crowd surges `seconds` into the run (EVENT-03): a calm, a
+/// build-up, a burst of slop, a short lull, every 75 s; every fourth cycle
+/// the burst is a horde.
+pub fn surge(seconds: f32) -> f32 {
+    // The first minute and a bit is a warm-up.
+    if seconds < 75.0 {
+        return 1.0;
+    }
+    let cycle = (seconds / 75.0) as u32;
+    match seconds % 75.0 {
+        t if t < 40.0 => 0.85,
+        t if t < 55.0 => 1.3,
+        t if t < 70.0 && cycle % 4 == 3 => 3.0,
+        t if t < 70.0 => 2.0,
+        _ => 0.4,
+    }
 }
 
 /// What a weapon looks like when The Model copies it.
@@ -171,13 +190,17 @@ pub enum Affix {
     Trending,
     /// Leaves slowing puddles.
     Toxic,
+    /// Calls in minions.
+    Summoner,
+    /// Huge and slow, with a lot of HP.
+    Hulking,
 }
 
 impl Affix {
-    pub const ALL: [Affix; 5] = [Affix::Verified, Affix::Viral, Affix::Sponsored, Affix::Trending, Affix::Toxic];
+    pub const ALL: [Affix; 7] = [Affix::Verified, Affix::Viral, Affix::Sponsored, Affix::Trending, Affix::Toxic, Affix::Summoner, Affix::Hulking];
 
     pub fn name(self) -> &'static str {
-        ["Verified", "Viral", "Sponsored", "Trending", "Toxic"][self as usize]
+        ["Verified", "Viral", "Sponsored", "Trending", "Toxic", "Summoner", "Hulking"][self as usize]
     }
 
     pub fn blurb(self) -> &'static str {
@@ -187,6 +210,8 @@ impl Affix {
             "Drops a pile of Clout.",
             "Fast. Very fast.",
             "Leaves puddles of downvotes behind.",
+            "Calls in minions every few seconds.",
+            "Huge, slow and very hard to delete.",
         ][self as usize]
     }
 }
@@ -201,6 +226,13 @@ pub fn elite(base: &SlopSpec, affix: Affix) -> SlopSpec {
         Affix::Sponsored => s.traits.0 |= Traits::SPONSORED,
         Affix::Trending => s.speed *= 1.6,
         Affix::Toxic => s.traits.0 |= Traits::TOXIC,
+        Affix::Summoner => s.traits.0 |= Traits::SUMMONER,
+        Affix::Hulking => {
+            s.hp *= 2.5;
+            s.radius *= 1.35;
+            s.speed *= 0.7;
+            s.contact *= 1.4;
+        }
     }
     s
 }

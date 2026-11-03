@@ -1,4 +1,4 @@
-# Verification: version 4, "The Algorithm Update"
+# Verification: version 4.1, "The Algorithm Update"
 
 Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 
@@ -7,10 +7,10 @@ Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 | Check | Result |
 | --- | --- |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clean |
-| `cargo test --workspace` | 98 passed, 0 failed (60 simulation, 31 rules, 7 client), 1 ignored (the icon sheet) |
+| `cargo test --workspace` | 104 passed, 0 failed (64 simulation, 33 rules, 7 client), 1 ignored (the icon sheet) |
 | `slop_lab determinism` | Six minutes of a run, played twice by the bots: identical checksums over 21,600 ticks |
-| `slop_lab bench` | 400 slop, up to 383 projectiles, six max-level weapons: 0.80 ms per tick (budget 2 ms) |
-| `slop_lab balance 16 40` | Heuristic bot: median 16.5 minutes, The Model beaten in 6 of 16 runs (BAL-01 met). Random bot: median 21.1 minutes (BAL-02 not met, see below) |
+| `slop_lab bench` | 600 slop, up to 409 projectiles, six max-level weapons: 1.18 ms per tick (budget 2 ms) |
+| `slop_lab balance 16 40` | Heuristic bot: median 9.2 minutes, The Model beaten in 1 of 16 runs. Random bot: median 9.1 minutes. Harder than 4.0 on purpose (denser hordes); see below |
 | Autoplay at 1600 x 900 (seed 6) and 1920 x 1080 (seed 11) | Title, the eight heroes, the Feed from 0:30 to 27:00 with biome seams, barriers and icons, level-up, the chest reveal, a merge, the glitch pick, pause and the end screen render without overlap |
 
 Requirement-to-test mapping: [traceability.md](traceability.md).
@@ -68,3 +68,15 @@ narrows the gap between them.
 - Print Screen: the fix follows how Windows reports the key; it was not pressed on a real
   keyboard here. If ShareX is running, it takes Print Screen for itself; F12 always works.
 - How the dash, the chest reveal and the new icons feel in the hand.
+
+## Version 4.1 (fifth playtest)
+
+What changed is in [design-v4.md](design-v4.md#version-41-from-the-fifth-playtest). With
+twice the slop on screen in surges, the bots now die earlier: median 9.2 minutes for the
+heuristic bot (16 runs), mostly around the first boss at 4:30. Weak starts (Artist,
+Programmer) suffer most; strong builds still reach 40 minutes. BAL-01 (15 to 30 minutes)
+is not met: this is deliberately on the hard side after "too easy, too few enemies", and
+is the first thing to tune from the next playtest.
+
+Not verified by a person: XInput in the background and the Print Screen fix were built
+against the Windows API without a controller or a key press here.

@@ -44,6 +44,8 @@ impl Traits {
     pub const SHARDS: u64 = 1 << 30;
     /// One of the brainrot icons (ICON-01).
     pub const ICON: u64 = 1 << 31;
+    /// Elite affix: calls in minions now and then.
+    pub const SUMMONER: u64 = 1 << 32;
 
     pub fn has(self, flag: u64) -> bool {
         self.0 & flag != 0
@@ -73,6 +75,9 @@ pub enum Movement {
     Charge,
     /// Walks, and now and then appears behind you after a warning.
     Blink,
+    /// Runs away from you, and is gone when its timer runs out (the loot
+    /// goblin).
+    Flee,
     /// Crosses the map in a straight line and is gone (a swarm).
     Sweep,
     Boss(BossKind),
@@ -186,6 +191,7 @@ impl SlopSpec {
             Archetype::TrampolineBunny => (Movement::Hop, None, Traits::ICON),
             Archetype::GlassFruit => (Movement::Rush, None, Traits::ICON | Traits::SHARDS),
             Archetype::RingLight => (Movement::Stand, Some(Attack::Fan), Traits::ICON | Traits::NO_KNOCKBACK | Traits::BUFF_AURA),
+            Archetype::LootGoblin => (Movement::Flee, None, Traits::NO_KNOCKBACK),
         };
         let chatbot = if a.is_chatbot() { Traits::CHATBOT } else { 0 };
         SlopSpec {

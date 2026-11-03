@@ -30,6 +30,7 @@ mod state;
 mod theme;
 mod ui;
 mod views;
+mod winput;
 
 use std::path::PathBuf;
 
@@ -88,6 +89,9 @@ fn main() {
         }),
         ..default()
     }))
+    // Keep running at full speed in the background, so a controller plays on
+    // while you type somewhere else (UI-20).
+    .insert_resource(bevy::winit::WinitSettings { focused_mode: bevy::winit::UpdateMode::Continuous, unfocused_mode: bevy::winit::UpdateMode::Continuous })
     .insert_resource(ClearColor(theme::VOID))
     .insert_resource(game)
     .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin, display::DisplayPlugin, controls::ControlsPlugin));

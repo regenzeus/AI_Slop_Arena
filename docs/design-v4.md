@@ -140,3 +140,41 @@ Candidates for later, from Vampire Survivors and its family: permanent upgrades 
 between runs with banked Clout, unlockable heroes and weapons through achievements, a
 bestiary of everything deleted, curses that trade difficulty for loot, limit breaks past
 level 8, and an "Arcana" deck chosen at the start.
+
+## Version 4.1: from the fifth playtest
+
+"In general I do not want to obscure the gameplay, and not take control away from the
+player. Slow and stun is fine."
+
+- **Nothing takes control or covers the screen.** Brainrot, doomscrolling, Clickbait
+  arrows, Thought Leader posts and banana peels now slow you; LinkedOut's banners are slow
+  bands; MeTube's ads became "buffering" patches on the floor. The ad overlay and the
+  pop-up dialog are gone.
+- **Effects are shown, not announced.** No "GOD MODE", "TREND ALERT", "LIVE", "Boundaries
+  broken", pickup or status words. You get a gold aura (God Mode), a blue bubble
+  (Boundaries), a violet tint (slowed), a spark glow (charged), and coloured rings.
+  Speech bubbles mostly say "...", and biome crossings show only on the floor and the HUD.
+  Boss banners are a small strip under the clock.
+- **Denser, bursty hordes.** About twice the slop at a time, each weaker; the crowd
+  surges every 75 s, and every fourth surge is a horde. Surges are melee swarms, not a wall
+  of bullets.
+- **Fewer, better items.** Levels take more experience; fewer than half of elites carry
+  a chest; a Viral elite's copies no longer each drop one; chests mostly hold one upgrade.
+  Once everything is maxed, chests pay out without stopping the game.
+- **Elites stand out:** every 30 s, more later, each with a glowing aura in its affix's
+  colour. Two new affixes: Summoner and Hulking.
+- **Interactables:** recycle bins, fine-tuning stations, data brokers and power outlets,
+  one or two things to use per chunk.
+- **The loot goblin:** a Crypto Bro runs off with a bag of Clout.
+- **Golden chests explain themselves:** each card says what the upgrade does.
+- **Biomes are twice as big** (6144 units).
+- **Controller in the background:** the game reads Xbox controllers through XInput and
+  keeps running when unfocused.
+- **More animation:** everything that walks has feet that step; brainrot objects swing
+  and accessories bob.
+
+### Item slots
+
+Six weapon slots and six item slots stay: the limit is what makes picks matter. A recycle
+bin frees a slot when a build changes direction, and a maxed build gets paid instead of
+being stopped.

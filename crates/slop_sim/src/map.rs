@@ -120,10 +120,18 @@ pub enum PropKind {
     LostPhone,
     /// A ring light on a tripod: stand in it to go live (EVENT-02).
     GoLive,
+    /// Throw away an item for Clout, freeing its slot (MAP-05).
+    RecycleBin,
+    /// Level up one of your weapons for Clout.
+    FineTuning,
+    /// Sell some of your maximum Mental Health for a rare item.
+    DataBroker,
+    /// Stand in it: dashes refill and you run faster for a while.
+    PowerOutlet,
 }
 
 impl PropKind {
-    pub const ALL: [PropKind; 11] = [
+    pub const ALL: [PropKind; 15] = [
         PropKind::AdBillboard,
         PropKind::PopupAd,
         PropKind::CryptoMiner,
@@ -135,6 +143,10 @@ impl PropKind {
         PropKind::CommentSection,
         PropKind::LostPhone,
         PropKind::GoLive,
+        PropKind::RecycleBin,
+        PropKind::FineTuning,
+        PropKind::DataBroker,
+        PropKind::PowerOutlet,
     ];
 
     pub fn name(self) -> &'static str {
@@ -150,22 +162,31 @@ impl PropKind {
             "Comment Section",
             "Lost Phone",
             "Go Live",
+            "Recycle Bin",
+            "Fine-Tuning Station",
+            "Data Broker",
+            "Power Outlet",
         ][self as usize]
     }
 
+    /// One short line, shown when you come close.
     pub fn blurb(self) -> &'static str {
         [
-            "Walk into it. Ads always hide something.",
-            "Close it. There is a prize behind the X.",
-            "Smash it before it mines your Mental Health.",
-            "Stand inside to heal while the data lasts.",
-            "Stand in the ring: pick an item for Clout.",
-            "Stand in the ring: a random upgrade for Clout.",
-            "Stand in the ring: pick one of three blessings.",
-            "Stand inside while it uploads. The slop wants it too.",
-            "Stand in the ring to open it. Elites come out. Survive them.",
-            "Walk over it: a chest.",
-            "Stand in the ring to start a livestream: you are locked in with the crowd for 30 s, then a big chest.",
+            "Smash it: loot",
+            "Close it: loot",
+            "Smash it: Clout",
+            "Stand inside: heal",
+            "Stand here: buy an item",
+            "Stand here: random upgrade",
+            "Stand here: pick a blessing",
+            "Hold it while it uploads: chest",
+            "Open it: elites, then a chest",
+            "Pick it up: chest",
+            "Go live: 30 s locked in, big chest",
+            "Throw an item away for Clout",
+            "Buy a weapon level",
+            "Sell 15 max health: rare item",
+            "Refill dashes, run faster",
         ][self as usize]
     }
 
@@ -181,6 +202,7 @@ impl PropKind {
             PropKind::PopupAd => 24.0,
             PropKind::CryptoMiner => 26.0,
             PropKind::Hotspot => 150.0,
+            PropKind::PowerOutlet => 110.0,
             PropKind::DataCenter => 190.0,
             PropKind::LostPhone => 22.0,
             _ => 80.0,
@@ -190,7 +212,7 @@ impl PropKind {
     /// Ticks you stand in the ring before it is used.
     pub fn charge(self) -> u16 {
         match self {
-            PropKind::Vending | PropKind::Gacha | PropKind::Shrine => 50,
+            PropKind::Vending | PropKind::Gacha | PropKind::Shrine | PropKind::RecycleBin | PropKind::FineTuning | PropKind::DataBroker => 50,
             PropKind::CommentSection | PropKind::GoLive => 70,
             PropKind::DataCenter => 30,
             _ => 1,
@@ -222,7 +244,7 @@ pub struct Prop {
 
 /// Side of a biome: the map is a patchwork of the six platforms, one per
 /// square of this size (BIOME-01). A whole number of floor tiles.
-pub const BIOME: f32 = 3072.0;
+pub const BIOME: f32 = 6144.0;
 
 /// The biome square a point is in. A run starts in the middle of one.
 pub fn biome_cell(p: V2) -> (i32, i32) {
@@ -370,16 +392,22 @@ impl Map {
             };
             self.place(kind, at, &mut taken);
         }
-        if rng.chance(0.75) {
+        // One or two things to use per chunk, more often than not.
+        let uses = rng.chance(0.85) as u32 + rng.chance(0.45) as u32;
+        for _ in 0..uses {
             let at = origin + V2::new(rng.range(250.0, CHUNK - 250.0), rng.range(250.0, CHUNK - 250.0));
             let kind = match rng.below(100) {
-                0..=15 => PropKind::Hotspot,
-                16..=29 => PropKind::Vending,
-                30..=42 => PropKind::Gacha,
-                43..=55 => PropKind::Shrine,
-                56..=67 => PropKind::DataCenter,
-                68..=78 => PropKind::CommentSection,
-                79..=89 => PropKind::GoLive,
+                0..=10 => PropKind::Hotspot,
+                11..=21 => PropKind::Vending,
+                22..=30 => PropKind::Gacha,
+                31..=42 => PropKind::Shrine,
+                43..=50 => PropKind::DataCenter,
+                51..=58 => PropKind::CommentSection,
+                59..=66 => PropKind::GoLive,
+                67..=74 => PropKind::RecycleBin,
+                75..=82 => PropKind::FineTuning,
+                83..=88 => PropKind::DataBroker,
+                89..=94 => PropKind::PowerOutlet,
                 _ => PropKind::LostPhone,
             };
             self.place(kind, at, &mut taken);
@@ -395,6 +423,7 @@ impl Map {
         taken.push((at, r));
         let left = match kind {
             PropKind::Hotspot => 60 * 25,
+            PropKind::PowerOutlet => 60 * 6,
             PropKind::DataCenter => 60 * 20,
             _ => 0,
         };

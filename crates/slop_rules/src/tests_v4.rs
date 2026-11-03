@@ -116,7 +116,7 @@ fn the_spawns_follow_the_biome_you_are_in() {
     // Walk straight to the next square.
     run.world.as_mut().unwrap().player.mental_health = 1e7;
     run.world.as_mut().unwrap().player.stats.max_mental_health = 1e7;
-    for _ in 0..(60 * 9) {
+    for _ in 0..(60 * 14) {
         if !matches!(run.phase, Phase::Playing) {
             run.phase = Phase::Playing;
             run.pending_levels = 0;
@@ -125,7 +125,7 @@ fn the_spawns_follow_the_biome_you_are_in() {
     }
     assert_ne!(run.biome, start);
     assert_eq!(run.world.as_ref().unwrap().setup.platform, Some(run.biome), "the hazard and the spawns are the new biome's");
-    assert!(run.toasts.iter().any(|t| t.starts_with("Entering")));
+    assert!(run.toasts.iter().all(|t| !t.starts_with("Entering")), "no announcement: the floor shows it");
 }
 
 // REQ: EVENT-01, EVENT-02
@@ -140,7 +140,7 @@ fn the_director_sends_swarms_rings_and_livestreams() {
     let mut ring = false;
     let mut live = false;
     let mut rng = slop_sim::rng::Rng::new(1, 1);
-    while run.seconds() < 400.0 && !(swarm && ring && live) {
+    while run.seconds() < 800.0 && !(swarm && ring && live) {
         if matches!(run.phase, Phase::Playing) {
             let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
             run.step(input);
@@ -177,4 +177,57 @@ fn a_ready_merge_is_announced_and_brings_a_chest_closer() {
             }
         }
     }
+}
+
+/// Puts a prop of `kind` under you and stands in it until it is used.
+fn use_prop(run: &mut Run, kind: slop_sim::map::PropKind) {
+    let w = run.world.as_mut().unwrap();
+    let me = w.player.pos;
+    w.map.props.push(slop_sim::map::Prop { id: 9_999_999, kind, pos: me, charge: 0, state: slop_sim::map::PropState::Idle, left: 0, price: 0 });
+    for _ in 0..80 {
+        if !matches!(run.phase, Phase::Playing) {
+            break;
+        }
+        run.step(Default::default());
+    }
+}
+
+// REQ: MAP-05
+#[test]
+fn recycle_bins_fine_tuning_and_data_brokers() {
+    // A recycle bin takes an item and pays for it.
+    let mut run = Run::new(3, Hero::Boomer);
+    let item = run.items[0].0;
+    let clout = run.clout;
+    use_prop(&mut run, slop_sim::map::PropKind::RecycleBin);
+    assert!(matches!(run.phase, Phase::Recycle { .. }));
+    run.recycle(0).unwrap();
+    assert!(run.items.iter().all(|(i, _)| *i != item) && run.clout > clout);
+    // A fine-tuning station sells weapon levels.
+    let mut run = Run::new(3, Hero::Boomer);
+    use_prop(&mut run, slop_sim::map::PropKind::FineTuning);
+    let Phase::Vending { offers, .. } = run.phase.clone() else { panic!("the station opens") };
+    assert!(offers.iter().all(|(c, _)| matches!(c, Choice::WeaponLevel(_))));
+    // A data broker buys Mental Health for an epic or legendary item.
+    let mut run = Run::new(3, Hero::Boomer);
+    let before = run.stats().max_mental_health;
+    use_prop(&mut run, slop_sim::map::PropKind::DataBroker);
+    let Phase::Chest(reward) = run.phase.clone() else { panic!("the deal is shown") };
+    assert!(reward.best >= 3);
+    assert!(run.stats().max_mental_health < before);
+}
+
+// REQ: CHEST-02
+#[test]
+fn a_maxed_build_gets_paid_instead_of_stopped() {
+    let mut run = Run::new(4, Hero::Teacher);
+    // Fill every slot with something at its maximum.
+    // Merged weapons cannot level or merge any more.
+    run.weapons = (0..WEAPONS.len()).filter(|&d| WEAPONS[d].evolved).take(run.weapon_slots()).map(|d| OwnedWeapon { def: d, level: MAX_LEVEL }).collect();
+    run.items = ITEMS.iter().enumerate().filter(|(_, i)| i.max_level() == 1).take(crate::run::ITEM_SLOTS).map(|(k, _)| (k, 1)).collect();
+    let clout = run.clout;
+    run.world.as_mut().unwrap().chests.push(1);
+    run.step(Default::default());
+    assert!(matches!(run.phase, Phase::Playing), "no chest screen when nothing can be upgraded");
+    assert!(run.clout > clout);
 }

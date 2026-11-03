@@ -33,7 +33,7 @@ fn main() {
     }
 }
 
-/// 400 slop, 300 bubbles and six max-level weapons firing fast around you.
+/// 600 slop, 300 bubbles and six max-level weapons firing fast around you.
 fn bench() {
     let picks = ["Rock", "Stapler", "Library Book", "Eye-Roll", "Slow Clap", "Seed Bomb"];
     let weapons: Vec<(usize, u8)> = picks.iter().map(|p| (slop_sim::content::weapon_index(p).unwrap(), MAX_LEVEL)).collect();
@@ -42,7 +42,7 @@ fn bench() {
     loadout.stats.max_mental_health = 1e9;
     let mut w = World::new(1, WaveSetup::sandbox(), &loadout);
     let centre = w.player.pos;
-    for i in 0..400 {
+    for i in 0..600 {
         let a = Archetype::ALL[i % 5];
         let at = centre + V2::from_angle(i as f32 * 0.37) * (150.0 + (i % 40) as f32 * 14.0);
         w.spawn_archetype(a, at);

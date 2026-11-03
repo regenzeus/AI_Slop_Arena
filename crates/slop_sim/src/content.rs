@@ -335,6 +335,8 @@ pub enum Archetype {
     TrampolineBunny,
     GlassFruit,
     RingLight,
+    /// The loot goblin: a Crypto Bro who runs off with a bag of Clout.
+    LootGoblin,
 }
 
 impl Archetype {
@@ -354,7 +356,7 @@ impl Archetype {
         Archetype::RingLight,
     ];
 
-    pub const ALL: [Archetype; 28] = [
+    pub const ALL: [Archetype; 29] = [
         Archetype::ChadGpt,
         Archetype::Clawed,
         Archetype::YesBot,
@@ -383,6 +385,7 @@ impl Archetype {
         Archetype::TrampolineBunny,
         Archetype::GlassFruit,
         Archetype::RingLight,
+        Archetype::LootGoblin,
     ];
 
     pub fn is_icon(self) -> bool {
@@ -416,7 +419,7 @@ const fn arch(name: &'static str, role: Role, hp: f32, speed: f32, radius: f32, 
 }
 
 /// In `Archetype` order.
-const ARCHETYPES: [ArchetypeDef; 28] = [
+const ARCHETYPES: [ArchetypeDef; 29] = [
     arch("ChadGPT", Role::Shooter, 26.0, 85.0, 20.0, 5.0, 2, "Keeps its distance and fires fans of speech bubbles."),
     arch("Clawed", Role::Shooter, 34.0, 95.0, 20.0, 6.0, 2, "Aims, then throws a long em-dash. It's not a lance, it's a journey."),
     arch("Yes-Bot", Role::Support, 24.0, 105.0, 18.0, 4.0, 3, "Agrees with nearby slop. Each agreement gives them 10% more damage."),
@@ -445,6 +448,7 @@ const ARCHETYPES: [ArchetypeDef; 28] = [
     arch("Trampoline Bunny", Role::Swarmer, 6.0, 170.0, 12.0, 4.0, 1, "Caught on a security camera at 3 a.m. Comes in hundreds."),
     arch("Glass Fruit", Role::Swarmer, 18.0, 90.0, 16.0, 5.0, 2, "Satisfying to cut. Bursts into glass shards that fly at you."),
     arch("Ring Light", Role::Support, 60.0, 0.0, 22.0, 4.0, 4, "A tripod that never moves. Buffs the slop around it and fires notification bubbles."),
+    arch("Crypto Bro", Role::Special, 160.0, 175.0, 19.0, 0.0, 10, "A loot goblin. Runs off with a bag of Clout; catch him before he gets away."),
 ];
 
 /// Brainrot bodies set how it moves (BRAIN-01).

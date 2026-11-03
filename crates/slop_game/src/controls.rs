@@ -18,12 +18,16 @@ use bevy::input::gamepad::{Gamepad, GamepadButton};
 use bevy::input::InputSystems;
 use bevy::prelude::*;
 
+use crate::winput;
+
 /// Stick deflection that counts as a menu move, and the repeat timing.
 const FLICK: f32 = 0.6;
 const REPEAT_FIRST: f32 = 0.35;
 const REPEAT_NEXT: f32 = 0.12;
 /// Below this the stick is ignored for movement.
 const DEADZONE: f32 = 0.18;
+/// A bit for the right trigger, next to the XInput buttons (which leave 0x0400 free).
+const TRIGGER: u16 = 0x0400;
 
 pub struct ControlsPlugin;
 
@@ -55,6 +59,8 @@ pub struct Controls {
     pub alt_key: bool,
     /// A gamepad was used last, for the hint bar.
     pub pad: bool,
+    /// XInput buttons held last frame, per controller.
+    xprev: Vec<u16>,
     stick_timer: f32,
     stick_dir: Option<Vec2>,
 }
@@ -112,7 +118,44 @@ fn read(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, pads: Query<&Gamepad>,
 
     let mut pad_used = false;
     let mut stick = Vec2::ZERO;
-    for pad in &pads {
+    // XInput controllers work even when the game is in the background
+    // (UI-20); when there are any, Bevy's view of the same pads is skipped.
+    let xpads = crate::winput::pads();
+    for (k, x) in xpads.iter().enumerate() {
+        let mut b = x.buttons;
+        if x.right_trigger > 100 {
+            b |= TRIGGER;
+        }
+        let prev = c.xprev.get(k).copied().unwrap_or(0);
+        let just = |m: u16| b & m != 0 && prev & m == 0;
+        let s = Vec2::new(x.lx as f32, x.ly as f32) / 32767.0;
+        if s.length() > DEADZONE {
+            stick = s.clamp_length_max(1.0);
+        }
+        let d = Vec2::new(((b & winput::Pad::DPAD_RIGHT != 0) as i32 - (b & winput::Pad::DPAD_LEFT != 0) as i32) as f32, ((b & winput::Pad::DPAD_UP != 0) as i32 - (b & winput::Pad::DPAD_DOWN != 0) as i32) as f32);
+        if d != Vec2::ZERO {
+            stick = d.normalize();
+        }
+        if just(winput::Pad::DPAD_LEFT) {
+            nav = Some(Vec2::NEG_X);
+        } else if just(winput::Pad::DPAD_RIGHT) {
+            nav = Some(Vec2::X);
+        } else if just(winput::Pad::DPAD_UP) {
+            nav = Some(Vec2::NEG_Y);
+        } else if just(winput::Pad::DPAD_DOWN) {
+            nav = Some(Vec2::Y);
+        }
+        confirm |= just(winput::Pad::A);
+        back |= just(winput::Pad::B);
+        pause |= just(winput::Pad::START);
+        alt |= just(winput::Pad::X);
+        reroll |= just(winput::Pad::Y);
+        dash |= just(winput::Pad::A) || just(winput::Pad::RB) || just(winput::Pad::LB) || just(TRIGGER);
+        pad_used |= (b & !prev) != 0 || s.length() > 0.5;
+    }
+    c.xprev = xpads.iter().map(|x| x.buttons | if x.right_trigger > 100 { TRIGGER } else { 0 }).collect();
+    let bevy_pads = if xpads.is_empty() { pads.iter().collect::<Vec<_>>() } else { Vec::new() };
+    for pad in bevy_pads {
         let s = pad.left_stick();
         let d = pad.dpad();
         if s.length() > DEADZONE {

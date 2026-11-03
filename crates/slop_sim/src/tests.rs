@@ -242,9 +242,11 @@ fn seed_bombs_heal_you_and_the_dog_orbits() {
 #[test]
 fn chadgpt_fires_fans_of_three_and_only_one_talks() {
     let mut w = armed(&[]);
+    w.player.invulnerable = u16::MAX;
     w.spawn_archetype(Archetype::ChadGpt, w.player.pos + V2::new(350.0, 0.0));
     let (mut most, mut talking) = (0, 0);
-    for _ in 0..240 {
+    // Only some fans talk at all, so watch a while (FAIR-05).
+    for _ in 0..2400 {
         w.step(idle());
         let bubbles: Vec<_> = w.projectiles.iter().filter(|p| p.look == Look::Bubble).collect();
         assert!(bubbles.iter().all(|p| p.hostile && (p.line == NO_LINE || (p.line as usize) < BUBBLE_LINES.len())));
@@ -344,9 +346,9 @@ fn brainrot_parts_shape_the_spec() {
     assert!(shark.is_brainrot());
 }
 
-// REQ: STATUS-01
+// REQ: STATUS-01, FAIR-05
 #[test]
-fn statuses_hurt_reverse_and_can_be_prevented() {
+fn statuses_hurt_slow_and_can_be_prevented() {
     let mut w = armed(&[]);
     w.add_anxiety();
     run(&mut w, 120);
@@ -360,7 +362,9 @@ fn statuses_hurt_reverse_and_can_be_prevented() {
     for _ in 0..20 {
         w.step(Input::moving(1.0, 0.0));
     }
-    assert!(w.player.pos.x < x, "controls are reversed");
+    let moved = w.player.pos.x - x;
+    assert!(moved > 0.0, "you still steer: brainrot never reverses you (FAIR-05)");
+    assert!(moved < PLAYER_SPEED * 20.0 / 60.0 * 0.7, "it slows you");
 
     let mut w = armed(&[]);
     w.player.perks.ad_blocker = true;

@@ -77,6 +77,7 @@ fn keys(mut controls: ResMut<Controls>, mut game: ResMut<Game>, mut nav: ResMut<
                         actions.push(UiAction::Reroll);
                     }
                 }
+                Some(Phase::Recycle { .. }) if controls.back => actions.push(UiAction::Close),
                 Some(Phase::Vending { offers, .. }) => {
                     if let Some(i) = controls.number.filter(|i| *i < offers.len()) {
                         actions.push(UiAction::Buy(i));
@@ -200,12 +201,6 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
             slop_sim::Event::Regenerate { .. } => game.banner = Some(("REGENERATE RESPONSE".into(), "The Model tries again. A varied build would have stopped this.".into(), 2.5)),
             slop_sim::Event::BossPhase { .. } => game.banner = Some(("PHASE 2".into(), "It is getting serious.".into(), 1.8)),
             slop_sim::Event::BossDefeated { kind, .. } => game.banner = Some(("DELETED".into(), format!("{} is gone. Grab its chest: a glitch waits inside.", kind.name()), 3.0)),
-            slop_sim::Event::Biome { platform } => {
-                game.banner = Some((format!("NOW ENTERING {}", platform.name().to_uppercase()), platform.hazard().to_string(), 2.6));
-            }
-            slop_sim::Event::ArenaWarning { .. } => game.banner = Some(("YOU'RE LIVE IN 3...".into(), "Stay inside the ring. Survive the stream, get the chest.".into(), 2.5)),
-            slop_sim::Event::ArenaCleared { .. } => game.banner = Some(("STREAM ENDED".into(), "Thanks for watching. Grab your chest.".into(), 2.5)),
-            slop_sim::Event::GodMode => game.banner = Some(("GOD MODE".into(), "Untouchable for 2 seconds.".into(), 1.2)),
             _ => {}
         }
     }

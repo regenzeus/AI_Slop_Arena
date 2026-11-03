@@ -39,10 +39,22 @@ fn folder() -> PathBuf {
     home.map_or_else(|| PathBuf::from("screenshots"), |h| h.join("Pictures").join("AI Slop Arena"))
 }
 
-fn screenshot(mut commands: Commands, keyboard: Res<ButtonInput<KeyCode>>, mut raw: MessageReader<KeyboardInput>) {
-    // Windows reports only the release of Print Screen, and a release without
-    // a press never reaches `ButtonInput`: read the raw key events instead.
-    let print = raw.read().any(|k| k.key_code == KeyCode::PrintScreen && k.state == ButtonState::Released);
+fn screenshot(
+    mut commands: Commands,
+    keyboard: Res<ButtonInput<KeyCode>>,
+    mut raw: MessageReader<KeyboardInput>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut held: Local<bool>,
+) {
+    // Windows reports only the release of Print Screen, and a screenshot tool
+    // may take the key for itself: read the key's physical state too.
+    let focused = windows.single().is_ok_and(|w| w.focused);
+    let (down, tapped) = crate::winput::print_screen();
+    let pressed = (down && !*held || tapped) && focused;
+    *held = down;
+    // Elsewhere, the key event is enough.
+    let event = raw.read().any(|k| k.key_code == KeyCode::PrintScreen && k.state == ButtonState::Released);
+    let print = pressed || (!cfg!(windows) && event);
     if !keyboard.just_pressed(KeyCode::F12) && !print {
         return;
     }

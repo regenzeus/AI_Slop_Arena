@@ -122,17 +122,24 @@ version 3 is in [design-v3.md](design-v3.md), version 4 in [design-v4.md](design
 | DEF-02 | Barrier weapons circle you, stop enemy shots and hurt slop they touch. | T, D |
 | ITEM-03 | Items have four rarities (common, rare, epic, legendary) with frames in grey, blue, purple and gold. Legendaries are offered rarely, more often with Luck, are one of a kind, and break rules (more projectiles, exploding kills, a second you, screen wipes, God Mode). | T, D |
 | GLITCH-01 | Glitches: rare perks that change a run. Every boss's chest is followed by a pick of three; now and then one takes a level-up card. | T, D |
-| LOOT-02 | Chests open one, three or five upgrades, each spinning like a slot reel and landing rarest last, with a fanfare for a legendary. One elite in ten drops a golden chest (five upgrades, always a legendary) under a pillar of light; chests off screen get an arrow at the screen's edge. | T, D |
+| LOOT-02 | Chests open one, three or five upgrades, each spinning like a slot reel and landing rarest last, with a fanfare for a legendary. Elites with a chest sometimes drop a golden one (rare early, up to one in eight later; five upgrades, always a legendary) under a pillar of light; each card says what the upgrade does; chests off screen get an arrow at the screen's edge. | T, D |
 | LOOT-03 | Clout drops as coins, stacks and bags; Algorithm Boost pulls every Like and coin on the map. | T, D |
 | STAT-02 | Hustle, a stat: Clout every minute, and coins drop more often. | T |
-| BIOME-01 | The map is a patchwork of the six platforms in squares; neighbours always differ. Walking into one changes the floor, the local slop and the hazard, once you are properly inside; a banner says where you are. Bosses keep their order. | T, D |
-| EVENT-01 | Trend alerts: swarms cross the screen in a line and are gone; pop-up walls ring you and close in. | T, D |
+| BIOME-01 | The map is a patchwork of the six platforms in squares of 6144 units; neighbours always differ. Walking into one changes the floor, the local slop and the hazard, once you are properly inside; the floor and the HUD show where you are, without an announcement. Bosses keep their order. | T, D |
+| EVENT-01 | Swarms cross the screen in a line and are gone; rings of Recruiter Bots close in. Neither is announced in words. | T, D |
 | EVENT-02 | Livestreams: after a warning a ring holds you in with a growing crowd for 28 s, then pays a big chest. They come on their own and from Go Live ring lights on the map. | T, D |
 | ICON-01 | Twelve brainrot icons, parodies of the viral AI characters, each with its own trick: bonks, charges, blinks, needles, stomps, peels, shards, flying bombers, turrets. They join every platform as the Feed goes on. | T, D |
 | ICON-02 | The icons are animated in four frames, and every slop waddles and squashes as it walks. | D |
-| STATUS-02 | Brainrot (reversed controls) only comes from something you can see: a brainrot zone you stood in when the beat dropped, or the Supreme Brainrot's warning. While it lasts, the screen says so with a countdown. | T, D |
-| UI-18 | Print Screen saves a screenshot like F12. Start on a gamepad only pauses and resumes; B resumes too. | D |
+| STATUS-02 | Brainrot only comes from something you can see: a brainrot zone you stood in when the beat dropped, or the Supreme Brainrot's warning. It slows you; the Mental Health panel lists it. | T, D |
+| UI-18 | Print Screen saves a screenshot like F12, read from the key's physical state so a screenshot tool that grabs the key cannot hide it. Start on a gamepad only pauses and resumes; B resumes too. | D |
 | UI-19 | Reroll sits below the build, out of the arrow-key path between cards; R, Y or a click rerolls. | D |
+| UI-20 | An Xbox controller keeps playing while the game window is in the background (XInput), and the game keeps running at full speed there. | D |
+| FAIR-05 | Nothing takes control away or covers the Feed: no reversed controls, no drags or shoves, no screen-covering pop-ups or ads; such effects slow you instead. Effects on you are shown on you (an aura, a bubble, a flash), not announced in words. | T, D |
+| ELITE-02 | Elites come every 30 s, more of them later, with seven affixes (Summoner and Hulking added); each glows in its affix's colour. Fewer than half carry a chest; split copies never do. | T, D |
+| EVENT-03 | The crowd surges: calm, build-up, a burst of melee slop, a lull, every 75 s, and every fourth burst is a horde. | T |
+| CHEST-02 | Once nothing can be upgraded, chests pay Clout and a heal without stopping the game, and level-ups offer small stat-ups. | T |
+| MAP-05 | One or two things to use per chunk; new: recycle bins (throw an item away for Clout), fine-tuning stations (buy a weapon level), data brokers (sell Mental Health for a rare item), power outlets (dashes refill, run faster). | T, D |
+| LOOT-04 | The loot goblin: now and then a Crypto Bro runs off with a bag of Clout; catch him for coins and a chest, or he gets away. | T, D |
 
 ## Client
 

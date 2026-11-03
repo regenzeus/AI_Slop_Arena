@@ -637,14 +637,10 @@ impl World {
             self.events.push(Event::Deflected { at });
         }
         let armor = 1.0 - self.player.perks.shot_armor.clamp(0.0, 0.8);
-        for (damage, spec, shove, doomscroll, vel) in on_you {
-            if self.hurt(damage * armor, spec) {
-                if shove > 0.0 {
-                    self.player.vel += vel.normalized() * shove;
-                }
-                if doomscroll {
-                    self.apply_status(StatusKind::Doomscroll);
-                }
+        // Posts, peels and arrows slow you; nothing shoves or drags (FAIR-05).
+        for (damage, spec, shove, doomscroll, _) in on_you {
+            if self.hurt(damage * armor, spec) && (shove > 0.0 || doomscroll) {
+                self.apply_status(StatusKind::Doomscroll);
             }
         }
         self.projectiles.retain(|p| p.life > 0);

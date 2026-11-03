@@ -7,10 +7,10 @@
 //! simulation events; they never change the wave.
 
 use bevy::prelude::*;
-use slop_sim::content::{weapon_index, Archetype, Look, Pattern, AGREE_LINES, BUBBLE_LINES, CLAWED_LINES, DELETED_LINES, WEAPONS};
+use slop_sim::content::{weapon_index, Archetype, Look, Pattern, AGREE_LINES, BUBBLE_LINES, CLAWED_LINES, WEAPONS};
 use slop_sim::events::StatusKind;
 use slop_sim::spec::SlopLook;
-use slop_sim::world::{Active, LANCE_AIM, SPAWN_WARNING, TICK_RATE};
+use slop_sim::world::{LANCE_AIM, SPAWN_WARNING, TICK_RATE};
 use slop_sim::{DamageType, Event, V2};
 
 use crate::art::{Art, HUMAN_SIZE};
@@ -138,64 +138,30 @@ fn ring(commands: &mut Commands, art: &Art, at: Vec2, radius: f32, color: Color,
     commands.spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), color, ..default() }, Transform::from_xyz(at.x, at.y, Z_FX), fx));
 }
 
-fn status_words(kind: StatusKind) -> (&'static str, Color) {
+fn status_color(kind: StatusKind) -> Color {
     match kind {
-        StatusKind::Anxiety => ("Anxiety!", theme::DANGER),
-        StatusKind::Doomscroll => ("Doomscrolling...", theme::DANGER),
-        StatusKind::Popup => ("Pop-up!", theme::DANGER),
-        StatusKind::Ratio => ("Ratio'd", theme::DANGER),
-        StatusKind::Brainrot => ("BRAINROT: CONTROLS REVERSED!", Color::srgb(0.62, 0.36, 1.0)),
-        StatusKind::BrainrotWarning => ("Brainrot incoming: controls flip in a moment!", Color::srgb(0.62, 0.36, 1.0)),
-    }
-}
-
-fn active_words(a: Active) -> &'static str {
-    match a {
-        Active::LogOff => "Logged off!",
-        Active::BlockButton => "Blocked.",
-        Active::DigitalDetox => "Digital detox!",
-        Active::Unsubscribe => "UNSUBSCRIBE",
-        Active::PhoneAFriend => "Phone a friend!",
+        StatusKind::Brainrot | StatusKind::BrainrotWarning => Color::srgba(0.62, 0.36, 1.0, 0.9),
+        StatusKind::Doomscroll | StatusKind::Popup => Color::srgba(0.4, 0.6, 1.0, 0.9),
+        _ => theme::DANGER.with_alpha(0.8),
     }
 }
 
 /// Keys that fly off a Mechanical Keyboard.
 const KEYS: [&str; 8] = ["W", "A", "S", "D", "Q", "E", "Ctrl", "Esc"];
 
-/// Kill streaks worth shouting about: kills within `STREAK_SECONDS`.
-const STREAKS: [(usize, &str); 4] = [(12, "Trending!"), (25, "VIRAL!"), (45, "Breaking the algorithm!"), (80, "MODEL COLLAPSE IMMINENT")];
-const STREAK_SECONDS: f32 = 2.5;
 
 #[allow(clippy::too_many_lines, clippy::too_many_arguments)]
 fn spawn_fx(
     mut commands: Commands,
     game: Res<Game>,
     art: Res<Art>,
-    time: Res<Time>,
     mut shake: ResMut<Shake>,
     existing: Query<&Fx>,
     mut counter: Local<u32>,
-    mut streak: Local<(Vec<f32>, usize)>,
 ) {
     let Some(world) = game.world() else { return };
     let me = v(world.player.pos);
-    // Kill streaks: shout each tier once, until the streak cools down.
-    let now = time.elapsed_secs();
-    let kills = game.events.iter().filter(|e| matches!(e, Event::SlopDied { .. })).count();
-    let (times, shouted) = &mut *streak;
-    times.extend(std::iter::repeat_n(now, kills));
-    times.retain(|t| now - *t < STREAK_SECONDS);
-    let tier = STREAKS.iter().filter(|(n, _)| times.len() >= *n).count();
-    if tier > *shouted {
-        let (_, words) = STREAKS[tier - 1];
-        shadowed(&mut commands, words, me + Vec2::new(0.0, 110.0), 26.0 + 6.0 * tier as f32, Color::srgb(1.0, 0.45, 0.2), 1.3, Vec2::Y * 30.0, Kind::Text);
-        shake.trauma = shake.trauma.max(0.2);
-        *shouted = tier;
-    } else if times.len() < STREAKS[0].0 / 2 {
-        *shouted = 0;
-    }
     if game.level_flash {
-        shadowed(&mut commands, "LEVEL UP!", me + Vec2::new(0.0, 70.0), 30.0, Color::srgb(1.0, 0.86, 0.3), 1.4, Vec2::Y * 40.0, Kind::Text);
         ring(&mut commands, &art, me, 90.0, Color::srgb(1.0, 0.86, 0.3), 0.5);
         for k in 0..8 {
             let fx = Fx::new(Kind::Spin, 0.7, spread(*counter + k) * 260.0);
@@ -245,7 +211,6 @@ fn spawn_fx(
                     particle(&mut commands, &art, at, 8.0, look_color(look), Fx::new(Kind::Particle, 0.5, spread(n * 7 + k) * 260.0));
                 }
                 ring(&mut commands, &art, at, 34.0, look_color(look), 0.22);
-                say(&mut commands, DELETED_LINES[n as usize % DELETED_LINES.len()], at + Vec2::Y * 10.0, 13.0, theme::QUIET, 0.7);
             }
             Event::SpawnWarning { at } => {
                 commands.spawn((
@@ -254,20 +219,15 @@ fn spawn_fx(
                     Fx::new(Kind::Warning, SPAWN_WARNING as f32 / TICK_RATE as f32, Vec2::ZERO),
                 ));
             }
-            Event::Named { at, spec } => {
-                if let Some(s) = world.setup.specs.get(spec as usize) {
-                    let color = if s.elite { theme::PLAYER_RED } else { Color::srgb(1.0, 0.62, 0.25) };
-                    say(&mut commands, &format!("{}!", s.name), v(at) + Vec2::Y * 40.0, 17.0, color, 1.6);
-                }
-            }
+            Event::Named { .. } => {}
             Event::PlayerHurt { amount } => {
                 shake.trauma = (shake.trauma + 0.25 + amount * 0.015).min(1.0);
                 say(&mut commands, &format!("-{:.0}", amount.max(1.0)), me + Vec2::new(22.0, 34.0), 24.0, theme::DANGER, 0.7);
             }
-            Event::Dodged => say(&mut commands, "Nope.", me + Vec2::new(0.0, 40.0), 18.0, theme::PAPER, 0.8),
-            Event::SlopDodged { at } => say(&mut commands, "dodged", v(at) + Vec2::Y * 24.0, 14.0, theme::QUIET, 0.6),
-            Event::Blocked => say(&mut commands, "Blocked!", me + Vec2::new(0.0, 44.0), 18.0, theme::type_text(DamageType::Fact), 0.8),
-            Event::SecondWind => say(&mut commands, "Good night's sleep!", me + Vec2::new(0.0, 50.0), 22.0, theme::mental_health_color(1.0), 1.5),
+            Event::Dodged => ring(&mut commands, &art, me, 40.0, Color::srgba(1.0, 1.0, 1.0, 0.7), 0.2),
+            Event::SlopDodged { .. } => {}
+            Event::Blocked => ring(&mut commands, &art, me, 50.0, theme::type_text(DamageType::Fact).with_alpha(0.9), 0.25),
+            Event::SecondWind => ring(&mut commands, &art, me, 160.0, theme::mental_health_color(1.0).with_alpha(0.9), 0.6),
             Event::Swing { at, angle, range, weapon, .. } => {
                 let spray = world.player.weapons.get(weapon as usize).is_some_and(|w| matches!(w.def().pattern, Pattern::Cone { .. }));
                 let image = if spray { art.spray.clone() } else { art.swing.clone() };
@@ -307,13 +267,13 @@ fn spawn_fx(
                             shadowed(&mut commands, key, me + d * 30.0, 15.0, theme::PAPER, 0.45, d * 300.0, Kind::Particle);
                         }
                     }
-                    Pattern::Aura => say(&mut commands, "clap", me + Vec2::new(0.0, 46.0), 15.0, color, 0.45),
+                    Pattern::Aura => {}
                     Pattern::Zone { .. } | Pattern::Lob { .. } => {
                         for k in 0..3 {
                             particle(&mut commands, &art, me + dir * 30.0, 6.0, color, Fx::new(Kind::Particle, 0.2, Vec2::from_angle(dir.to_angle() + (jitter(n + k) - 0.5)) * 220.0));
                         }
                     }
-                    Pattern::Orbit { .. } if n % 7 == 0 => say(&mut commands, "woof", v(to) + Vec2::Y * 28.0, 15.0, theme::PAPER, 0.5),
+                    Pattern::Orbit { .. } if n % 7 == 0 => {}
                     _ => {}
                 }
             }
@@ -354,14 +314,12 @@ fn spawn_fx(
                 for k in 0..10 {
                     particle(&mut commands, &art, v(at), 10.0, Color::srgb(0.7, 0.7, 0.75), Fx::new(Kind::Particle, 0.4, spread(n * 13 + k) * 340.0));
                 }
-                say(&mut commands, "BANNED", v(at) + Vec2::Y * 30.0, 22.0, theme::DANGER, 0.7);
             }
             Event::Ring { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.2),
             Event::Reflected { at } => {
                 if let Some(u) = &uno {
                     sprite(&mut commands, u, v(at), 40.0, 0.0, Fx::new(Kind::Spin, 0.45, Vec2::Y * 40.0));
                 }
-                say(&mut commands, "No u.", v(at) + Vec2::Y * 30.0, 17.0, theme::type_text(DamageType::Sarcasm), 0.8);
             }
             Event::BubblePopped { at, line } => {
                 let words = BUBBLE_LINES.get(line as usize).copied().unwrap_or("...");
@@ -373,15 +331,19 @@ fn spawn_fx(
                 }
             }
             Event::Agreed { at, line } => {
-                let w = AGREE_LINES.get(line as usize).copied().unwrap_or("Type AMEN.");
-                say(&mut commands, w, v(at) + Vec2::Y * 40.0, 16.0, Color::srgb(0.5, 0.95, 0.5), 1.4);
+                // A green pulse; now and then the words too.
+                ring(&mut commands, &art, v(at), 60.0, Color::srgba(0.5, 0.95, 0.5, 0.6), 0.3);
+                if n % 4 == 0 {
+                    let w = AGREE_LINES.get(line as usize).copied().unwrap_or("Type AMEN.");
+                    say(&mut commands, w, v(at) + Vec2::Y * 40.0, 15.0, Color::srgb(0.5, 0.95, 0.5), 1.0);
+                }
             }
-            Event::Healed { at } => say(&mut commands, "+HP", v(at) + Vec2::Y * 30.0, 15.0, Color::srgb(0.5, 0.95, 0.5), 0.8),
-            Event::Scattered { at } => say(&mut commands, "Listicle scattered!", v(at) + Vec2::Y * 30.0, 16.0, theme::PAPER, 1.0),
-            Event::Reposted { at } => say(&mut commands, "[repost]", v(at) + Vec2::Y * 30.0, 15.0, theme::QUIET, 0.9),
-            Event::Split { at } => say(&mut commands, "I came across your profile.", v(at) + Vec2::Y * 34.0, 14.0, theme::PAPER, 1.2),
-            Event::Hatched { at } => say(&mut commands, "Surprise!", v(at) + Vec2::Y * 30.0, 16.0, theme::PAPER, 1.0),
-            Event::Grabbed => say(&mut commands, "Grabbed!", me + Vec2::new(0.0, 44.0), 18.0, theme::DANGER, 0.8),
+            Event::Healed { .. } => {}
+            Event::Scattered { .. } => {}
+            Event::Reposted { .. } => {}
+            Event::Split { .. } => {}
+            Event::Hatched { .. } => {}
+            Event::Grabbed => {}
             Event::LancerAim { from, dir } => {
                 let (from, dir) = (v(from), v(dir));
                 let centre = from + dir * (AIM_LENGTH / 2.0);
@@ -392,28 +354,25 @@ fn spawn_fx(
                     fx,
                 ));
                 // Clawed thinks out loud while it aims.
-                if n % 2 == 0 {
+                if n % 5 == 0 {
                     say(&mut commands, CLAWED_LINES[(n / 2) as usize % CLAWED_LINES.len()], from + Vec2::Y * 46.0, 15.0, Color::srgb(1.0, 0.66, 0.5), 1.2);
                 }
             }
-            Event::Status { kind } => {
-                let (w, color) = status_words(kind);
-                say(&mut commands, w, me + Vec2::new(0.0, 52.0), 18.0, color, 1.0);
-            }
-            Event::ActiveUsed { active } => say(&mut commands, active_words(active), me + Vec2::new(0.0, 60.0), 20.0, theme::type_text(DamageType::Grass), 1.0),
+            // A status shows on you as a coloured flash, never as words.
+            Event::Status { kind } => ring(&mut commands, &art, me, 46.0, status_color(kind), 0.3),
+            Event::ActiveUsed { .. } => {}
             Event::Friend { from, to } => line(&mut commands, &art, v(from), v(to), 14.0, Color::srgba(0.4, 0.9, 0.5, 0.8), 0.35),
-            Event::LootBox { at } => say(&mut commands, "Elite down: CHEST!", v(at) + Vec2::Y * 40.0, 18.0, Color::srgb(1.0, 0.8, 0.2), 1.6),
+            Event::LootBox { .. } => {}
             Event::PickedUp { kind, at } => {
                 use slop_sim::world::PickupKind as K;
-                let (words, color) = match kind {
-                    K::Food => ("Touched grass: healed!", theme::AGREE),
-                    K::Magnet => ("VACUUM: everything flies to you!", Color::srgb(0.5, 0.8, 1.0)),
-                    K::Freeze => ("SERVER OUTAGE: slop frozen", Color::srgb(0.6, 0.85, 1.0)),
-                    K::Chest => ("Chest!", Color::srgb(1.0, 0.8, 0.2)),
-                    K::Bomb | K::Clout => ("", theme::PAPER),
+                let color = match kind {
+                    K::Food => Some(theme::AGREE),
+                    K::Freeze => Some(Color::srgb(0.6, 0.85, 1.0)),
+                    K::Chest => Some(Color::srgb(1.0, 0.8, 0.2)),
+                    _ => None,
                 };
-                if !words.is_empty() {
-                    say(&mut commands, words, v(at) + Vec2::Y * 40.0, 20.0, color, 1.2);
+                if let Some(c) = color {
+                    ring(&mut commands, &art, v(at), 80.0, c, 0.35);
                 }
                 if kind == K::Freeze {
                     shake.trauma = shake.trauma.max(0.3);
@@ -422,23 +381,12 @@ fn spawn_fx(
             Event::MassReport { at } => {
                 shake.trauma = 1.0;
                 ring(&mut commands, &art, v(at), 900.0, Color::srgba(1.0, 0.3, 0.3, 0.7), 0.5);
-                say(&mut commands, "MASS REPORT!", v(at) + Vec2::Y * 90.0, 34.0, theme::DANGER, 1.5);
             }
-            Event::Broke { at, kind } => {
-                // Say what breaking it did: something dropped.
-                let words = match kind {
-                    slop_sim::map::PropKind::PopupAd => "[x] closed: loot!",
-                    slop_sim::map::PropKind::CryptoMiner => "rug pulled: Clout!",
-                    slop_sim::map::PropKind::LostPhone => "finders keepers: chest!",
-                    _ => "ad smashed: loot!",
-                };
-                say(&mut commands, words, v(at) + Vec2::Y * 30.0, 15.0, theme::PAPER, 0.9);
+            Event::Broke { at, .. } => {
                 ring(&mut commands, &art, v(at), 60.0, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.25);
             }
-            Event::PropUsed { at, kind } => say(&mut commands, kind.name(), v(at) + Vec2::Y * 110.0, 18.0, Color::srgb(1.0, 0.9, 0.5), 1.0),
-            Event::PropDone { at, kind } => {
-                let words = if kind == slop_sim::map::PropKind::DataCenter { "UPLOAD COMPLETE: chest!" } else { "Comments locked: chest!" };
-                say(&mut commands, words, v(at) + Vec2::Y * 110.0, 22.0, Color::srgb(1.0, 0.8, 0.2), 2.0);
+            Event::PropUsed { .. } => {}
+            Event::PropDone { at, .. } => {
                 ring(&mut commands, &art, v(at), 220.0, Color::srgba(1.0, 0.8, 0.2, 0.8), 0.4);
             }
             Event::BossDefeated { at, .. } => {
@@ -446,7 +394,7 @@ fn spawn_fx(
                 ring(&mut commands, &art, v(at), 500.0, Color::srgba(1.0, 0.8, 0.2, 0.9), 0.6);
             }
             Event::Confused { at } => say(&mut commands, "?", v(at) + Vec2::Y * 34.0, 22.0, Color::srgb(1.0, 0.6, 0.9), 0.7),
-            Event::Maintenance { at, .. } => say(&mut commands, "Maintenance: this block closes. It blocks, it never hurts.", v(at), 18.0, Color::srgb(0.95, 0.76, 0.19), 2.0),
+            Event::Maintenance { .. } => {}
             Event::Dashed { from, dir } => {
                 // Afterimages along the dash.
                 for k in 0..4 {
@@ -462,9 +410,8 @@ fn spawn_fx(
             Event::ShieldHit { .. } => ring(&mut commands, &art, me, 34.0, Color::srgba(0.31, 0.72, 0.91, 0.8), 0.18),
             Event::ShieldBroke => {
                 ring(&mut commands, &art, me, 60.0, Color::srgba(0.31, 0.72, 0.91, 0.9), 0.35);
-                say(&mut commands, "Boundaries broken!", me + Vec2::new(0.0, 56.0), 18.0, Color::srgb(0.31, 0.72, 0.91), 1.0);
             }
-            Event::ShieldUp => say(&mut commands, "Boundaries back up", me + Vec2::new(0.0, 56.0), 15.0, Color::srgb(0.31, 0.72, 0.91), 0.9),
+            Event::ShieldUp => {}
             Event::Deflected { at } => {
                 if particles < MAX_PARTICLES {
                     particles += 1;
@@ -477,9 +424,8 @@ fn spawn_fx(
             }
             Event::GodMode => {
                 ring(&mut commands, &art, me, 120.0, Color::srgba(1.0, 0.9, 0.4, 0.9), 0.5);
-                say(&mut commands, "GOD MODE", me + Vec2::new(0.0, 80.0), 30.0, Color::srgb(1.0, 0.85, 0.3), 1.2);
             }
-            Event::SelfHeal { amount } => say(&mut commands, &format!("Therapist: +{amount:.0}"), me + Vec2::new(0.0, 50.0), 18.0, theme::AGREE, 1.2),
+            Event::SelfHeal { .. } => {}
             Event::ChargeAim { from, dir } => {
                 commands.spawn((
                     Sprite { image: art.dot.clone(), custom_size: Some(Vec2::new(380.0, 6.0)), color: theme::DANGER.with_alpha(0.6), ..default() },
@@ -489,18 +435,15 @@ fn spawn_fx(
             }
             Event::BlinkWarning { at } => {
                 ring(&mut commands, &art, v(at), 40.0, theme::DANGER, 0.75);
-                say(&mut commands, "behind you!", v(at) + Vec2::Y * 36.0, 16.0, theme::DANGER, 0.8);
             }
             Event::Swarm { .. } => {
                 shake.trauma = shake.trauma.max(0.3);
-                say(&mut commands, "TREND ALERT!", me + Vec2::new(0.0, 120.0), 34.0, Color::srgb(1.0, 0.45, 0.2), 1.6);
             }
             Event::Encircled { at, radius } => ring(&mut commands, &art, v(at), radius, theme::DANGER.with_alpha(0.6), 1.0),
             Event::ArenaWarning { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 0.8), 2.5),
             Event::ArenaClosed { at, radius } => {
                 shake.trauma = shake.trauma.max(0.4);
                 ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 1.0), 0.5);
-                say(&mut commands, "LIVE", me + Vec2::new(0.0, 100.0), 40.0, Color::srgb(1.0, 0.25, 0.25), 1.2);
             }
             Event::ArenaCleared { at } => {
                 shake.trauma = shake.trauma.max(0.5);
@@ -509,10 +452,9 @@ fn spawn_fx(
             Event::Vacuum => ring(&mut commands, &art, me, 600.0, Color::srgba(0.5, 0.8, 1.0, 0.6), 0.5),
             Event::RareDrop { at } => {
                 ring(&mut commands, &art, v(at), 160.0, Color::srgba(1.0, 0.85, 0.3, 1.0), 0.8);
-                say(&mut commands, "GOLDEN CHEST!", v(at) + Vec2::Y * 70.0, 28.0, Color::srgb(1.0, 0.85, 0.3), 2.0);
                 shake.trauma = shake.trauma.max(0.4);
             }
-            Event::Hustle { level } => say(&mut commands, &format!("Rise and grind! Speed x{level:.2}"), me + Vec2::new(0.0, 80.0), 20.0, theme::PLAYER_RED, 1.5),
+            Event::Hustle { .. } => {}
             Event::WaveCleared => {
                 for (k, s) in world.slop.iter().enumerate() {
                     let at = v(s.pos);

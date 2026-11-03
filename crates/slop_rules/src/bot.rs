@@ -117,6 +117,8 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
             run.bless(i).is_ok()
         }
         Phase::Chest(_) => run.close().is_ok(),
+        // The bots keep their items.
+        Phase::Recycle { .. } => run.close().is_ok(),
         Phase::Glitch(offers) => run.take_glitch(rng.below(offers.len() as u32) as usize).is_ok(),
         Phase::Playing | Phase::Over { .. } => false,
     }

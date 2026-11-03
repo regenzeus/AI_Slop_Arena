@@ -15,7 +15,6 @@ use slop_sim::content::{Archetype, BossKind, Look, Pattern, Platform, BUBBLE_LIN
 use slop_sim::Event;
 use slop_sim::spec::{SlopLook, SlopSpec, Traits};
 use slop_sim::map::{chunk_seed, PropKind, PropState, WallKind, CHUNK};
-use slop_sim::spec::Traits as T;
 use slop_sim::world::{Outcome, Shape, Slop, World, ZoneKind, FLASH_TICKS, NO_LINE, PLAYER_SPEED};
 
 use crate::art::{Art, Pair, BUBBLE_BORDER, FACES, HUMAN_SIZE, SLOP_SCALE};
@@ -73,6 +72,10 @@ struct SlopView {
     tag: Entity,
     shield: Option<Entity>,
     stun: Entity,
+    /// An elite's glowing aura (ELITE-02).
+    aura: Option<Entity>,
+    /// Feet that step as it walks (ICON-02).
+    feet: Vec<Entity>,
 }
 
 /// How a carried weapon moves when it attacks.
@@ -131,6 +134,9 @@ struct Views {
     player_root: Entity,
     player_body: Entity,
     swirl: Entity,
+    /// God Mode and Power Outlet aura; the Boundaries bubble.
+    aura: Entity,
+    bubble: Entity,
     slop: HashMap<u32, SlopView>,
     /// A projectile's view and the life it started with (for lob arcs).
     shots: HashMap<u32, (Entity, u16)>,
@@ -209,6 +215,9 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             ChildOf(player_root),
         ))
         .id();
+    // Effects on you are shown on you: a bubble, an aura, a tint (FAIR-05).
+    let aura = commands.spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE * 1.6)), color: Color::NONE, ..default() }, Transform::from_xyz(0.0, 0.0, 0.25), ChildOf(player_root))).id();
+    let bubble = commands.spawn((Sprite { image: art.ball.clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE * 1.5)), color: Color::NONE, ..default() }, Transform::from_xyz(0.0, 0.0, 0.24), ChildOf(player_root))).id();
     commands.insert_resource(Views {
         seed: u64::MAX,
         platform: None,
@@ -216,6 +225,8 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         player_root,
         player_body,
         swirl,
+        aura,
+        bubble,
         slop: HashMap::new(),
         shots: HashMap::new(),
         likes: HashMap::new(),
@@ -325,11 +336,16 @@ fn spawn_slop(commands: &mut Commands, art: &Art, world: &World, s: &Slop) -> Sl
         _ => {}
     }
     let bar_y = size * 0.55 + 6.0;
+    // Elites stand out from the crowd: a glowing aura in their affix's colour,
+    // a ring around them and their affix above (ELITE-02).
+    let mut aura = None;
     if spec.elite {
-        // The affix, the first word of an elite's name (ELITE-01).
         let affix = spec.name.split_whitespace().next().unwrap_or("ELITE").to_uppercase();
-        let color = if spec.traits.has(T::VERIFIED) { theme::type_color(slop_sim::DamageType::Fact) } else if spec.traits.has(T::SPONSORED) { Color::srgb(1.0, 0.8, 0.2) } else { theme::PLAYER_RED };
-        text(commands, affix, 13.0, color, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
+        let color = affix_color(&affix);
+        let glow = commands.spawn((Sprite { image: art.ball.clone(), custom_size: Some(Vec2::splat(spec.radius * 4.2)), color: color.with_alpha(0.35), ..default() }, Transform::from_xyz(0.0, 0.0, -0.08), ChildOf(root))).id();
+        commands.spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(spec.radius * 3.0)), color: color.with_alpha(0.9), ..default() }, Transform::from_xyz(0.0, -spec.radius * 0.3, -0.07), ChildOf(glow)));
+        aura = Some(glow);
+        text(commands, affix, 14.0, color, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
     }
     if s.reposted {
         text(commands, "[repost]", 12.0, theme::QUIET, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
@@ -353,7 +369,19 @@ fn spawn_slop(commands: &mut Commands, art: &Art, world: &World, s: &Slop) -> Sl
     let stun = commands
         .spawn((Sprite { image: art.swirl.clone(), custom_size: Some(Vec2::splat(20.0)), color: Color::srgb(0.5, 0.8, 1.0), ..default() }, Transform::from_xyz(0.0, bar_y + 8.0, 0.2), Visibility::Hidden, ChildOf(root)))
         .id();
-    SlopView { root, body, parts, bar_back, bar_fill, tag, shield, stun }
+    // Walkers without frames of their own get two feet that step.
+    let walks = !matches!(spec.look, SlopLook::Boss(_)) && !matches!(spec.look, SlopLook::Archetype(a) if a.is_icon() || a == Archetype::LootGoblin) && !spec.traits.has(Traits::FLIES) && spec.movement != slop_sim::spec::Movement::Stand;
+    let feet = if walks {
+        (0..2)
+            .map(|k| {
+                let x = if k == 0 { -0.38 } else { 0.38 } * spec.radius;
+                commands.spawn((Sprite { image: art.ball.clone(), custom_size: Some(Vec2::new(spec.radius * 0.55, spec.radius * 0.34)), color: theme::INK, ..default() }, Transform::from_xyz(x, -spec.radius * 0.88, -0.02), ChildOf(root))).id()
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+    SlopView { root, body, parts, bar_back, bar_fill, tag, shield, stun, aura, feet }
 }
 
 /// Bubble text is short; its frame is sized to it.
@@ -438,6 +466,12 @@ fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, s
         ZoneKind::Filter => (art.filter.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Fire => (art.fire.clone(), Vec2::splat(radius * 2.2)),
         ZoneKind::Roots => (art.roots.clone(), Vec2::splat(radius * 2.0)),
+        ZoneKind::Buffering => {
+            let root = commands.spawn((Root, Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), color: Color::srgba(0.9, 0.9, 0.95, 0.6), ..default() }, Transform::default())).id();
+            commands.spawn((Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(radius * 1.9)), color: Color::srgba(0.1, 0.1, 0.12, 0.35), ..default() }, Transform::from_xyz(0.0, 0.0, -0.01), ChildOf(root)));
+            text(commands, "buffering...", 16.0, Color::srgba(0.95, 0.95, 1.0, 0.8), Vec3::new(0.0, 0.0, 0.05), root);
+            return root;
+        }
         ZoneKind::Brainrot => {
             let root = commands.spawn((Root, Sprite { image: art.brainrot_zone.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), ..default() }, Transform::default())).id();
             text(commands, "BRAINROT ZONE\nleave before the drop", 15.0, Color::srgb(0.85, 0.7, 1.0), Vec3::new(0.0, 0.0, 0.05), root);
@@ -531,6 +565,24 @@ fn sync(
         let on = p.status.brainrot > 0 || p.status.brainrot_warning > 0;
         *vis = if on { Visibility::Inherited } else { Visibility::Hidden };
         tf.rotation = Quat::from_rotation_z(-t * 8.0);
+    }
+    if let Ok((mut tf, mut sprite, _)) = parts.get_mut(views.aura) {
+        let pulse = 1.0 + 0.08 * (t * 10.0).sin();
+        tf.scale = Vec3::splat(pulse);
+        sprite.color = if p.god > 0 {
+            Color::srgba(1.0, 0.85, 0.3, 0.9)
+        } else if p.charged > 0 {
+            Color::srgba(0.5, 0.9, 1.0, 0.45 + 0.3 * (t * 14.0).sin().abs())
+        } else if p.status.brainrot > 0 || p.status.doomscroll > 0 || p.status.popup > 0 {
+            Color::srgba(0.55, 0.45, 1.0, 0.5)
+        } else {
+            Color::NONE
+        };
+    }
+    if let Ok((_, mut sprite, _)) = parts.get_mut(views.bubble) {
+        let max = p.stats.boundaries.max(0.0);
+        let share = if max > 0.0 { (p.shield / max).clamp(0.0, 1.0) } else { 0.0 };
+        sprite.color = Color::srgba(0.31, 0.72, 0.91, 0.18 * share);
     }
 
     // Your weapons, in your hands: they aim, kick, swing and throw (WPN-09).
@@ -644,6 +696,30 @@ fn sync(
             tf.rotation = Quat::from_rotation_z(0.09 * pace * (t * (5.0 + 5.0 * pace) + s.id as f32).cos());
             tf.translation.y = 4.0 * pace * step.abs();
         }
+        // Feet step in turn while it moves.
+        let pace = (s.moving.length() / 120.0).min(1.5);
+        let stride = t * (8.0 + 8.0 * pace) + s.id as f32;
+        for (k, e) in v.feet.iter().enumerate() {
+            if let Ok((mut tf, _, _)) = parts.get_mut(*e) {
+                let phase = stride + k as f32 * std::f32::consts::PI;
+                let base_x = if k == 0 { -0.38 } else { 0.38 } * spec.radius;
+                tf.translation.x = base_x + phase.sin() * spec.radius * 0.18 * pace;
+                tf.translation.y = -spec.radius * 0.88 + phase.cos().max(0.0) * spec.radius * 0.22 * pace;
+            }
+        }
+        // A brainrot's object swings and its accessory bobs.
+        if matches!(spec.look, SlopLook::Brainrot { .. }) {
+            if let Some((e, _)) = v.parts.get(1) {
+                if let Ok((mut tf, _, _)) = parts.get_mut(*e) {
+                    tf.rotation = Quat::from_rotation_z(0.18 * (stride * 0.8).sin());
+                }
+            }
+            if let Some((e, _)) = v.parts.get(2) {
+                if let Ok((mut tf, _, _)) = parts.get_mut(*e) {
+                    tf.translation.y = 2.5 * (stride * 1.3).sin().abs();
+                }
+            }
+        }
         // Brainrot icons play their frames: legs, bats, propellers.
         let frames = match spec.look {
             SlopLook::Archetype(a) => art.icon_frames.get(&a),
@@ -688,6 +764,11 @@ fn sync(
             let w = full * (s.hp / s.max_hp).clamp(0.0, 1.0);
             sprite.custom_size = Some(Vec2::new(w, 4.0));
             tf.translation.x = -(full - w) / 2.0;
+        }
+        if let Some(a) = v.aura {
+            if let Ok((mut tf, _, _)) = parts.get_mut(a) {
+                tf.scale = Vec3::splat(1.0 + 0.12 * (t * 5.0 + s.id as f32).sin());
+            }
         }
         if let Ok((_, _, mut vis)) = parts.get_mut(v.stun) {
             *vis = if s.stunned > 0 || s.confused > 0 { Visibility::Inherited } else { Visibility::Hidden };
@@ -784,6 +865,7 @@ fn sync(
                     tf.scale = Vec3::splat(0.9 + 0.12 * (t * 14.0 + z.id as f32).sin());
                 }
                 ZoneKind::Roots => sprite.color = Color::WHITE.with_alpha((left * 4.0).min(1.0)),
+                ZoneKind::Buffering => sprite.color = sprite.color.with_alpha(0.35 + 0.3 * (t * 4.0).sin().abs()),
                 // Pulses to the beat, faster and brighter as the drop nears.
                 ZoneKind::Brainrot => {
                     let beat = 1.0 - world.beat as f32 / slop_sim::hazards::BEAT_INTERVAL as f32;
@@ -997,7 +1079,7 @@ fn map_views(
                     Transform::from_xyz(c.x, c.y, Z_ZONE + 0.2),
                 ))
                 .id();
-            let label = commands.spawn((Text2d::new(""), TextFont { font_size: 20.0, ..default() }, TextColor(theme::PAPER), Transform::from_xyz(c.x, c.y, Z_TEXT))).id();
+            let label = commands.spawn((Text2d::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::PAPER), Transform::from_xyz(c.x, c.y, Z_TEXT))).id();
             (body, label)
         });
         let solid = f.solid();
@@ -1215,7 +1297,7 @@ fn prop_label(p: &slop_sim::map::Prop, world: &World, run: Option<&slop_rules::R
             _ => format!("{name}\n(used)"),
         };
     }
-    let near = p.pos.distance(world.player.pos) < 420.0;
+    let near = p.pos.distance(world.player.pos) < p.kind.radius() + 140.0;
     match p.kind {
         PropKind::Gacha => format!("{name}\n{} Clout", run.map_or(0, |r| r.gacha_price(p.id))),
         PropKind::DataCenter if p.state == PropState::Active => format!("UPLOADING {:.0}%", 100.0 - p.left as f32 / (60.0 * 20.0) * 100.0),
@@ -1271,5 +1353,19 @@ fn follow_camera(
     if let Ok(mut f) = floor.get_mut(views.floor) {
         f.translation.x = (at.x / TILE).round() * TILE;
         f.translation.y = (at.y / TILE).round() * TILE;
+    }
+}
+
+/// The colour of an elite's affix (ELITE-02).
+fn affix_color(affix: &str) -> Color {
+    match affix {
+        "VERIFIED" => theme::type_color(slop_sim::DamageType::Fact),
+        "VIRAL" => Color::srgb(0.35, 1.0, 0.45),
+        "SPONSORED" => Color::srgb(1.0, 0.8, 0.2),
+        "TRENDING" => Color::srgb(1.0, 0.5, 0.15),
+        "TOXIC" => Color::srgb(0.72, 0.35, 1.0),
+        "SUMMONER" => Color::srgb(0.3, 0.95, 0.95),
+        "HULKING" => Color::srgb(1.0, 0.25, 0.25),
+        _ => Color::WHITE,
     }
 }

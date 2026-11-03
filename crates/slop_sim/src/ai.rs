@@ -53,6 +53,10 @@ const BONK_RADIUS: f32 = 105.0;
 const STOMP_RADIUS: f32 = 140.0;
 const BONK_WARNING: u16 = 42;
 const NEEDLES: u32 = 10;
+/// Share of ChadGPT fans whose middle bubble says something.
+const TALK_CHANCE: f32 = 0.2;
+/// Ticks between a Summoner elite's calls.
+const SUMMON_EVERY: u32 = 300;
 
 /// The parts of a spec the AI needs, copied so the slop can be borrowed mutably.
 #[derive(Clone, Copy)]
@@ -262,6 +266,16 @@ impl World {
                     }
                 }
                 Movement::Sweep => want = s.aim * speed,
+                Movement::Flee => {
+                    // Runs from you, weaving a little; gone when time is up.
+                    let weave = dir.perp() * (side * 0.4 * (self.tick as f32 * 0.03 + s.id as f32).sin());
+                    want = (-dir + weave).normalized() * speed;
+                    s.timer -= 1;
+                    if s.timer <= 0 {
+                        s.hp = 0.0;
+                        s.vanish = true;
+                    }
+                }
                 Movement::Grab => {
                     if let Some(offset) = s.grab {
                         s.pos = player + offset;
@@ -318,6 +332,10 @@ impl World {
             if b.traits.has(Traits::TOXIC) && (self.tick + s.id) % 80 == 0 {
                 queued.push(Queued::Toxic { at: s.pos });
             }
+            // Summoner elites call in minions every few seconds.
+            if b.traits.has(Traits::SUMMONER) && !s.reposted && (self.tick + s.id) % SUMMON_EVERY == 0 {
+                queued.push(Queued::Summon { at: s.pos, hp: s.max_hp * 0.05 });
+            }
             if let Some(attack) = b.attack.filter(|_| s.confused == 0) {
                 s.attack_timer -= 1;
                 if s.attack_timer <= 0 && dist < SHOOT_RANGE.min(attack.reach()) {
@@ -328,8 +346,9 @@ impl World {
                         Attack::Fan => {
                             for n in -1..=1 {
                                 let aim = dir.rotated(n as f32 * BUBBLE_SPREAD);
-                                // Only the middle bubble talks, so crowds stay readable.
-                                let line = if n == 0 { self.rng_ai.below(BUBBLE_LINES.len() as u32) as u16 } else { NO_LINE };
+                                // Only the middle bubble talks, and only now and then, so
+                                // crowds never bury the Feed in words.
+                                let line = if n == 0 && self.rng_ai.chance(TALK_CHANCE) { self.rng_ai.below(BUBBLE_LINES.len() as u32) as u16 } else { NO_LINE };
                                 shots.push((s.pos + aim * b.radius, aim * BUBBLE_SPEED, b.contact * 1.2 * k, Look::Bubble, line, spec));
                             }
                         }
@@ -338,7 +357,7 @@ impl World {
                         Attack::Wall => {
                             for n in -2..=2 {
                                 let at = s.pos + dir * b.radius + dir.perp() * (n as f32 * 34.0);
-                                let line = if n == 0 { self.rng_ai.below(POST_LINES.len() as u32) as u16 } else { NO_LINE };
+                                let line = if n == 0 && self.rng_ai.chance(TALK_CHANCE) { self.rng_ai.below(POST_LINES.len() as u32) as u16 } else { NO_LINE };
                                 shots.push((at, dir * 160.0, b.contact * 0.8 * k, Look::Post, line, spec));
                             }
                         }
@@ -395,6 +414,14 @@ impl World {
                     self.pending.push((drone, at, 0.0, pack, number));
                 }
                 Queued::Blast { at, radius, ticks, damage, spec } => self.blast(at, radius, ticks, damage, spec),
+                Queued::Summon { at, hp } => {
+                    let drone = self.ensure_spec(SlopSpec::archetype(Archetype::ListicleDrone));
+                    for n in 0..3u8 {
+                        let p = at + V2::from_angle(n as f32 * 2.1) * 40.0;
+                        self.pending.push((drone, p, hp.max(8.0), 0, 1));
+                    }
+                    self.events.push(Event::Hatched { at });
+                }
                 Queued::Toxic { at } => {
                     let id = self.id();
                     self.zones.push(Zone::new(id, ZoneKind::Downvote, at, 46.0, 300));
@@ -579,4 +606,6 @@ enum Queued {
     Blast { at: V2, radius: f32, ticks: u16, damage: f32, spec: u16 },
     /// A Toxic elite leaves a slowing puddle.
     Toxic { at: V2 },
+    /// A Summoner elite calls in three minions.
+    Summon { at: V2, hp: f32 },
 }

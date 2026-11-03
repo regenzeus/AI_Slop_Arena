@@ -169,6 +169,41 @@ pub fn prop(kind: PropKind) -> Canvas {
             p.rect(50.0, 12.0, 16.0, 7.0, 2.0, hex(RED));
             p.line(42.0, 12.0, 58.0, 12.0, 1.5, WHITE);
         }
+        PropKind::RecycleBin => {
+            // A recycle bin with the three arrows.
+            p.sdf(|x, y| polygon(x, y, &[(24.0, 30.0), (76.0, 30.0), (68.0, 92.0), (32.0, 92.0)]), hex(0x4A90C8));
+            p.rect(50.0, 26.0, 30.0, 5.0, 2.0, hex(0x3A78A8));
+            for k in 0..3 {
+                let a = k as f32 * std::f32::consts::TAU / 3.0 - std::f32::consts::FRAC_PI_2;
+                let (x, y) = (50.0 + a.cos() * 13.0, 62.0 + a.sin() * 13.0);
+                p.sdf_fill(|px, py| capsule(px, py, x, y, 50.0 + (a + 2.1).cos() * 13.0, 62.0 + (a + 2.1).sin() * 13.0, 2.5), WHITE);
+            }
+        }
+        PropKind::FineTuning => {
+            // A workbench with a big wrench.
+            p.rect(50.0, 74.0, 40.0, 10.0, 3.0, hex(0x9A6236));
+            p.stick(34.0, 84.0, 34.0, 96.0, 3.0, hex(0x7A4E2D));
+            p.stick(66.0, 84.0, 66.0, 96.0, 3.0, hex(0x7A4E2D));
+            p.stick(30.0, 56.0, 70.0, 20.0, 6.0, hex(0x9EA3AE));
+            p.sdf(|x, y| (circle(x, y, 72.0, 18.0, 11.0)).max(-circle(x, y, 78.0, 12.0, 6.0)), hex(0x9EA3AE));
+            p.dot(30.0, 56.0, 6.0, hex(GOLD));
+        }
+        PropKind::DataBroker => {
+            // A shady suitcase full of data.
+            p.rect(50.0, 60.0, 36.0, 26.0, 5.0, hex(0x2A2D38));
+            p.sdf(|x, y| (rbox(x, y, 50.0, 32.0, 12.0, 7.0, 3.0).abs() - 2.5).max(y - 34.0), hex(0x5A5F70));
+            for (k, y) in [52.0, 62.0, 72.0].iter().enumerate() {
+                p.line(26.0, *y, 74.0 - k as f32 * 10.0, *y, 2.0, hex(0x3CC8B4));
+            }
+            p.circle(78.0, 30.0, 12.0, hex(GOLD));
+        }
+        PropKind::PowerOutlet => {
+            // A wall socket with a lightning bolt.
+            p.rect(50.0, 52.0, 30.0, 38.0, 8.0, hex(0xE8E4D8));
+            p.rect(42.0, 40.0, 3.0, 8.0, 1.0, INK);
+            p.rect(58.0, 40.0, 3.0, 8.0, 1.0, INK);
+            p.sdf(|x, y| polygon(x, y, &[(54.0, 50.0), (40.0, 72.0), (50.0, 72.0), (44.0, 90.0), (62.0, 64.0), (52.0, 64.0)]), hex(GOLD));
+        }
     }
     p.c
 }

@@ -15,7 +15,9 @@ const DODGE_INVULNERABLE: u16 = 15;
 const GRAB_SLOW: f32 = 0.2;
 const MIN_GRAB_SPEED: f32 = 0.4;
 const DOWNVOTE_SLOW: f32 = 0.6;
-const BANNER_PUSH: f32 = 230.0;
+/// Speed left while slowed by a status, and by brainrot.
+const STATUS_SLOW: f32 = 0.65;
+const BRAINROT_SLOW: f32 = 0.5;
 const DASH_SPEED: f32 = 1300.0;
 const DASH_TICKS: u16 = 12;
 const ANXIETY_TICKS: u16 = 180;
@@ -49,28 +51,28 @@ impl World {
         self.dash(input);
         let zones = &self.zones;
         let p = &mut self.player;
-        let mut dir = V2::new(input.x, input.y).clamp_length(1.0);
-        if p.status.brainrot > 0 {
-            dir = -dir;
-        }
+        // You always steer: nothing reverses or drags you. Hazards and
+        // statuses only slow you down (FAIR-05).
+        let dir = V2::new(input.x, input.y).clamp_length(1.0);
         if dir.length_sq() > 0.01 {
             p.facing = dir.normalized();
         }
         let mut slow = (1.0 - GRAB_SLOW * p.grabbed as f32).max(MIN_GRAB_SPEED);
-        if zones.iter().any(|z| matches!(z.kind, ZoneKind::Downvote | ZoneKind::Roots) && z.contains(p.pos, 0.0)) {
+        if zones.iter().any(|z| matches!(z.kind, ZoneKind::Downvote | ZoneKind::Roots | ZoneKind::Banner | ZoneKind::Buffering) && z.contains(p.pos, 0.0)) {
             slow *= DOWNVOTE_SLOW;
         }
-        let mut want = dir * (PLAYER_SPEED * p.stats.speed * slow);
-        if p.status.doomscroll > 0 {
-            want = want * 0.4 + p.facing * (PLAYER_SPEED * 0.9);
+        let s = &p.status;
+        if s.brainrot > 0 {
+            slow *= BRAINROT_SLOW;
+        } else if s.doomscroll > 0 || s.popup > 0 {
+            slow *= STATUS_SLOW;
         }
+        if p.charged > 0 {
+            slow *= 1.25;
+        }
+        let want = dir * (PLAYER_SPEED * p.stats.speed * slow);
         p.vel += (want - p.vel) * ACCELERATION;
         let mut step = p.vel * DT;
-        for z in zones.iter().filter(|z| z.kind == ZoneKind::Banner) {
-            if z.contains(p.pos, 0.0) {
-                step += z.vel.normalized() * (BANNER_PUSH * DT);
-            }
-        }
         if p.dash > 0 {
             p.dash -= 1;
             step += p.dash_dir * (DASH_SPEED * DT);
@@ -109,10 +111,7 @@ impl World {
         if !input.dash || p.dashes == 0 || p.dash > 0 {
             return;
         }
-        let mut dir = V2::new(input.x, input.y);
-        if p.status.brainrot > 0 {
-            dir = -dir;
-        }
+        let dir = V2::new(input.x, input.y);
         let dir = if dir.length_sq() > 0.04 { dir.normalized() } else { p.facing };
         p.dashes -= 1;
         p.dash = PLAYER_DASH_TICKS;

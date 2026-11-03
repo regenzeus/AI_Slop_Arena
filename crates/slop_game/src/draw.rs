@@ -488,6 +488,25 @@ pub fn icon(a: Archetype, frame: usize) -> Canvas {
             p.sdf_fill(|x, y| capsule(x, y, 34.0, 36.0, 42.0, 28.0, 3.0), alpha(WHITE, glint));
             eyes(&mut p, 50.0, 50.0, 14.0, 4.0);
         }
+        Archetype::LootGoblin => {
+            // A Crypto Bro sprinting off with a bag of Clout.
+            p.stick(44.0, 74.0, 36.0 + 10.0 * s, 94.0, 4.0, hex(0x2A2D38));
+            p.stick(56.0, 74.0, 64.0 - 10.0 * s, 94.0, 4.0, hex(0x2A2D38));
+            p.rect(50.0, 60.0, 18.0, 18.0, 8.0, hex(0x6A4FC8));
+            p.circle(50.0, 34.0, 15.0, hex(SKIN));
+            p.rect(50.0, 31.0, 13.0, 4.0, 2.0, INK);
+            p.dot(55.0, 31.0, 2.0, hex(0x3CC8B4));
+            p.smile(50.0, 40.0, 5.0, INK);
+            p.sdf(|x, y| ellipse(x, y, 50.0, 20.0, 15.0, 6.0).max(y - 22.0), hex(0x2A2D38));
+            // The bag swings as he runs.
+            let bx = 76.0 + 3.0 * c;
+            p.blob(&[(bx, 62.0, 15.0), (bx, 46.0, 7.0)], hex(0xC89A5A));
+            p.rect(bx, 44.0, 7.0, 2.5, 1.0, hex(0x8A6236));
+            p.dot(bx, 62.0, 6.0, hex(GOLD));
+            p.stick(60.0, 54.0, bx - 6.0, 50.0, 3.0, hex(SKIN));
+            let glint = 0.4 + 0.6 * (0.5 + 0.5 * s);
+            p.dot(bx + 8.0, 54.0, 3.0, alpha(WHITE, glint));
+        }
         _ => {
             // Ring Light: a tripod with a glowing ring and a phone.
             for (x, y) in [(30.0, 96.0), (50.0, 96.0), (70.0, 96.0)] {

@@ -33,6 +33,8 @@ pub enum UiAction {
     Bless(usize),
     /// Take glitch `i` after a boss.
     Glitch(usize),
+    /// Throw item offer `i` of a recycle bin away.
+    Recycle(usize),
     Resume,
     NewRun,
     Quit,
@@ -180,7 +182,7 @@ impl Game {
 
     /// Does what a button or key asked (UI-08). Returns false to quit.
     pub fn act(&mut self, action: UiAction) -> bool {
-        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Glitch(_) | UiAction::Close | UiAction::Reroll);
+        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Glitch(_) | UiAction::Recycle(_) | UiAction::Close | UiAction::Reroll);
         if choosing && !self.choice_ready() {
             return true;
         }
@@ -217,6 +219,7 @@ impl Game {
                     UiAction::Buy(i) => (run.buy(i), Cue::Buy),
                     UiAction::Bless(i) => (run.bless(i), Cue::Level),
                     UiAction::Glitch(i) => (run.take_glitch(i), Cue::Level),
+                    UiAction::Recycle(i) => (run.recycle(i), Cue::Buy),
                     _ => (Ok(()), Cue::Tick),
                 };
                 self.rule(result, cue);
@@ -228,7 +231,7 @@ impl Game {
 
     /// The run is waiting for a choice (an overlay is up).
     pub fn choosing(&self) -> bool {
-        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_)))
+        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_) | Phase::Recycle { .. }))
     }
 }
 

@@ -29,7 +29,7 @@ pub const PLAYER_RADIUS: f32 = 16.0;
 pub const PLAYER_SPEED: f32 = 300.0;
 /// Slop only shoots when this close to you: roughly "on screen" (FAIR-01).
 pub const SHOOT_RANGE: f32 = 760.0;
-pub const MAX_SLOP: usize = 400;
+pub const MAX_SLOP: usize = 600;
 pub const MAX_BUBBLES: usize = 300;
 /// Ticks a spawn is telegraphed before the slop appears (FAIR-02).
 pub const SPAWN_WARNING: u16 = 60;
@@ -63,6 +63,12 @@ const SCATTER_TICKS: u16 = 90;
 /// at first, up to one in eight later.
 const GOLDEN_CHANCE: f32 = 0.03;
 const GOLDEN_MAX: f32 = 0.12;
+/// Share of elites that carry a chest; the rest drop Clout and Likes.
+const ELITE_CHEST: f32 = 0.45;
+/// Ticks a Power Outlet's charge lasts after you step out.
+const CHARGED_TICKS: u16 = 600;
+/// Ticks a loot goblin runs before he gets away.
+pub const GOBLIN_TICKS: i32 = 60 * 22;
 const REPOST_HP: f32 = 0.6;
 
 /// Ticks a livestream arena is announced before it closes.
@@ -283,6 +289,8 @@ pub struct Player {
     pub second_winds: u8,
     /// Ticks of a Log Off dash left, and its direction.
     pub dash: u16,
+    /// Ticks of a Power Outlet's charge: faster while it lasts.
+    pub charged: u16,
     pub dash_dir: V2,
     pub(crate) dog_block: u16,
     pub(crate) noise_block: u16,
@@ -325,6 +333,7 @@ impl Player {
             active_cooldown: vec![0.0; loadout.perks.actives.len()],
             second_winds: loadout.perks.second_wind,
             dash: 0,
+            charged: 0,
             dash_dir: V2::ZERO,
             dog_block: 0,
             noise_block: 0,
@@ -529,6 +538,8 @@ pub enum ZoneKind {
     /// Pulses to the beat; standing inside when it drops flips your
     /// controls (ClockTok).
     Brainrot,
+    /// Buffering on MeTube: slows you like a downvote.
+    Buffering,
     /// Roots stomped by Brr Brr Patapum: they slow you like a downvote.
     Roots,
 }
@@ -935,6 +946,7 @@ impl World {
             Movement::Follow => 90,
             Movement::Stand if sp.traits.has(Traits::HATCH) => 180,
             Movement::Blink => 150 + self.rng_spawn.below(120) as i32,
+            Movement::Flee => GOBLIN_TICKS,
             _ => 0,
         };
         let attack_timer = sp.attack.map_or(0, |a| 40 + self.rng_spawn.below(a.interval() as u32) as i32);
@@ -1006,7 +1018,7 @@ impl World {
         self.setup.elite_chance = elite_chance;
         if platform != self.setup.platform {
             self.hazard_timer = 300;
-            self.zones.retain(|z| !matches!(z.kind, ZoneKind::Downvote | ZoneKind::Filter | ZoneKind::Banner));
+            self.zones.retain(|z| !matches!(z.kind, ZoneKind::Downvote | ZoneKind::Filter | ZoneKind::Banner | ZoneKind::Buffering));
         }
         self.setup.platform = platform;
         self.setup.repost_chance = repost_chance;
@@ -1200,7 +1212,7 @@ impl World {
         // A boss on the field holds back the crowd.
         let calm = if self.boss.is_some() { 0.45 } else { 1.0 };
         // A livestream brings the crowd.
-        let live = if self.arena.is_some_and(|a| a.closed()) { 2.2 } else { 1.0 };
+        let live = if self.arena.is_some_and(|a| a.closed()) { 1.5 } else { 1.0 };
         self.spawn_credit += (lo + (hi - lo) * progress) * calm * live * self.spawn_boost * DT;
         while self.spawn_credit >= 1.0 && self.slop.len() + self.warnings.len() < MAX_SLOP {
             let Some(entry) = self.pick_spawn(t) else { break };
@@ -1224,13 +1236,22 @@ impl World {
     }
 
     fn pick_spawn(&mut self, t: f32) -> Option<Spawn> {
-        let total: u32 = self.setup.spawns.iter().filter(|s| t >= s.from).map(|s| s.weight).sum();
+        // A surge is a swarm, like the bursts of the genre: melee slop, not
+        // a wall of bullets (EVENT-03).
+        let surge = self.spawn_boost > 1.2;
+        let specs = &self.setup.specs;
+        let ok = |s: &Spawn| t >= s.from && (!surge || specs[s.spec].attack.is_none());
+        let mut total: u32 = self.setup.spawns.iter().filter(|s| ok(s)).map(|s| s.weight).sum();
+        let surge = surge && total > 0;
+        if !surge {
+            total = self.setup.spawns.iter().filter(|s| t >= s.from).map(|s| s.weight).sum();
+        }
         if total == 0 {
             return None;
         }
         let mut roll = self.rng_spawn.below(total);
         for s in &self.setup.spawns {
-            if t < s.from {
+            if t < s.from || (surge && self.setup.specs[s.spec].attack.is_some()) {
                 continue;
             }
             if roll < s.weight {
@@ -1319,7 +1340,7 @@ impl World {
             .filter(|&i| {
                 let s = &self.slop[i];
                 let sp = &self.setup.specs[s.spec as usize];
-                s.pos.distance_sq(me) > RELOCATE * RELOCATE && !matches!(sp.movement, Movement::Boss(_) | Movement::Stand | Movement::Sweep) && s.tag == 0
+                s.pos.distance_sq(me) > RELOCATE * RELOCATE && !matches!(sp.movement, Movement::Boss(_) | Movement::Stand | Movement::Sweep | Movement::Flee) && s.tag == 0
             })
             .collect();
         for i in far {
@@ -1400,15 +1421,30 @@ impl World {
                 }
                 drops.push((s.pos, value));
                 kills_now += 1;
-                if sp.elite {
+                if sp.elite && !s.reposted {
                     self.tally.loot_boxes += 1;
-                    // Now and then an elite drops a golden chest (LOOT-02).
-                    let golden = self.rng_combat.chance((GOLDEN_CHANCE + 0.005 * minutes).min(GOLDEN_MAX) + self.player.stats.luck.max(0.0) * 0.002);
-                    loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
+                    // Not every elite carries a chest; the ones that do are
+                    // worth the walk. Now and then it is golden (LOOT-02).
+                    if self.rng_combat.chance(ELITE_CHEST) {
+                        let golden = self.rng_combat.chance((GOLDEN_CHANCE + 0.005 * minutes).min(GOLDEN_MAX) + self.player.stats.luck.max(0.0) * 0.002);
+                        loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
+                        self.events.push(if golden { Event::RareDrop { at: s.pos } } else { Event::LootBox { at: s.pos } });
+                    } else {
+                        loot.push((PickupKind::Clout, s.pos, 12));
+                        drops.push((s.pos, sp.likes * 2));
+                    }
                     for _ in 0..self.player.perks.elite_chests {
                         loot.push((PickupKind::Chest, s.pos, 1));
                     }
-                    self.events.push(if golden { Event::RareDrop { at: s.pos } } else { Event::LootBox { at: s.pos } });
+                }
+                // The loot goblin (a Crypto Bro) pays out if you catch him.
+                if matches!(sp.look, SlopLook::Archetype(Archetype::LootGoblin)) {
+                    for _ in 0..6 {
+                        loot.push((PickupKind::Clout, s.pos, 12));
+                    }
+                    let golden = self.rng_combat.chance(0.35);
+                    loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
+                    self.events.push(Event::RareDrop { at: s.pos });
                 }
                 if sp.traits.has(Traits::SPONSORED) {
                     loot.push((PickupKind::Clout, s.pos, 25));
@@ -1687,6 +1723,19 @@ impl World {
                         }
                     }
                 }
+                (PropKind::PowerOutlet, _) => {
+                    // Charging: dashes refill, and you run faster for a while.
+                    p.state = if inside { PropState::Active } else { PropState::Idle };
+                    if inside && p.left > 0 {
+                        p.left -= 1;
+                        let h = &mut self.player;
+                        h.dashes = h.perks.dash_charges;
+                        h.charged = CHARGED_TICKS;
+                        if p.left == 0 {
+                            p.state = PropState::Done;
+                        }
+                    }
+                }
                 (PropKind::DataCenter, PropState::Active) => {
                     if inside {
                         p.left = p.left.saturating_sub(1);
@@ -1777,6 +1826,7 @@ impl World {
     fn tick_timers(&mut self) {
         let p = &mut self.player;
         p.invulnerable = p.invulnerable.saturating_sub(1);
+        p.charged = p.charged.saturating_sub(1);
         p.dog_block = p.dog_block.saturating_sub(1);
         p.noise_block = p.noise_block.saturating_sub(1);
         for c in &mut p.active_cooldown {

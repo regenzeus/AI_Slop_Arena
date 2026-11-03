@@ -22,6 +22,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
 | CHEST-01 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
+| CHEST-02 | `a_maxed_build_gets_paid_instead_of_stopped` | crates/slop_rules/src/tests_v4.rs |
+| CHEST-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
 | DASH-01 | `a_dash_is_fast_untouchable_and_its_charges_come_back` | crates/slop_sim/src/tests_v4.rs |
 | DASH-01 | `a_dash_shakes_off_grabbing_hands` | crates/slop_sim/src/tests_v4.rs |
 | DASH-02 | `dashes_and_trails_hurt_slop` | crates/slop_sim/src/tests_v4.rs |
@@ -33,6 +35,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | DMG-03 | `damage_types_do_something_besides_damage` | crates/slop_sim/src/tests.rs |
 | ELITE-01 | `elites_carry_their_affix` | crates/slop_rules/src/waves.rs |
 | ELITE-01 | `fact_cuts_through_verified` | crates/slop_sim/src/tests.rs |
+| ELITE-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
 | EVENT-01 | `a_swarm_crosses_the_screen_and_is_gone` | crates/slop_sim/src/tests_v4.rs |
 | EVENT-01 | `the_director_sends_swarms_rings_and_livestreams` | crates/slop_rules/src/tests_v4.rs |
 | EVENT-02 | `a_livestream_holds_you_in_and_pays_a_chest` | crates/slop_sim/src/tests_v4.rs |
@@ -46,6 +49,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | FAIR-02 | `em_dashes_and_bombs_are_telegraphed` | crates/slop_sim/src/tests.rs |
 | FAIR-02 | `maintenance_closes_a_block_after_a_warning_never_on_you` | crates/slop_sim/src/tests.rs |
 | FAIR-03 | `a_hit_gives_brief_invulnerability` | crates/slop_sim/src/tests.rs |
+| FAIR-05 | `nothing_reverses_drags_or_shoves_you` | crates/slop_sim/src/tests_v4.rs |
+| FAIR-05 | `statuses_hurt_slow_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
 | FEEL-02 | `sounds_are_valid_wav` | crates/slop_game/src/audio.rs |
 | FEEL-03 | `content_is_sane` | crates/slop_sim/src/content.rs |
 | GLITCH-01 | `a_bosss_chest_is_followed_by_a_pick_of_glitches` | crates/slop_rules/src/tests_v4.rs |
@@ -71,6 +76,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | LOOT-02 | `the_vacuum_pulls_every_like_and_coin` | crates/slop_sim/src/tests_v4.rs |
 | LOOT-03 | `hustle_pays_every_minute` | crates/slop_rules/src/tests_v4.rs |
 | LOOT-03 | `the_vacuum_pulls_every_like_and_coin` | crates/slop_sim/src/tests_v4.rs |
+| LOOT-04 | `the_loot_goblin_runs_and_pays_if_caught` | crates/slop_sim/src/tests_v4.rs |
 | MAP-01 | `the_same_seed_makes_the_same_map_in_any_order` | crates/slop_sim/src/map.rs |
 | MAP-01 | `the_window_follows_its_centre_far_from_the_origin` | crates/slop_sim/src/spatial.rs |
 | MAP-02 | `circles_are_pushed_out_of_walls_and_lines_are_blocked` | crates/slop_sim/src/map.rs |
@@ -78,6 +84,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | MAP-03 | `a_vending_machine_sells_an_item_once` | crates/slop_rules/src/tests.rs |
 | MAP-04 | `a_fence_waits_while_you_stand_where_it_would_close` | crates/slop_sim/src/tests_v4.rs |
 | MAP-04 | `maintenance_closes_a_block_after_a_warning_never_on_you` | crates/slop_sim/src/tests.rs |
+| MAP-05 | `a_power_outlet_refills_dashes_and_speeds_you_up` | crates/slop_sim/src/tests_v4.rs |
+| MAP-05 | `recycle_bins_fine_tuning_and_data_brokers` | crates/slop_rules/src/tests_v4.rs |
 | PLAT-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
 | PLAT-02 | `every_platform_has_its_hazard` | crates/slop_sim/src/tests.rs |
 | RUN-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
@@ -99,7 +107,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | STAT-01 | `fifteen_composure_halves_damage` | crates/slop_sim/src/stats.rs |
 | STAT-01 | `scepticism_is_capped` | crates/slop_sim/src/stats.rs |
 | STAT-02 | `hustle_pays_every_minute` | crates/slop_rules/src/tests_v4.rs |
-| STATUS-01 | `statuses_hurt_reverse_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
+| STATUS-01 | `statuses_hurt_slow_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
 | STATUS-02 | `a_brainrot_zone_flips_you_only_if_you_stay_for_the_drop` | crates/slop_sim/src/tests_v4.rs |
 | UI-08 | `actions_walk_from_title_into_the_feed_and_report_rule_errors` | crates/slop_game/src/state.rs |
 | UI-13 | `a_ready_merge_is_announced_and_brings_a_chest_closer` | crates/slop_rules/src/tests_v4.rs |
@@ -129,6 +137,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - ART-05
 - BAL-01
 - BRAIN-03
+- EVENT-03
 - FAIR-04
 - FEEL-01
 - FEEL-04
@@ -149,4 +158,5 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - UI-17
 - UI-18
 - UI-19
+- UI-20
 - WPN-09

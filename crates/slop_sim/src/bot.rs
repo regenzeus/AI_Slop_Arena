@@ -64,7 +64,7 @@ pub fn steer(world: &World) -> Input {
         }
     }
     // Get out of bomb spots, downvote zones and brainrot zones.
-    for z in world.zones.iter().filter(|z| matches!(z.kind, ZoneKind::Bomb | ZoneKind::Downvote | ZoneKind::Roots | ZoneKind::Brainrot)) {
+    for z in world.zones.iter().filter(|z| matches!(z.kind, ZoneKind::Bomb | ZoneKind::Downvote | ZoneKind::Roots | ZoneKind::Brainrot | ZoneKind::Buffering)) {
         let away = me - z.pos;
         if z.contains(me, 40.0) {
             force += away.normalized() * 2.5;

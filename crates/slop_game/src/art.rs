@@ -390,7 +390,7 @@ impl Art {
         }
         let mut pair = |c: Canvas| (images.add(c.image()), images.add(c.whitened().image()));
         let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(draw::archetype(a)))).collect();
-        let icon_frames = Archetype::ICONS.iter().map(|&a| (a, (0..draw::ICON_FRAMES).map(|f| pair(draw::icon(a, f))).collect())).collect();
+        let icon_frames = Archetype::ICONS.iter().chain([Archetype::LootGoblin].iter()).map(|&a| (a, (0..draw::ICON_FRAMES).map(|f| pair(draw::icon(a, f))).collect())).collect();
         let bodies = Body::ALL.iter().map(|&b| (b, pair(draw::body(b)))).collect();
         let objects = Object::ALL.iter().map(|&o| (o, pair(draw::object(o)))).collect();
         let accessories = Accessory::ALL.iter().map(|&a| (a, pair(draw::accessory(a)))).collect();

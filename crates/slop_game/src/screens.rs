@@ -298,6 +298,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
                     Phase::Vending { offers, .. } => vending(p, run, offers, &art, pad),
                     Phase::Shrine { offers, .. } => shrine(p, offers, &art, pad),
                     Phase::Glitch(offers) => glitch_pick(p, run, offers, &art, pad),
+                    Phase::Recycle { items, .. } => recycle(p, run, items, &art, pad),
                     Phase::Over { victory } if game.since_end > END_PAUSE => over(p, run, *victory, &art, pad),
                     _ => {}
                 }
@@ -740,11 +741,11 @@ fn chest(p: &mut ChildSpawnerCommands, run: &Run, reward: &Reward, art: &Art, pa
         p.spawn(row(14.0)).with_children(|r| {
             for (n, c) in order.iter().enumerate() {
                 let at = REVEAL_FIRST + n as f32 * REVEAL_EACH;
-                let (image, name, tag, _, color) = describe(run, *c, art);
+                let (image, name, tag, words, color) = describe(run, *c, art);
                 let rarity = c.rarity();
                 let frame = if rarity >= 2 && matches!(c, Choice::NewItem(_) | Choice::ItemLevel(_)) { rarity_color(rarity) } else { color };
                 let mut card = r.spawn((
-                    Node { width: Val::Px(200.0), min_height: Val::Px(200.0), padding: UiRect::all(Val::Px(12.0)), border: UiRect::all(Val::Px(if rarity >= 4 { 5.0 } else { 3.0 })), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(6.0), ..default() },
+                    Node { width: Val::Px(240.0), min_height: Val::Px(290.0), padding: UiRect::all(Val::Px(12.0)), border: UiRect::all(Val::Px(if rarity >= 4 { 5.0 } else { 3.0 })), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(6.0), ..default() },
                     BorderColor::all(Color::srgb(0.3, 0.3, 0.36)),
                     BackgroundColor(if rarity >= 4 { Color::srgb(0.22, 0.17, 0.1) } else { CARD }),
                     RevealBorder { at, color: frame, rarity },
@@ -760,6 +761,8 @@ fn chest(p: &mut ChildSpawnerCommands, run: &Run, reward: &Reward, art: &Art, pa
                         _ => chest_tag(run, *c, tag),
                     };
                     k.spawn((Text::new(rarity_line), TextFont { font_size: 13.0, ..default() }, TextColor(frame), Visibility::Hidden, Reveal(at)));
+                    // What it does, right on the card (LOOT-02).
+                    k.spawn((Text::new(words), TextFont { font_size: 13.0, ..default() }, TextColor(theme::QUIET), Visibility::Hidden, Reveal(at)));
                 });
             }
         });
@@ -806,6 +809,37 @@ fn merge_line(run: &Run, a: usize, b: usize, into: usize) -> String {
     format!("Merge: {} (level {la}/8) + {} (level {lb}/8) = {}. {what}", WEAPONS[a].name, WEAPONS[b].name, WEAPONS[into].name)
 }
 
+/// A recycle bin: throw one of your items away for Clout, freeing its slot
+/// (MAP-05).
+fn recycle(p: &mut ChildSpawnerCommands, run: &Run, items: &[usize], art: &Art, pad: bool) {
+    backdrop(p, Color::srgba(0.04, 0.04, 0.07, 0.72));
+    label(p, "RECYCLE BIN", 52.0, theme::PAPER);
+    label(p, "Throw one item away for Clout. Its slot is free again.", 18.0, theme::QUIET);
+    p.spawn(Node { column_gap: Val::Px(12.0), ..default() }).with_children(|r| {
+        for (k, &i) in items.iter().enumerate() {
+            let d = &ITEMS[i];
+            let level = run.items.iter().find(|x| x.0 == i).map_or(1, |x| x.1);
+            let refund = slop_rules::items::tier_price(d.tier) * level / 2 + 5;
+            let key = key::CHOICE + k as u32;
+            let mut e = r.spawn((focusable(key, CARD), Act(UiAction::Recycle(k)), Node { min_height: Val::Px(220.0), align_items: AlignItems::Center, ..card(190.0) }, BorderColor::all(item_color(d.kind)), item_tip(i, level)));
+            if k == 0 {
+                e.insert(DefaultFocus);
+            }
+            e.with_children(|c| {
+                icon(c, &art.item_icons[i], 72.0);
+                label(c, d.name, 17.0, theme::PAPER);
+                label(c, format!("level {level}"), 13.0, theme::QUIET);
+                c.spawn(row(6.0)).with_children(|b| {
+                    icon(b, &art.coin, 20.0);
+                    label(b, format!("+{refund}"), 18.0, tier_color(3));
+                });
+            });
+        }
+    });
+    button(p, "Walk away", UiAction::Close, BUTTON, key::BUTTON);
+    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter", "A", "throw away"), ("Esc", "B", "walk away")]);
+}
+
 /// After a boss: three glitches, pick one (GLITCH-01).
 fn glitch_pick(p: &mut ChildSpawnerCommands, run: &Run, offers: &[usize], art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.02, 0.05, 0.06, 0.85));
@@ -822,8 +856,15 @@ fn glitch_pick(p: &mut ChildSpawnerCommands, run: &Run, offers: &[usize], art: &
 
 fn vending(p: &mut ChildSpawnerCommands, run: &Run, offers: &[(Choice, u32)], art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.04, 0.04, 0.07, 0.72));
-    label(p, "VENDING MACHINE", 52.0, theme::PAPER);
-    label(p, "One item. Pick it, or walk away and come back later.", 18.0, theme::QUIET);
+    // A vending machine sells items; a fine-tuning station sells weapon levels.
+    let tuning = offers.iter().any(|(c, _)| matches!(c, Choice::WeaponLevel(_)));
+    if tuning {
+        label(p, "FINE-TUNING STATION", 52.0, theme::PAPER);
+        label(p, "One weapon level. Pick it, or walk away.", 18.0, theme::QUIET);
+    } else {
+        label(p, "VENDING MACHINE", 52.0, theme::PAPER);
+        label(p, "One item. Pick it, or walk away and come back later.", 18.0, theme::QUIET);
+    }
     p.spawn(Node { column_gap: Val::Px(16.0), ..default() }).with_children(|r| {
         for (i, (c, price)) in offers.iter().enumerate() {
             choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Buy(i), Some(*price));

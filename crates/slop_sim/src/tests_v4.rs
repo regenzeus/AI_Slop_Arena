@@ -170,7 +170,7 @@ fn the_map_is_a_patchwork_of_platforms() {
     let mut w = World::new(5, setup, &Loadout::with_weapons(&[]));
     let first = w.biome;
     let mut entered = None;
-    for _ in 0..(60 * 9) {
+    for _ in 0..(60 * 14) {
         w.step(Input::moving(1.0, 0.0));
         if let Some(Event::Biome { platform }) = w.drain_events().into_iter().find(|e| matches!(e, Event::Biome { .. })) {
             entered = Some((platform, w.player.pos.x));
@@ -292,4 +292,89 @@ fn a_fence_waits_while_you_stand_where_it_would_close() {
     }
     run(&mut w, 2);
     assert!(w.map.fences.iter().any(|f| f.solid()), "it closes once you have left");
+}
+
+// REQ: FAIR-05
+#[test]
+fn nothing_reverses_drags_or_shoves_you() {
+    for status in [StatusKind::Brainrot, StatusKind::Doomscroll] {
+        let mut w = sandbox();
+        w.apply_status(status);
+        run(&mut w, 50);
+        let x = w.player.pos.x;
+        for _ in 0..30 {
+            w.step(Input::moving(1.0, 0.0));
+        }
+        assert!(w.player.pos.x > x + 40.0, "{status:?}: you still go where you steer");
+        let y = w.player.pos.y;
+        run(&mut w, 30);
+        assert!((w.player.pos.y - y).abs() < 1.0, "{status:?}: nothing drags you");
+    }
+    // A post that hits you slows you; it does not push you.
+    let mut w = sandbox();
+    let me = w.player.pos;
+    let mut p = Projectile::new(900_001, me + V2::new(-30.0, 0.0), V2::new(300.0, 0.0), 16.0, 1.0, DamageType::Analog, true, Look::Post, 60);
+    p.shove = 420.0;
+    w.projectiles.push(p);
+    run(&mut w, 3);
+    assert!(w.player.pos.distance(me) < 2.0 && w.player.status.doomscroll > 0);
+}
+
+// REQ: LOOT-04
+#[test]
+fn the_loot_goblin_runs_and_pays_if_caught() {
+    let mut w = sandbox();
+    let me = w.player.pos;
+    let j = w.spawn_archetype(Archetype::LootGoblin, me + V2::new(200.0, 0.0));
+    run(&mut w, 30);
+    let g = w.slop.iter().find(|s| s.id == j).unwrap();
+    assert!(g.pos.distance(me) > 210.0, "he runs away");
+    let k = w.slop.iter().position(|s| s.id == j).unwrap();
+    w.slop[k].hp = 0.0;
+    run(&mut w, 1);
+    assert!(w.pickups.iter().filter(|p| p.kind == PickupKind::Clout).count() >= 6);
+    assert!(w.pickups.iter().any(|p| p.kind == PickupKind::Chest));
+    // Left alone, he gets away with nothing dropped.
+    let mut w = sandbox();
+    w.spawn_archetype(Archetype::LootGoblin, me + V2::new(200.0, 0.0));
+    run(&mut w, (GOBLIN_TICKS + 5) as u32);
+    assert!(w.slop.is_empty() && w.pickups.is_empty());
+}
+
+// REQ: ELITE-02, CHEST-02
+#[test]
+fn summoners_call_minions_and_split_copies_carry_no_chests() {
+    let mut w = sandbox();
+    let mut spec = SlopSpec::archetype(Archetype::ChadGpt).elite();
+    spec.traits.0 |= crate::spec::Traits::SUMMONER | crate::spec::Traits::VIRAL;
+    let i = w.add_spec(spec);
+    w.place(i, w.player.pos + V2::new(400.0, 0.0), 0, 1);
+    w.player.invulnerable = u16::MAX;
+    run(&mut w, 320);
+    assert!(w.slop.len() > 1, "a summoner called minions");
+    // Viral copies of an elite never drop chests of their own.
+    for s in w.slop.iter_mut() {
+        if s.spec as usize == i {
+            s.hp = 0.0;
+        }
+    }
+    run(&mut w, 1);
+    let copies: Vec<usize> = (0..w.slop.len()).filter(|&k| w.slop[k].spec as usize == i).collect();
+    for k in copies {
+        w.slop[k].hp = 0.0;
+    }
+    run(&mut w, 1);
+    assert!(w.pickups.iter().filter(|p| p.kind == PickupKind::Chest).count() <= 1);
+}
+
+// REQ: MAP-05
+#[test]
+fn a_power_outlet_refills_dashes_and_speeds_you_up() {
+    let mut w = sandbox();
+    w.player.dashes = 0;
+    let me = w.player.pos;
+    w.map.props.push(crate::map::Prop { id: 77, kind: crate::map::PropKind::PowerOutlet, pos: me, charge: 0, state: crate::map::PropState::Idle, left: 60, price: 0 });
+    run(&mut w, 2);
+    assert_eq!(w.player.dashes, w.player.perks.dash_charges);
+    assert!(w.player.charged > 0);
 }
