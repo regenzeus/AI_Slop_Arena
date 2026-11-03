@@ -3,6 +3,7 @@
 //! 100-unit design space with `Pen`; brainrot parts share one frame so they
 //! can be stacked into a creature.
 
+use slop_rules::Hero;
 use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Object, Platform};
 
 use crate::art::*;
@@ -19,11 +20,26 @@ const RED: u32 = 0xE23B3B;
 const GOLD: u32 = 0xF2C230;
 const GREY: u32 = 0xB8BCC8;
 
-/// The human: a round head over a hoodie, headphones around the neck.
-pub fn human(face: usize) -> Canvas {
+/// The human: a round head over a hoodie, headphones around the neck, and
+/// the hero's own baggage on top.
+pub fn human(face: usize, hero: Hero) -> Canvas {
     let mut p = Pen::new(HUMAN_SIZE * DENSITY);
-    p.rect(50.0, 75.0, 29.0, 21.0, 15.0, hex(0xF28C38));
-    p.line(50.0, 62.0, 50.0, 92.0, 1.5, alpha(INK, 0.35));
+    let top = match hero {
+        Hero::Boomer => 0xC8A27A,
+        Hero::Zoomer => 0x9B6BFF,
+        Hero::Teacher => 0x4A6FB5,
+        Hero::Programmer => 0x3A3D4D,
+        Hero::Artist => 0xF28C38,
+    };
+    p.rect(50.0, 75.0, 29.0, 21.0, 15.0, hex(top));
+    p.line(50.0, 62.0, 50.0, 92.0, 1.5, alpha(if hero == Hero::Programmer { WHITE } else { INK }, 0.35));
+    if hero == Hero::Programmer {
+        // The hood is up.
+        p.circle(50.0, 38.0, 33.0, hex(0x4A4E60));
+    }
+    if hero == Hero::Teacher {
+        p.circle(50.0, 9.0, 11.0, hex(0x7A4E2D));
+    }
     p.circle(50.0, 38.0, 27.0, hex(SKIN));
     p.stick(29.0, 63.0, 71.0, 63.0, 5.0, hex(0x3A3D4D));
     p.circle(27.0, 63.0, 8.0, hex(0x3A3D4D));
@@ -45,6 +61,34 @@ pub fn human(face: usize) -> Canvas {
             p.circle(77.0, 28.0, 6.0, hex(0x8FD3FF));
         }
         _ => p.line(44.0, 52.0, 56.0, 52.0, 1.5, INK),
+    }
+    match hero {
+        Hero::Boomer => {
+            p.sdf(|x, y| ellipse(x, y, 50.0, 18.0, 29.0, 11.0).max(y - 22.0).min(rbox(x, y, 62.0, 21.0, 20.0, 3.5, 3.0)), hex(0x8A8478));
+            p.sdf_fill(|x, y| ellipse(x, y, 44.0, 47.0, 8.0, 3.5).min(ellipse(x, y, 56.0, 47.0, 8.0, 3.5)), hex(0xB8B2A6));
+        }
+        Hero::Zoomer => {
+            p.sdf(|x, y| rbox(x, y, 50.0, 14.0, 22.0, 9.0, 6.0).min(ellipse(x, y, 50.0, 21.0, 31.0, 5.0)), hex(0xB6E28A));
+            p.rect(84.0, 80.0, 6.0, 10.0, 2.0, hex(0x2A2240));
+        }
+        Hero::Teacher => {
+            for ex in [39.0, 61.0] {
+                p.ring(ex, 36.0, 8.0, 2.5, INK);
+            }
+            p.line(47.0, 36.0, 53.0, 36.0, 1.5, INK);
+        }
+        Hero::Programmer => {
+            for ex in [39.0, 61.0] {
+                p.sdf_fill(|x, y| rbox(x, y, ex, 36.0, 8.5, 6.5, 2.0).abs() - 1.3, INK);
+            }
+            p.line(47.5, 36.0, 52.5, 36.0, 1.3, INK);
+        }
+        Hero::Artist => {
+            p.sdf(|x, y| ellipse(x, y, 46.0, 15.0, 27.0, 9.0), hex(0xD8344A));
+            p.dot(52.0, 6.0, 3.0, hex(0xD8344A));
+            p.dot(36.0, 82.0, 4.0, hex(0x3CC8B4));
+            p.dot(60.0, 88.0, 3.5, hex(0x9B6BFF));
+        }
     }
     p.c
 }
@@ -504,61 +548,63 @@ pub fn boss(b: BossKind) -> Canvas {
     p.c
 }
 
-/// One floor tile per platform: low contrast, so the slop stays readable (PLAT-03).
+
+/// Each platform's floor, in its dark mode: mid-dark so the bright, outlined
+/// characters and the pink danger stand out (UI-02).
 pub fn floor(platform: Platform) -> Canvas {
     let mut c = Canvas::new(256, 256);
     let faint = |h: u32, a: f32| alpha(hex(h), a);
     match platform {
         Platform::FaceSlop => {
-            c.fill(|_, _| -1.0, hex(0xE6ECF5));
-            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 104.0, 104.0, 12.0), alpha(WHITE, 0.5), faint(0xB0BCD4, 0.5), 2.0);
-            c.fill(|x, y| rbox(x, y, 128.0, 36.0, 104.0, 12.0, 8.0), faint(0x4267B2, 0.12));
-            c.fill(|x, y| circle(x, y, 52.0, 70.0, 12.0), faint(0xB0BCD4, 0.5));
+            c.fill(|_, _| -1.0, hex(0x29324A));
+            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 104.0, 104.0, 12.0), hex(0x313C58), faint(0x4A5878, 0.8), 2.0);
+            c.fill(|x, y| rbox(x, y, 128.0, 36.0, 104.0, 12.0, 8.0), faint(0x4267B2, 0.45));
+            c.fill(|x, y| circle(x, y, 52.0, 70.0, 12.0), faint(0x55648A, 0.8));
             for (i, w) in [70.0f32, 54.0, 64.0].iter().enumerate() {
                 let y0 = 106.0 + i as f32 * 18.0;
-                c.fill(|x, y| rbox(x, y, 48.0 + w, y0, *w, 4.0, 4.0), faint(0xB0BCD4, 0.45));
+                c.fill(|x, y| rbox(x, y, 48.0 + w, y0, *w, 4.0, 4.0), faint(0x55648A, 0.6));
             }
-            c.fill(|x, y| circle(x, y, 60.0, 196.0, 9.0), faint(0x4267B2, 0.15));
+            c.fill(|x, y| circle(x, y, 60.0, 196.0, 9.0), faint(0x4267B2, 0.5));
         }
         Platform::LinkedOut => {
-            c.fill(|_, _| -1.0, hex(0xE5E3DE));
-            c.paint(|x, y| ((x as i32 % 16 == 0) || (y as i32 % 16 == 0)).then_some(faint(0xC9C4BA, 0.35)));
-            c.shape(|x, y| rbox(x, y, 128.0, 110.0, 54.0, 38.0, 4.0), faint(0xFFFFFF, 0.4), faint(0x8A8478, 0.4), 4.0);
-            c.fill(|x, y| rbox(x, y, 128.0, 100.0, 34.0, 4.0, 2.0), faint(0x0A66C2, 0.15));
-            c.fill(|x, y| rbox(x, y, 128.0, 118.0, 26.0, 3.0, 2.0), faint(0x8A8478, 0.25));
+            c.fill(|_, _| -1.0, hex(0x2C3036));
+            c.paint(|x, y| ((x as i32 % 16 == 0) || (y as i32 % 16 == 0)).then_some(faint(0x3A3F47, 1.0)));
+            c.shape(|x, y| rbox(x, y, 128.0, 110.0, 54.0, 38.0, 4.0), hex(0x363B43), faint(0x5A606B, 1.0), 4.0);
+            c.fill(|x, y| rbox(x, y, 128.0, 100.0, 34.0, 4.0, 2.0), faint(0x0A66C2, 0.7));
+            c.fill(|x, y| rbox(x, y, 128.0, 118.0, 26.0, 3.0, 2.0), faint(0x5A606B, 0.9));
         }
         Platform::MeTube => {
-            c.fill(|_, _| -1.0, hex(0xF2EFEF));
+            c.fill(|_, _| -1.0, hex(0x262628));
             for (cx, cy) in [(70.0, 70.0), (186.0, 186.0)] {
-                c.fill(|x, y| rbox(x, y, cx, cy, 52.0, 30.0, 6.0), faint(0xD6CFCF, 0.5));
-                c.fill(|x, y| triangle(x, y, (cx - 8.0, cy - 10.0), (cx - 8.0, cy + 10.0), (cx + 10.0, cy)), faint(0xE23B3B, 0.25));
-                c.fill(|x, y| rbox(x, y, cx - 14.0, cy + 34.0, 38.0, 2.0, 1.0), faint(0xE23B3B, 0.3));
+                c.fill(|x, y| rbox(x, y, cx, cy, 52.0, 30.0, 6.0), hex(0x323236));
+                c.fill(|x, y| triangle(x, y, (cx - 8.0, cy - 10.0), (cx - 8.0, cy + 10.0), (cx + 10.0, cy)), faint(0xE23B3B, 0.55));
+                c.fill(|x, y| rbox(x, y, cx - 14.0, cy + 34.0, 38.0, 2.0, 1.0), faint(0xE23B3B, 0.6));
             }
         }
         Platform::Thredd => {
-            c.fill(|_, _| -1.0, hex(0xEDE9E3));
+            c.fill(|_, _| -1.0, hex(0x24272C));
             for (indent, y0) in [(20.0f32, 30.0f32), (44.0, 80.0), (68.0, 130.0), (44.0, 180.0), (20.0, 230.0)] {
-                c.fill(|x, y| rbox(x, y, indent, y0 + 16.0, 1.5, 22.0, 1.0), faint(0xC6BFB4, 0.6));
-                c.fill(|x, y| rbox(x, y, indent + 60.0, y0, 46.0, 4.0, 3.0), faint(0xC6BFB4, 0.5));
-                c.fill(|x, y| triangle(x, y, (indent - 6.0, y0 + 2.0), (indent + 6.0, y0 + 2.0), (indent, y0 - 8.0)), faint(0xFF4500, 0.2));
+                c.fill(|x, y| rbox(x, y, indent, y0 + 16.0, 1.5, 22.0, 1.0), hex(0x3A3F47));
+                c.fill(|x, y| rbox(x, y, indent + 60.0, y0, 46.0, 4.0, 3.0), hex(0x343840));
+                c.fill(|x, y| triangle(x, y, (indent - 6.0, y0 + 2.0), (indent + 6.0, y0 + 2.0), (indent, y0 - 8.0)), faint(0xFF4500, 0.55));
             }
         }
         Platform::InstaSlop => {
-            c.fill(|_, _| -1.0, hex(0xFAF6F8));
+            c.fill(|_, _| -1.0, hex(0x2B2433));
             let tints = [0xF7C6D9, 0xFBD9B9, 0xD9CCF5, 0xC9E8F2];
             for i in 0..2 {
                 for j in 0..2 {
                     let t = tints[(i * 2 + j) % 4];
                     let (cx, cy) = (64.0 + 128.0 * i as f32, 64.0 + 128.0 * j as f32);
-                    c.fill(|x, y| rbox(x, y, cx, cy, 58.0, 58.0, 4.0), faint(t, 0.35));
+                    c.fill(|x, y| rbox(x, y, cx, cy, 58.0, 58.0, 4.0), faint(t, 0.1));
                 }
             }
         }
         Platform::ClockTok => {
-            c.fill(|_, _| -1.0, hex(0x3B3550));
-            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 56.0, 100.0, 18.0), alpha(WHITE, 0.03), alpha(WHITE, 0.12), 3.0);
-            c.fill(|x, y| circle(x, y, 186.0, 200.0, 7.0), faint(0x25F4EE, 0.2));
-            c.fill(|x, y| circle(x, y, 192.0, 196.0, 7.0), faint(0xFE2C55, 0.2));
+            c.fill(|_, _| -1.0, hex(0x221E2D));
+            c.shape(|x, y| rbox(x, y, 128.0, 128.0, 56.0, 100.0, 18.0), alpha(WHITE, 0.03), alpha(WHITE, 0.1), 3.0);
+            c.fill(|x, y| circle(x, y, 186.0, 200.0, 7.0), faint(0x25F4EE, 0.35));
+            c.fill(|x, y| circle(x, y, 192.0, 196.0, 7.0), faint(0xFE2C55, 0.35));
         }
     }
     c
@@ -700,6 +746,13 @@ pub fn sector(half: f32, color: Rgba) -> Canvas {
 pub fn ring(color: Rgba) -> Canvas {
     let mut c = Canvas::new(128, 128);
     c.fill(|x, y| circle(x, y, 64.0, 64.0, 58.0).abs() - 3.5, color);
+    c
+}
+
+/// A soft round dot for particles.
+pub fn ball() -> Canvas {
+    let mut c = Canvas::new(16, 16);
+    c.fill(|x, y| circle(x, y, 8.0, 8.0, 7.0), WHITE);
     c
 }
 

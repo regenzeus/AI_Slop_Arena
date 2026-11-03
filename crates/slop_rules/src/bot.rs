@@ -94,7 +94,6 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
             };
             run.choose_level(pick).is_ok()
         }
-        Phase::PatchNotes(_) => run.close_patch_notes().is_ok(),
         Phase::Shop => {
             match policy {
                 Policy::Random => {
@@ -116,7 +115,7 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
                             Some((i, _)) => {
                                 let _ = run.buy(i);
                             }
-                            None if rerolled < 2 && run.clout >= run.shop.reroll_cost() * 4 + 20 => {
+                            None if rerolled < 4 && run.clout >= run.reroll_cost() * 4 + 16 => {
                                 let _ = run.reroll();
                                 rerolled += 1;
                             }

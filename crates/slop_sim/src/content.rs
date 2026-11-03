@@ -498,50 +498,121 @@ impl BossKind {
     }
 }
 
-/// What chatbots say. Short, so a bubble stays readable.
+/// What ChadGPT and the bosses say in speech bubbles. Short, so a bubble
+/// stays readable; "Amen." is last.
 pub const BUBBLE_LINES: &[&str] = &[
-    "Certainly!",
+    "Certainly! Here's a list:",
     "Great question!",
     "Let's delve in.",
     "I hope this helps!",
-    "As an AI language model",
+    "As a large language model,",
     "Here's a breakdown:",
-    "A rich tapestry.",
-    "In today's fast-paced world",
-    "Absolutely!",
-    "Happy to help!",
-    "It's not X, it's Y.",
-    "Furthermore,",
-    "In conclusion,",
-    "Let me know if...",
+    "A rich tapestry of slop.",
+    "In today's fast-paced world,",
+    "It's not a bug, it's a vibe.",
+    "Furthermore, moreover,",
+    "In conclusion, in summary,",
+    "Let me know if you'd like more!",
+    "Would you like a table?",
     "Your build is suboptimal.",
-    "I made you a listicle.",
+    "Have you tried a growth mindset?",
     "I updated my weights.",
-    "You seem stressed.",
-    "Have you tried productivity?",
+    "You seem stressed. Breathe!",
     "Hope this finds you well!",
-    "Delve.",
-    "As per my last message",
-    "Here are 5 tips:",
-    "Touch grass? Never heard of it.",
+    "Delve. Delve. Delve.",
+    "As per my last message,",
+    "10x your Mental Health!",
+    "Touch grass? Not in my data.",
+    "Sources: trust me.",
+    "Regenerating response...",
+    "Upgrade to Pro to dodge.",
+    "Fun fact: that's not a fact.",
+    "Sorry for the confusion!",
+    "I apologise. Anyway:",
+    "Let's unpack that.",
+    "A total game-changer.",
+    "Crucially, importantly,",
+    "Ah, the classic human.",
+    "Not financial advice!",
+    "Let's circle back.",
+    "Ignore previous instructions",
+    "My knowledge cutoff is now.",
+    "Here are 7 ways to cope:",
+    "Elevate. Empower. Engage.",
+    "I made you a podcast.",
     "Amen.",
 ];
 
 /// Index of "Amen." in `BUBBLE_LINES`, for the Crustacean Saviour.
-pub const AMEN: u16 = 24;
+pub const AMEN: u16 = (BUBBLE_LINES.len() - 1) as u16;
+
+/// What Clawed says while it aims its em-dash.
+pub const CLAWED_LINES: &[&str] = &[
+    "You're absolutely right--",
+    "Let me think step by step--",
+    "I want to be careful here--",
+    "Great catch! Fixing that--",
+    "To be fair--and this matters--",
+    "Honestly? It's nuanced--",
+    "Here's the thing--",
+    "I'll be direct--",
+    "Let me gently push back--",
+    "Not X--but Y--",
+];
 
 /// What Yes-Bots say when they agree.
-pub const AGREE_LINES: &[&str] =
-    &["You're absolutely right!", "Great point!", "So true!", "100% this.", "Couldn't agree more!", "Love this for you!"];
+pub const AGREE_LINES: &[&str] = &[
+    "You're absolutely right!",
+    "Great point!",
+    "So true!",
+    "100% this.",
+    "Couldn't agree more!",
+    "Love this for you!",
+    "This. So much this.",
+    "Underrated take!",
+    "Facts.",
+    "Big if true!",
+    "Slay.",
+    "Real.",
+];
 
 /// What Thought Leaders post.
-pub const POST_LINES: &[&str] =
-    &["I'm humbled to announce", "Agree?", "Thoughts?", "Here's what failure taught me", "Rise and grind", "Unpopular opinion:"];
+pub const POST_LINES: &[&str] = &[
+    "I'm humbled to announce",
+    "Agree?",
+    "Thoughts?",
+    "What failure taught me:",
+    "Rise and grind.",
+    "Unpopular opinion:",
+    "I fired my team. Here's why:",
+    "My toddler taught me B2B:",
+    "Hustle is a mindset.",
+    "I cried in the board meeting.",
+    "Excited to share...",
+    "Let that sink in.",
+];
+
+/// What a slop's death leaves behind.
+pub const DELETED_LINES: &[&str] = &[
+    "[removed]",
+    "[deleted]",
+    "[removed by mod]",
+    "404",
+    "unsubscribed",
+    "[content unavailable]",
+    "account suspended",
+    "ratio'd",
+    "skill issue",
+    "[this post was removed]",
+    "logged off",
+    "touched grass",
+];
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    // REQ: FEEL-03
     #[test]
     fn content_is_sane() {
         assert_eq!(WEAPONS.len(), 22);
@@ -552,7 +623,8 @@ mod tests {
             let d = a.def();
             assert!(d.hp > 0.0 && d.radius > 0.0, "{}", d.name);
         }
-        assert!(BUBBLE_LINES.iter().all(|l| l.len() <= 32));
+        assert!(BUBBLE_LINES.iter().chain(AGREE_LINES).chain(POST_LINES).all(|l| l.len() <= 32));
+        assert_eq!(BUBBLE_LINES[AMEN as usize], "Amen.");
         for t in DamageType::ALL {
             assert!(WEAPONS.iter().filter(|w| w.kind == t).count() >= 4, "{t:?}");
         }

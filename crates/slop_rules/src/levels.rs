@@ -5,9 +5,11 @@ use slop_sim::rng::Rng;
 
 use crate::items::StatKind;
 
-/// XP needed to go from level `n` to `n + 1`.
+/// XP needed to go from level `n - 1` to `n`. Tuned so a wave is worth about
+/// one level: early waves pay little, late waves a lot.
 pub fn xp_for(level: u32) -> u32 {
-    10 + 8 * level
+    let n = level as f32;
+    (12.0 + 3.0 * n + 0.42 * n * n) as u32
 }
 
 /// One upgrade on offer.

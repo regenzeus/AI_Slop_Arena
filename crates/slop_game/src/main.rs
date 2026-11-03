@@ -15,10 +15,12 @@ mod autoplay;
 mod draw;
 mod fx;
 mod hud;
+mod icons;
 mod play;
 mod screens;
 mod state;
 mod theme;
+mod ui;
 mod views;
 
 use std::path::PathBuf;
@@ -71,7 +73,7 @@ fn main() {
     }))
     .insert_resource(ClearColor(theme::VOID))
     .insert_resource(game)
-    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, audio::AudioFxPlugin));
+    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin));
 
     if args.autoplay {
         if let Some(dir) = &args.screenshots {

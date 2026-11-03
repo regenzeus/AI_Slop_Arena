@@ -68,6 +68,30 @@ impl StatKind {
         }
     }
 
+    /// What the stat does, with its current effect worked out (the tooltip).
+    pub fn explain(self, s: &Stats) -> String {
+        use slop_sim::stats::{COMPOSURE_HALF, SCEPTICISM_CAP, SELF_CARE_RATE};
+        match self {
+            StatKind::MentalHealth => format!("Your health. At 0 you burn out and the run is over.\nMaximum {:.0}. Every wave starts with it full.", s.max_mental_health),
+            StatKind::Composure => format!(
+                "Armour. Every hit on you is multiplied by {h:.0} / ({h:.0} + Composure).\nNow you take {:.0}% of each hit. {h:.0} Composure halves damage;\nnegative Composure makes hits hurt more.",
+                s.damage_taken(100.0),
+                h = COMPOSURE_HALF
+            ),
+            StatKind::SelfCare => format!("Heals {:.1} Mental Health per second during waves\n({SELF_CARE_RATE} per point).", s.self_care.max(0.0) * SELF_CARE_RATE),
+            StatKind::Focus => format!("Attack speed of every weapon: cooldowns run {:.2}x as fast.\n+100% Focus fires twice as often.", (1.0 + s.focus).max(0.0)),
+            StatKind::Conviction => format!("Damage of every weapon is multiplied by {:.2}.", (1.0 + s.conviction).max(0.0)),
+            StatKind::Reach => format!("Range of every weapon is multiplied by {:.2}:\nshots fly further; swings, auras and slams grow.", (1.0 + s.reach).max(0.0)),
+            StatKind::Speed => format!("How fast you move: {:.0} units per second ({:.0}% of normal).", slop_sim::world::PLAYER_SPEED * s.speed, s.speed * 100.0),
+            StatKind::Scepticism => format!("Chance to ignore a hit completely: {:.0}%.\nCapped at {:.0}%.", s.dodge_chance() * 100.0, SCEPTICISM_CAP * 100.0),
+            StatKind::Curiosity => format!("Pickup radius for Clout coins: {:.0} units.\nCoins inside it fly to you.", s.curiosity.max(0.0)),
+            StatKind::Luck => format!(
+                "Each point moves 1% of the shop's odds up a tier\nand makes good and great level-ups likelier.\nNow +{:.0}% better rolls.",
+                s.luck.max(0.0)
+            ),
+        }
+    }
+
     /// The stat's current value, as shown on the stats panel.
     pub fn read(self, s: &Stats) -> String {
         match self {
@@ -203,7 +227,7 @@ pub fn item_index(name: &str) -> Option<usize> {
 
 /// Base price of an item tier; weapons cost a third more.
 pub fn tier_price(tier: u8) -> u32 {
-    [15, 30, 60, 120][(tier.clamp(1, 4) - 1) as usize]
+    [12, 25, 50, 100][(tier.clamp(1, 4) - 1) as usize]
 }
 
 /// Folds one modifier into a loadout. Rules-only modifiers are ignored here.
@@ -254,6 +278,18 @@ mod tests {
         // Risky items carry a drawback in their effect text or a second mod.
         for i in ITEMS.iter().filter(|i| i.kind == Risky) {
             assert!(i.mods.len() >= 2, "{}", i.name);
+        }
+    }
+
+    // REQ: UI-13
+    #[test]
+    fn every_stat_explains_its_current_effect() {
+        let mut s = Stats { composure: 15.0, ..Stats::default() };
+        assert!(StatKind::Composure.explain(&s).contains("50%"), "15 Composure halves damage");
+        s.focus = 1.0;
+        assert!(StatKind::Focus.explain(&s).contains("2.00x"));
+        for k in StatKind::ALL {
+            assert!(k.explain(&s).len() > 30, "{k:?}");
         }
     }
 

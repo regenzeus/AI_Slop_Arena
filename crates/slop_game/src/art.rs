@@ -12,7 +12,12 @@ use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Object, Platform};
 
-use crate::draw;
+use slop_rules::items::{StatKind, ITEMS};
+use slop_rules::Hero;
+use slop_sim::content::WEAPONS;
+use slop_sim::DamageType;
+
+use crate::{draw, icons};
 
 /// Canvas pixels per world unit.
 pub const DENSITY: f32 = 2.0;
@@ -69,6 +74,27 @@ pub fn triangle(x: f32, y: f32, a: (f32, f32), b: (f32, f32), c: (f32, f32)) -> 
     let (d2, s2) = edge(c, a);
     let d = d0.min(d1).min(d2);
     let inside = (s0 >= 0.0 && s1 >= 0.0 && s2 >= 0.0) || (s0 <= 0.0 && s1 <= 0.0 && s2 <= 0.0);
+    if inside {
+        -d
+    } else {
+        d
+    }
+}
+
+/// Any simple polygon, by its corners in order.
+pub fn polygon(x: f32, y: f32, pts: &[(f32, f32)]) -> f32 {
+    let mut d = f32::MAX;
+    let mut inside = false;
+    for i in 0..pts.len() {
+        let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+        let (ex, ey) = (b.0 - a.0, b.1 - a.1);
+        let (wx, wy) = (x - a.0, y - a.1);
+        let h = ((wx * ex + wy * ey) / (ex * ex + ey * ey)).clamp(0.0, 1.0);
+        d = d.min(((wx - ex * h).powi(2) + (wy - ey * h).powi(2)).sqrt());
+        if (a.1 > y) != (b.1 > y) && x < a.0 + (y - a.1) / (b.1 - a.1) * ex {
+            inside = !inside;
+        }
+    }
     if inside {
         -d
     } else {
@@ -144,6 +170,22 @@ impl Canvas {
         dst[3] = a;
     }
 
+    #[cfg(test)]
+    pub fn pixel(&self, x: usize, y: usize) -> Rgba {
+        self.px[y * self.w + x]
+    }
+
+    #[cfg(test)]
+    pub fn alpha_at(&self, i: usize) -> f32 {
+        self.px[i][3]
+    }
+
+    /// A hash of the picture, to tell two drawings apart in tests.
+    #[cfg(test)]
+    pub fn fingerprint(&self) -> u64 {
+        self.px.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, p| p.iter().fold(h, |h, v| (h ^ (v * 255.0) as u64).wrapping_mul(0x100_0000_01b3)))
+    }
+
     /// The same silhouette in solid white, for hit flashes.
     pub fn whitened(&self) -> Canvas {
         let px = self.px.iter().map(|p| [1.0, 1.0, 1.0, p[3]]).collect();
@@ -214,6 +256,28 @@ impl Pen {
         self.c.fill(|x, y| capsule(x, y, ax * k, ay * k, bx * k, by * k, r * k), color);
     }
 
+    /// Any shape given as a distance in design units, outlined.
+    pub fn sdf(&mut self, f: impl Fn(f32, f32) -> f32, fill: Rgba) {
+        let k = self.k;
+        self.c.shape(|x, y| f(x / k, y / k) * k, fill, INK, self.line);
+    }
+
+    /// Any shape given as a distance in design units, with no outline.
+    pub fn sdf_fill(&mut self, f: impl Fn(f32, f32) -> f32, color: Rgba) {
+        let k = self.k;
+        self.c.fill(|x, y| f(x / k, y / k) * k, color);
+    }
+
+    /// Circles merged into one outlined lump.
+    pub fn blob(&mut self, parts: &[(f32, f32, f32)], fill: Rgba) {
+        self.sdf(|x, y| parts.iter().map(|&(cx, cy, r)| circle(x, y, cx, cy, r)).fold(f32::MAX, f32::min), fill);
+    }
+
+    /// A ring of width `w` with no outline.
+    pub fn ring(&mut self, cx: f32, cy: f32, r: f32, w: f32, color: Rgba) {
+        self.sdf_fill(|x, y| circle(x, y, cx, cy, r).abs() - w / 2.0, color);
+    }
+
     /// A smile: the lower part of a ring.
     pub fn smile(&mut self, cx: f32, cy: f32, r: f32, color: Rgba) {
         let k = self.k;
@@ -234,9 +298,18 @@ pub type Pair = (Handle<Image>, Handle<Image>);
 
 #[derive(Resource)]
 pub struct Art {
-    /// Faces from calm to the thousand-yard stare.
-    pub human: [Handle<Image>; FACES],
-    pub human_flash: Handle<Image>,
+    /// Each hero's faces, from calm to the thousand-yard stare.
+    pub human: HashMap<Hero, [Handle<Image>; FACES]>,
+    pub human_flash: HashMap<Hero, Handle<Image>>,
+    /// Icons, in `WEAPONS` and `ITEMS` order (ART-04).
+    pub weapon_icons: Vec<Handle<Image>>,
+    pub item_icons: Vec<Handle<Image>>,
+    pub stat_icons: HashMap<StatKind, Handle<Image>>,
+    /// In `DamageType::ALL` order.
+    pub type_icons: Vec<Handle<Image>>,
+    pub reroll: Handle<Image>,
+    pub lock: Handle<Image>,
+    pub star: Handle<Image>,
     pub archetypes: HashMap<Archetype, Pair>,
     pub bodies: HashMap<Body, Pair>,
     pub objects: HashMap<Object, Pair>,
@@ -254,6 +327,8 @@ pub struct Art {
     pub ring: Handle<Image>,
     pub danger_ring: Handle<Image>,
     pub dot: Handle<Image>,
+    /// A round dot, for particles.
+    pub ball: Handle<Image>,
     pub dog: Handle<Image>,
     pub halo: Handle<Image>,
     pub shield: Handle<Image>,
@@ -266,9 +341,13 @@ pub struct Art {
 
 impl Art {
     pub fn build(images: &mut Assets<Image>) -> Art {
-        let faces: Vec<Canvas> = (0..FACES).map(draw::human).collect();
-        let human_flash = images.add(faces[0].whitened().image());
-        let human = [images.add(faces[0].image()), images.add(faces[1].image()), images.add(faces[2].image()), images.add(faces[3].image())];
+        let mut human = HashMap::new();
+        let mut human_flash = HashMap::new();
+        for hero in Hero::ALL {
+            let faces: Vec<Canvas> = (0..FACES).map(|f| draw::human(f, hero)).collect();
+            human_flash.insert(hero, images.add(faces[0].whitened().image()));
+            human.insert(hero, [images.add(faces[0].image()), images.add(faces[1].image()), images.add(faces[2].image()), images.add(faces[3].image())]);
+        }
         let mut pair = |c: Canvas| (images.add(c.image()), images.add(c.whitened().image()));
         let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(draw::archetype(a)))).collect();
         let bodies = Body::ALL.iter().map(|&b| (b, pair(draw::body(b)))).collect();
@@ -281,6 +360,13 @@ impl Art {
         Art {
             human,
             human_flash,
+            weapon_icons: (0..WEAPONS.len()).map(|i| add(icons::weapon(i))).collect(),
+            item_icons: (0..ITEMS.len()).map(|i| add(icons::item(i))).collect(),
+            stat_icons: StatKind::ALL.iter().map(|&k| (k, add(icons::stat(k)))).collect(),
+            type_icons: DamageType::ALL.iter().map(|&t| add(icons::damage_type(t))).collect(),
+            reroll: add(icons::reroll()),
+            lock: add(icons::lock()),
+            star: add(icons::star()),
             archetypes,
             bodies,
             objects,
@@ -298,6 +384,7 @@ impl Art {
             ring: add(draw::ring(WHITE)),
             danger_ring: add(draw::ring(DANGER)),
             dot: add(draw::dot()),
+            ball: add(draw::ball()),
             dog: add(draw::dog()),
             halo: add(draw::halo()),
             shield: add(draw::shield()),

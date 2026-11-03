@@ -27,8 +27,8 @@ pub fn is_viral(wave: u32) -> bool {
 /// HP, damage and speed multipliers of slop in a wave.
 pub fn scaling(wave: u32, platform: Platform) -> (f32, f32, f32) {
     let w = (wave - 1) as f32;
-    let hp = 1.0 + 0.13 * w + 0.009 * w * w;
-    let damage = 1.0 + 0.07 * w;
+    let hp = 1.0 + 0.22 * w + 0.04 * w * w;
+    let damage = 1.0 + 0.11 * w;
     let mut speed = 1.0 + 0.01 * w;
     if platform == Platform::LinkedOut {
         speed += 0.01 * w;

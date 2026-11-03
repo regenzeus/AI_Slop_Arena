@@ -4212,6 +4212,7 @@ name = "slop_game"
 version = "0.1.0"
 dependencies = [
  "bevy",
+ "image",
  "slop_rules",
  "slop_sim",
 ]

@@ -1,8 +1,9 @@
-//! A run: 20 waves, and between them level-ups, patch notes and the shop
-//! (RUN-01 to RUN-05).
+//! A run: 20 waves, and between them level-ups and the shop (RUN-01 to
+//! RUN-05). The slop retrains after every wave; its patch notes are shown in
+//! the shop.
 //!
 //! ```text
-//! Wave -> LevelUp (one per level gained) -> PatchNotes -> Shop -> Wave ...
+//! Wave -> LevelUp (one per level gained) -> Shop -> Wave ...
 //!   \-> Over { victory: false } on Burnout; Over { victory: true } after wave 20
 //! ```
 
@@ -26,6 +27,11 @@ const INTEREST: (f32, u32) = (0.05, 10);
 const SAVINGS_CAP: u32 = 20;
 const SELL_REFUND: f32 = 0.5;
 const MAX_LOOT_BOXES: u32 = 2;
+
+/// The Creator Fund pays for every wave survived, in Clout and XP.
+pub fn payout(wave: u32) -> u32 {
+    8 + 2 * wave
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RuleError {
@@ -55,7 +61,6 @@ pub enum Phase {
     Wave,
     /// Pick one of these; more level-ups may be queued.
     LevelUp(Vec<StatUp>),
-    PatchNotes(PatchNotes),
     Shop,
     Over { victory: bool },
 }
@@ -76,6 +81,8 @@ pub struct WaveReport {
     pub kills: u32,
     pub likes: u32,
     pub interest: u32,
+    /// The Creator Fund's payout for surviving the wave.
+    pub payout: u32,
     pub income: i32,
     pub levels: u32,
     pub damage_taken: f32,
@@ -108,8 +115,8 @@ pub struct Run {
     pub loot_boxes: u32,
     /// The last wave ended below 30% Mental Health.
     low_health: bool,
-    /// Patch notes waiting while level-ups are chosen.
-    parked_notes: Option<Phase>,
+    /// What the slop learned after the last wave, shown in the shop.
+    pub notes: Option<PatchNotes>,
     genomes: Vec<(usize, usize)>,
     rng: Rng,
 }
@@ -151,7 +158,7 @@ impl Run {
             weapon_damage: vec![0.0; WEAPONS.len()],
             loot_boxes: 0,
             low_health: false,
-            parked_notes: None,
+            notes: None,
             genomes: Vec::new(),
             rng,
         };
@@ -160,6 +167,24 @@ impl Run {
             items::apply(*m, &mut l, 0);
         }
         run.base = l.stats;
+        run.start_wave();
+        run
+    }
+
+    /// A run that starts at `wave` with a few random weapons and plenty of
+    /// Mental Health: the bots play it behind the title screen.
+    pub fn showcase(seed: u64, hero: Hero, wave: u32) -> Run {
+        let mut run = Run::new(seed, hero);
+        while run.weapons.len() < 4 {
+            let def = run.rng.below(WEAPONS.len() as u32) as usize;
+            if run.weapons.iter().all(|w| w.def != def) {
+                run.weapons.push(OwnedWeapon { def, tier: 2, paid: 0 });
+            }
+        }
+        run.weapons[0].tier = 3;
+        run.base.max_mental_health += 400.0;
+        run.base.conviction += 1.5;
+        run.wave = wave.clamp(1, WAVES);
         run.start_wave();
         run
     }
@@ -260,8 +285,9 @@ impl Run {
         let earned = world.clout;
         let genome_tallies: Vec<_> = self.genomes.iter().map(|&(spec, g)| (g, world.spec_tally[spec])).collect();
 
-        // Clout: Likes, interest and side hustles.
-        self.clout += earned;
+        // Clout: Likes, the Creator Fund, interest and side hustles.
+        report.payout = payout(self.wave);
+        self.clout += earned + report.payout;
         let (rate, cap) = if self.has(|m| matches!(m, Mod::Interest(_))) { (0.10, SAVINGS_CAP) } else { INTEREST };
         report.interest = ((self.clout as f32 * rate) as u32).min(cap);
         self.clout += report.interest;
@@ -275,8 +301,8 @@ impl Run {
         self.clout = (self.clout as i32 + income).max(0) as u32;
         report.income = income;
 
-        // Levels: Clout earned is XP.
-        self.xp += earned;
+        // Levels: Likes collected and the payout are XP.
+        self.xp += earned + report.payout;
         while self.xp >= levels::xp_for(self.level + 1) {
             self.xp -= levels::xp_for(self.level + 1);
             self.level += 1;
@@ -292,19 +318,17 @@ impl Run {
         }
         self.training.learn_rate = 1.0 + self.sum(|m| if let Mod::LearnFaster(v) = m { *v } else { 0.0 });
         let preview = self.has(|m| matches!(m, Mod::Preview));
-        let notes = self.training.train(self.wave, &tally, &genome_tallies, &mut self.rng, preview);
-        self.phase = Phase::PatchNotes(notes);
-        self.next_level_up();
+        self.notes = Some(self.training.train(self.wave, &tally, &genome_tallies, &mut self.rng, preview));
+        self.after_level_ups();
     }
 
-    /// Shows the next queued level-up, if any, before the patch notes.
-    fn next_level_up(&mut self) {
+    /// The next queued level-up, or the shop once they are all chosen (RUN-01).
+    fn after_level_ups(&mut self) {
         if self.pending_levels > 0 {
             let luck = self.stats().luck;
-            let offers = levels::offers(&mut self.rng, luck);
-            let notes = std::mem::replace(&mut self.phase, Phase::Wave);
-            self.parked_notes = Some(notes);
-            self.phase = Phase::LevelUp(offers);
+            self.phase = Phase::LevelUp(levels::offers(&mut self.rng, luck));
+        } else {
+            self.open_shop();
         }
     }
 
@@ -313,19 +337,7 @@ impl Run {
         let up = *offers.get(i).ok_or(RuleError::NoSuchOffer)?;
         up.stat.apply(&mut self.base, up.amount);
         self.pending_levels -= 1;
-        self.phase = self.parked_notes.take().unwrap_or(Phase::Shop);
-        if self.pending_levels > 0 {
-            self.next_level_up();
-        }
-        Ok(())
-    }
-
-    /// Done reading the patch notes: the shop opens (RUN-04).
-    pub fn close_patch_notes(&mut self) -> Result<(), RuleError> {
-        if !matches!(self.phase, Phase::PatchNotes(_)) {
-            return Err(RuleError::WrongPhase);
-        }
-        self.open_shop();
+        self.after_level_ups();
         Ok(())
     }
 
@@ -450,11 +462,16 @@ impl Run {
         }
     }
 
+    /// What the next reroll in this shop costs.
+    pub fn reroll_cost(&self) -> u32 {
+        self.shop.reroll_cost(self.wave)
+    }
+
     pub fn reroll(&mut self) -> Result<(), RuleError> {
         if !matches!(self.phase, Phase::Shop) {
             return Err(RuleError::WrongPhase);
         }
-        let cost = self.shop.reroll_cost();
+        let cost = self.shop.reroll_cost(self.wave);
         if cost > self.clout {
             return Err(RuleError::NotEnoughClout);
         }

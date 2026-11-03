@@ -10,7 +10,9 @@ use std::collections::{HashMap, HashSet};
 use bevy::camera::ScalingMode;
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, SliceScaleMode, SpriteImageMode, TextureSlicer};
-use slop_sim::content::{Archetype, BossKind, Look, Pattern, Platform, BUBBLE_LINES, POST_LINES};
+use slop_rules::Hero;
+use slop_sim::content::{Archetype, BossKind, Look, Pattern, Platform, BUBBLE_LINES, POST_LINES, WEAPONS};
+use slop_sim::Event;
 use slop_sim::spec::{SlopLook, SlopSpec, Traits};
 use slop_sim::world::{Outcome, Slop, World, ZoneKind, ARENA, FLASH_TICKS, NO_LINE, PLAYER_SPEED};
 
@@ -30,12 +32,17 @@ pub const Z_FX: f32 = 8.0;
 pub const Z_TEXT: f32 = 9.0;
 
 /// The smallest part of the arena any window shows.
-pub const VIEW: Vec2 = Vec2::new(1600.0, 900.0);
+pub const VIEW: Vec2 = Vec2::new(1440.0, 810.0);
 /// The camera may show this much wall beyond the arena.
 const WALL_SHOWN: f32 = 160.0;
-/// How far ahead of you the camera looks, in seconds of movement.
-const CAMERA_LEAD: f32 = 0.3;
-const CAMERA_FOLLOW: f32 = 7.0;
+/// How fast the camera catches up with you. It never looks ahead, so turning
+/// around does not swing the view.
+const CAMERA_FOLLOW: f32 = 14.0;
+/// Distance of carried weapons from your centre.
+const HOLD: f32 = 38.0;
+const WEAPON_SIZE: f32 = 34.0;
+/// Height of a lobbed brick at the top of its arc.
+const LOB_HEIGHT: f32 = 80.0;
 
 pub struct ViewsPlugin;
 
@@ -64,6 +71,53 @@ struct SlopView {
     stun: Entity,
 }
 
+/// How a carried weapon moves when it attacks.
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum Motion {
+    /// Kicks back, like a gun.
+    Recoil,
+    /// Lunges forward and spins a little, like a throw.
+    Throw,
+    /// Sweeps through its arc, out and back.
+    Swing,
+    /// Swells and shrinks: claps, keys, eyes.
+    Pulse,
+    /// Not drawn in your hand (the dog walks itself).
+    Hidden,
+}
+
+/// The direction a weapon's icon points, in degrees (None: always upright),
+/// and how it moves (WPN-09).
+fn hold(def: usize) -> (Option<f32>, Motion) {
+    match WEAPONS[def].pattern {
+        Pattern::Orbit { .. } => (None, Motion::Hidden),
+        Pattern::Arc { .. } => (Some(48.0), Motion::Swing),
+        Pattern::Ring | Pattern::Aura | Pattern::Chain { .. } | Pattern::Reflect | Pattern::Ricochet { .. } => (None, Motion::Pulse),
+        Pattern::Lob { .. } | Pattern::Boomerang { .. } | Pattern::Zone { .. } | Pattern::Slam { .. } => (None, Motion::Throw),
+        Pattern::Cone { .. } => (Some(35.0), Motion::Recoil),
+        Pattern::Beam { .. } => (Some(36.0), Motion::Recoil),
+        Pattern::Mark { .. } => (Some(46.0), Motion::Recoil),
+        Pattern::Shot { look: Look::Rock, .. } if WEAPONS[def].name == "Rock" => (None, Motion::Throw),
+        Pattern::Shot { look: Look::Rock, .. } => (Some(90.0), Motion::Recoil),
+        Pattern::Shot { look: Look::Book, .. } => (None, Motion::Throw),
+        Pattern::Stun { .. } => (None, Motion::Recoil),
+        _ => (Some(0.0), Motion::Recoil),
+    }
+}
+
+struct WeaponView {
+    e: Entity,
+    def: usize,
+    /// Current and wanted aim, in radians.
+    aim: f32,
+    target: f32,
+    /// 1 right after an attack, decaying.
+    kick: f32,
+    /// Swing progress left, 1 to 0, and the swing's half-width.
+    swing: f32,
+    half: f32,
+}
+
 #[derive(Resource)]
 struct Views {
     /// Seed of the wave the views belong to.
@@ -74,10 +128,13 @@ struct Views {
     player_body: Entity,
     swirl: Entity,
     slop: HashMap<u32, SlopView>,
-    shots: HashMap<u32, Entity>,
+    /// A projectile's view and the life it started with (for lob arcs).
+    shots: HashMap<u32, (Entity, u16)>,
     likes: HashMap<u32, Entity>,
     zones: HashMap<u32, Entity>,
-    dogs: HashMap<usize, Entity>,
+    /// A Dog Walk's dog and its leash, by weapon slot.
+    dogs: HashMap<usize, (Entity, Entity)>,
+    weapons: Vec<WeaponView>,
 }
 
 #[derive(Component)]
@@ -130,7 +187,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         ChildOf(player_root),
     ));
     let player_body = commands
-        .spawn((Sprite { image: art.human[0].clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE)), ..default() }, Transform::default(), ChildOf(player_root)))
+        .spawn((Sprite { image: art.human[&Hero::Boomer][0].clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE)), ..default() }, Transform::default(), ChildOf(player_root)))
         .id();
     let swirl = commands
         .spawn((
@@ -152,6 +209,7 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         likes: HashMap::new(),
         zones: HashMap::new(),
         dogs: HashMap::new(),
+        weapons: Vec::new(),
     });
     commands.insert_resource(art);
 }
@@ -333,7 +391,7 @@ fn sync(
     let world = game.world();
 
     // The platform's floor.
-    let platform = game.run.as_ref().map(|r| r.platform);
+    let platform = game.shown_run().map(|r| r.platform);
     if platform != views.platform {
         views.platform = platform;
         if let Ok((_, mut sprite, _)) = parts.get_mut(views.floor) {
@@ -347,13 +405,20 @@ fn sync(
         for v in views.slop.drain().map(|(_, v)| v) {
             commands.entity(v.root).despawn();
         }
-        let olds: Vec<Entity> = views.shots.drain().chain(views.likes.drain()).chain(views.zones.drain()).map(|(_, e)| e).chain(views.dogs.drain().map(|(_, e)| e)).collect();
+        let olds: Vec<Entity> = views
+            .shots
+            .drain()
+            .map(|(_, (e, _))| e)
+            .chain(views.likes.drain().chain(views.zones.drain()).map(|(_, e)| e))
+            .chain(views.dogs.drain().flat_map(|(_, (a, b))| [a, b]))
+            .collect();
         for e in olds {
             commands.entity(e).despawn();
         }
         views.seed = seed;
     }
-    let showing = game.screen == Screen::Run && world.is_some();
+    let showing = world.is_some();
+    let hero = game.shown_run().map_or(Hero::Boomer, |r| r.hero);
     if let Ok((_, mut vis)) = roots.get_mut(views.player_root) {
         *vis = if showing { Visibility::Visible } else { Visibility::Hidden };
     }
@@ -367,7 +432,7 @@ fn sync(
     if let Ok((mut tf, mut sprite, mut vis)) = parts.get_mut(views.player_body) {
         let share = (p.mental_health / p.stats.max_mental_health).clamp(0.0, 1.0);
         let face = ((1.0 - share) * FACES as f32).min(FACES as f32 - 1.0) as usize;
-        sprite.image = if p.invulnerable > 24 { art.human_flash.clone() } else { art.human[face].clone() };
+        sprite.image = if p.invulnerable > 24 { art.human_flash[&hero].clone() } else { art.human[&hero][face].clone() };
         if p.vel.x.abs() > 5.0 {
             sprite.flip_x = p.vel.x < 0.0;
         }
@@ -382,6 +447,86 @@ fn sync(
         let on = p.status.brainrot > 0 || p.status.brainrot_warning > 0;
         *vis = if on { Visibility::Inherited } else { Visibility::Hidden };
         tf.rotation = Quat::from_rotation_z(-t * 8.0);
+    }
+
+    // Your weapons, in your hands: they aim, kick, swing and throw (WPN-09).
+    let defs: Vec<usize> = p.weapons.iter().map(|w| w.def).collect();
+    if views.weapons.iter().map(|w| w.def).ne(defs.iter().copied()) {
+        for w in views.weapons.drain(..) {
+            commands.entity(w.e).despawn();
+        }
+        for &def in &defs {
+            let e = commands.spawn((Sprite { image: art.weapon_icons[def].clone(), custom_size: Some(Vec2::splat(WEAPON_SIZE)), ..default() }, Transform::default(), ChildOf(views.player_root))).id();
+            views.weapons.push(WeaponView { e, def, aim: 0.0, target: 0.0, kick: 0.0, swing: 0.0, half: 0.0 });
+        }
+    }
+    for e in &game.events {
+        if let Event::Attacked { weapon, to } = *e {
+            if let Some(w) = views.weapons.get_mut(weapon as usize) {
+                let d = to - p.pos;
+                if d.length_sq() > 1.0 {
+                    w.target = d.angle();
+                }
+                w.kick = 1.0;
+                if let Pattern::Arc { half_angle } = WEAPONS[w.def].pattern {
+                    w.swing = 1.0;
+                    w.half = half_angle;
+                    w.aim = w.target;
+                }
+            }
+        }
+    }
+    let dt = time.delta_secs();
+    let n = views.weapons.len().max(1) as f32;
+    for (k, w) in views.weapons.iter_mut().enumerate() {
+        let (forward, motion) = hold(w.def);
+        let delta = (w.target - w.aim + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU) - std::f32::consts::PI;
+        w.aim += delta * (1.0 - (-18.0 * dt).exp());
+        w.kick *= (-9.0 * dt).exp();
+        w.swing = (w.swing - dt / 0.22).max(0.0);
+        let home_angle = std::f32::consts::TAU * k as f32 / n + 0.8;
+        let home = Vec2::from_angle(home_angle) * HOLD + Vec2::new(0.0, 4.0 * (t * 2.5 + k as f32).sin());
+        let aim_dir = Vec2::from_angle(w.aim);
+        let (mut at, mut angle, mut scale) = (home, w.aim, 1.0);
+        match motion {
+            Motion::Recoil => at -= aim_dir * 10.0 * w.kick,
+            Motion::Throw => {
+                at += aim_dir * 16.0 * w.kick;
+                angle += 1.2 * w.kick;
+            }
+            Motion::Pulse => scale = 1.0 + 0.45 * w.kick,
+            Motion::Swing if w.swing > 0.0 => {
+                let s = 1.0 - w.swing;
+                let ease = s * s * (3.0 - 2.0 * s);
+                let sweep = w.aim - w.half + 2.0 * w.half * ease;
+                at = Vec2::from_angle(sweep) * (HOLD + 46.0 * (std::f32::consts::PI * s).sin());
+                angle = sweep;
+                scale = 1.25;
+            }
+            Motion::Swing | Motion::Hidden => {}
+        }
+        if let Ok((mut tf, mut sprite, mut vis)) = parts.get_mut(w.e) {
+            *vis = if motion == Motion::Hidden { Visibility::Hidden } else { Visibility::Inherited };
+            let left = angle.cos() < 0.0;
+            let rotation = match forward {
+                // Mirrored when aiming left, so nothing is held upside down.
+                Some(f) if left => {
+                    sprite.flip_y = true;
+                    angle + f.to_radians()
+                }
+                Some(f) => {
+                    sprite.flip_y = false;
+                    angle - f.to_radians()
+                }
+                None => {
+                    sprite.flip_x = left;
+                    if motion == Motion::Throw { 1.2 * w.kick } else { 0.0 }
+                }
+            };
+            tf.translation = Vec3::new(at.x, at.y, if at.y > 8.0 { -0.1 } else { 0.3 });
+            tf.rotation = Quat::from_rotation_z(rotation);
+            tf.scale = Vec3::splat(scale);
+        }
     }
 
     // Slop. When the wave is cleared they are deleted by the effects instead.
@@ -455,22 +600,36 @@ fn sync(
         keep
     });
 
-    // Projectiles and speech bubbles.
+    // Projectiles and speech bubbles. Lobbed bricks fly in an arc.
     let mut seen = HashSet::new();
     for pr in world.projectiles.iter().filter(|_| alive) {
         seen.insert(pr.id);
-        let e = *views.shots.entry(pr.id).or_insert_with(|| spawn_shot(&mut commands, &art, pr.look, pr.line, pr.hostile));
+        let (e, start) = *views.shots.entry(pr.id).or_insert_with(|| (spawn_shot(&mut commands, &art, pr.look, pr.line, pr.hostile), pr.life));
         if let Ok((mut tf, _)) = sprite_roots.get_mut(e) {
             let z = if matches!(pr.look, Look::Bubble | Look::Post) { Z_BUBBLE } else { Z_SHOT };
-            tf.translation = Vec3::new(pr.pos.x, pr.pos.y, z + (pr.id % 100) as f32 * 0.001);
+            let lob = pr.splash > 0.0 && !pr.hostile;
+            let arc = if lob {
+                let s = 1.0 - pr.life as f32 / start.max(1) as f32;
+                4.0 * s * (1.0 - s)
+            } else {
+                0.0
+            };
+            tf.translation = Vec3::new(pr.pos.x, pr.pos.y + arc * LOB_HEIGHT, z + (pr.id % 100) as f32 * 0.001);
+            tf.scale = Vec3::splat(1.0 + 0.6 * arc);
             tf.rotation = match pr.look {
                 Look::Bubble | Look::Post | Look::Letter => Quat::IDENTITY,
-                Look::Rock | Look::EyeRoll | Look::Frisbee | Look::Toast => Quat::from_rotation_z(t * 9.0 + pr.id as f32),
+                Look::Rock | Look::EyeRoll | Look::Frisbee | Look::Toast | Look::Brick | Look::Book => Quat::from_rotation_z(t * if lob { 7.0 } else { 9.0 } + pr.id as f32),
                 _ => Quat::from_rotation_z(pr.vel.angle()),
             };
         }
     }
-    retain(&mut commands, &mut views.shots, &seen);
+    views.shots.retain(|id, (e, _)| {
+        let keep = seen.contains(id);
+        if !keep {
+            commands.entity(*e).despawn();
+        }
+        keep
+    });
 
     // Clout coins; fake ones from the Hallucinator glitch.
     let mut seen = HashSet::new();
@@ -508,24 +667,35 @@ fn sync(
     }
     retain(&mut commands, &mut views.zones, &seen);
 
-    // The dog of a Dog Walk.
+    // The dog of a Dog Walk, on its leash.
     let mut seen = HashSet::new();
     for (slot, w) in world.player.weapons.iter().enumerate() {
         if let Pattern::Orbit { radius } = w.def().pattern {
             seen.insert(slot);
-            let e = *views.dogs.entry(slot).or_insert_with(|| {
-                commands.spawn((Root, Sprite { image: art.dog.clone(), custom_size: Some(Vec2::splat(30.0)), ..default() }, Transform::default())).id()
+            let (dog, leash) = *views.dogs.entry(slot).or_insert_with(|| {
+                let dog = commands.spawn((Root, Sprite { image: art.dog.clone(), custom_size: Some(Vec2::splat(34.0)), ..default() }, Transform::default())).id();
+                let leash = commands.spawn((Root, Sprite::from_color(Color::srgb(0.85, 0.2, 0.2), Vec2::new(1.0, 2.5)), Transform::default())).id();
+                (dog, leash)
             });
-            if let Ok((mut tf, _)) = sprite_roots.get_mut(e) {
-                let at = p.pos + slop_sim::V2::from_angle(w.phase) * radius;
-                tf.translation = Vec3::new(at.x, at.y, Z_ACTOR + depth(at.y));
+            let at = p.pos + slop_sim::V2::from_angle(w.phase) * radius;
+            if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(dog) {
+                tf.translation = Vec3::new(at.x, at.y + 3.0 * (t * 16.0).sin().abs(), Z_ACTOR + depth(at.y));
+                sprite.flip_x = (w.phase + std::f32::consts::FRAC_PI_2).cos() < 0.0;
+            }
+            if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(leash) {
+                let (a, b) = (Vec2::new(p.pos.x, p.pos.y), Vec2::new(at.x, at.y));
+                let mid = (a + b) / 2.0;
+                tf.translation = Vec3::new(mid.x, mid.y, Z_ACTOR + depth(p.pos.y) - 0.01);
+                tf.rotation = Quat::from_rotation_z((b - a).to_angle());
+                sprite.custom_size = Some(Vec2::new((b - a).length(), 2.5));
             }
         }
     }
-    views.dogs.retain(|slot, e| {
+    views.dogs.retain(|slot, (dog, leash)| {
         let keep = seen.contains(slot);
         if !keep {
-            commands.entity(*e).despawn();
+            commands.entity(*dog).despawn();
+            commands.entity(*leash).despawn();
         }
         keep
     });
@@ -556,7 +726,7 @@ fn follow_camera(
     };
     let dt = time.delta_secs();
     let target = match game.world().filter(|_| game.screen == Screen::Run) {
-        Some(w) => Vec2::new(w.player.pos.x + w.player.vel.x * CAMERA_LEAD, w.player.pos.y + w.player.vel.y * CAMERA_LEAD),
+        Some(w) => Vec2::new(w.player.pos.x, w.player.pos.y),
         None => Vec2::splat(ARENA / 2.0) + Vec2::new((time.elapsed_secs() * 0.1).sin() * 300.0, 0.0),
     };
     let seed = game.world().map_or(0, |w| w.seed);

@@ -58,7 +58,7 @@ and `slop_lab determinism` replays six waves of a run with the bots and compares
 | `items`, `heroes`, `levels` | Items as data with modifiers, the five heroes, level-up offers. |
 | `bot` | Heuristic and random policies that make every choice between waves. |
 
-Between waves the run books the wave's tally: Clout and XP, then a training run that moves
+Between waves the run books the wave's tally: Likes, the Creator Fund payout and XP, then a training run that moves
 the base model's resistances towards your kill share and breeds the brainrot that hurt you.
 The next wave's specs are built from the trained model and genome pool.
 
@@ -67,12 +67,13 @@ The next wave's specs are built from the trained model and genome pool.
 | Module | Responsibility |
 | --- | --- |
 | `state` | Screens, the run, and `UiAction`: everything a button or key can ask for. |
-| `play` | Keys to input and actions; steps the wave at 60 ticks per second; bot decisions in autoplay. |
-| `views` | Camera, platform floor, and one view per simulation object, spawned and despawned by id. Brainrot is stacked from three part sprites. |
-| `fx` | Effects from events: numbers, deletions, names, pops, swings, beams, chains, rings, statuses. |
-| `hud` | Mental Health, statuses, wave timer or boss bar, Clout, level, weapons, banners, ads, pop-ups. |
-| `screens` | Title, hero select, level-up, patch notes, shop and end screens, rebuilt on change. |
-| `art`, `draw` | A signed-distance rasteriser and every picture, drawn at startup. |
+| `play` | Keys to input and shortcuts; steps the wave at 60 ticks per second; bot decisions in autoplay; the demo run behind the menus. |
+| `views` | Camera, platform floor, and one view per simulation object, spawned and despawned by id. Brainrot is stacked from three part sprites. Your weapons are drawn around you and aim, kick, swing and throw from `Attacked` events. |
+| `fx` | Effects from events: numbers, deletions, names, pops, an effect per weapon, trails, kill streaks, level-ups, statuses. |
+| `hud` | Mental Health, statuses, wave timer or boss bar, Clout, level with level-ups earned this wave, banners, ads, pop-ups. |
+| `screens` | Title, hero select, briefing, level-up, shop (with the patch notes), pause and end screens, rebuilt on change. |
+| `ui` | Keyboard and mouse control of every screen: focus by stable key, arrow navigation by on-screen position, focus ring, tooltips. |
+| `art`, `draw`, `icons` | A signed-distance rasteriser and every picture and icon, drawn at startup. |
 | `audio` | Sounds synthesised into WAV clips at startup. |
 | `autoplay` | The bots play a whole run and the client saves screenshots. |
 

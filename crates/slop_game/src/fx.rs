@@ -1,15 +1,17 @@
 //! Effects that make a wave readable and satisfying (UI-04, FEEL-01): damage
 //! numbers in the colour of their type, slop being deleted, brainrot shouting
-//! its name, bubbles popping into letters, swings, beams, chains and splashes,
-//! spawn and aim warnings, status words and screen shake. Effects only read
+//! its name, bubbles popping into letters, and an effect for every weapon
+//! (WPN-09): muzzle flashes, sprays, flying keys, chains, beams, a falling Ban
+//! Hammer, brick debris and trails behind your projectiles. Also spawn and aim
+//! warnings, status words, level-ups and screen shake. Effects only read
 //! simulation events; they never change the wave.
 
 use bevy::prelude::*;
-use slop_sim::content::{Archetype, Pattern, AGREE_LINES, BUBBLE_LINES};
+use slop_sim::content::{weapon_index, Archetype, Look, Pattern, AGREE_LINES, BUBBLE_LINES, CLAWED_LINES, DELETED_LINES, WEAPONS};
 use slop_sim::events::StatusKind;
 use slop_sim::spec::SlopLook;
 use slop_sim::world::{Active, LANCE_AIM, SPAWN_WARNING, TICK_RATE};
-use slop_sim::{Event, V2};
+use slop_sim::{DamageType, Event, V2};
 
 use crate::art::Art;
 use crate::play::Simulation;
@@ -19,15 +21,16 @@ use crate::views::{Shake, Z_FX, Z_TEXT};
 
 /// Caps keep a crowded wave from drowning in effects.
 const MAX_NUMBERS: usize = 70;
-const MAX_PARTICLES: usize = 260;
+const MAX_PARTICLES: usize = 320;
 const MAX_WORDS: usize = 30;
+const MAX_TRAILS: usize = 240;
 const AIM_LENGTH: f32 = 560.0;
 
 pub struct FxPlugin;
 
 impl Plugin for FxPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (spawn_fx, animate).chain().after(Simulation));
+        app.add_systems(Update, (spawn_fx, trails, animate).chain().after(Simulation));
     }
 }
 
@@ -42,6 +45,12 @@ enum Kind {
     Flash,
     /// A ring that grows as it fades.
     Ring,
+    /// Spins as it fades (an Uno card).
+    Spin,
+    /// Swings down onto its spot, then rests (the Ban Hammer).
+    Drop,
+    /// A dot left behind a projectile.
+    Trail,
 }
 
 #[derive(Component)]
@@ -57,6 +66,11 @@ impl Fx {
     fn new(kind: Kind, life: f32, vel: Vec2) -> Fx {
         Fx { kind, life, max: life, vel, base_alpha: 1.0 }
     }
+
+    fn alpha(mut self, a: f32) -> Fx {
+        self.base_alpha = a;
+        self
+    }
 }
 
 fn v(p: V2) -> Vec2 {
@@ -68,6 +82,11 @@ fn spread(n: u32) -> Vec2 {
     let a = n as f32 * 2.399_963;
     let r = 0.6 + 0.4 * ((n * 7919) % 100) as f32 / 100.0;
     Vec2::new(a.cos(), a.sin()) * r
+}
+
+/// A number from 0 to 1 that changes with `n`.
+fn jitter(n: u32) -> f32 {
+    ((n.wrapping_mul(2_654_435_761)) >> 16) as f32 / 65_536.0
 }
 
 fn look_color(look: SlopLook) -> Color {
@@ -86,8 +105,20 @@ fn text(commands: &mut Commands, words: impl Into<String>, at: Vec2, size: f32, 
     commands.spawn((Text2d::new(words), TextFont { font_size: size, ..default() }, TextColor(color), Transform::from_xyz(at.x, at.y, Z_TEXT), fx));
 }
 
+/// Text with a dark copy behind it, readable on any floor.
+#[allow(clippy::too_many_arguments)]
+fn shadowed(commands: &mut Commands, words: &str, at: Vec2, size: f32, color: Color, life: f32, vel: Vec2, kind: Kind) {
+    let shadow = Fx::new(kind, life, vel).alpha(0.75);
+    commands.spawn((Text2d::new(words), TextFont { font_size: size, ..default() }, TextColor(theme::INK), Transform::from_xyz(at.x + 1.5, at.y - 1.5, Z_TEXT - 0.01), shadow));
+    text(commands, words, at, size, color, Fx::new(kind, life, vel));
+}
+
 fn particle(commands: &mut Commands, art: &Art, at: Vec2, size: f32, color: Color, fx: Fx) {
-    commands.spawn((Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(size)), color, ..default() }, Transform::from_xyz(at.x, at.y, Z_FX), fx));
+    commands.spawn((Sprite { image: art.ball.clone(), custom_size: Some(Vec2::splat(size)), color, ..default() }, Transform::from_xyz(at.x, at.y, Z_FX), fx));
+}
+
+fn sprite(commands: &mut Commands, image: &Handle<Image>, at: Vec2, size: f32, angle: f32, fx: Fx) {
+    commands.spawn((Sprite { image: image.clone(), custom_size: Some(Vec2::splat(size)), ..default() }, Transform::from_xyz(at.x, at.y, Z_FX + 0.2).with_rotation(Quat::from_rotation_z(angle)), fx));
 }
 
 /// A thin line between two points that fades fast.
@@ -128,46 +159,93 @@ fn active_words(a: Active) -> &'static str {
     }
 }
 
-#[allow(clippy::too_many_lines)]
-fn spawn_fx(mut commands: Commands, game: Res<Game>, art: Res<Art>, mut shake: ResMut<Shake>, existing: Query<&Fx>, mut counter: Local<u32>) {
+/// Keys that fly off a Mechanical Keyboard.
+const KEYS: [&str; 8] = ["W", "A", "S", "D", "Q", "E", "Ctrl", "Esc"];
+
+/// Kill streaks worth shouting about: kills within `STREAK_SECONDS`.
+const STREAKS: [(usize, &str); 4] = [(12, "Trending!"), (25, "VIRAL!"), (45, "Breaking the algorithm!"), (80, "MODEL COLLAPSE IMMINENT")];
+const STREAK_SECONDS: f32 = 2.5;
+
+#[allow(clippy::too_many_lines, clippy::too_many_arguments)]
+fn spawn_fx(
+    mut commands: Commands,
+    game: Res<Game>,
+    art: Res<Art>,
+    time: Res<Time>,
+    mut shake: ResMut<Shake>,
+    existing: Query<&Fx>,
+    mut counter: Local<u32>,
+    mut streak: Local<(Vec<f32>, usize)>,
+) {
+    let Some(world) = game.world() else { return };
+    let me = v(world.player.pos);
+    // Kill streaks: shout each tier once, until the streak cools down.
+    let now = time.elapsed_secs();
+    let kills = game.events.iter().filter(|e| matches!(e, Event::SlopDied { .. })).count();
+    let (times, shouted) = &mut *streak;
+    times.extend(std::iter::repeat_n(now, kills));
+    times.retain(|t| now - *t < STREAK_SECONDS);
+    let tier = STREAKS.iter().filter(|(n, _)| times.len() >= *n).count();
+    if tier > *shouted {
+        let (_, words) = STREAKS[tier - 1];
+        shadowed(&mut commands, words, me + Vec2::new(0.0, 110.0), 26.0 + 6.0 * tier as f32, Color::srgb(1.0, 0.45, 0.2), 1.3, Vec2::Y * 30.0, Kind::Text);
+        shake.trauma = shake.trauma.max(0.2);
+        *shouted = tier;
+    } else if times.len() < STREAKS[0].0 / 2 {
+        *shouted = 0;
+    }
+    if game.level_flash {
+        shadowed(&mut commands, "LEVEL UP!", me + Vec2::new(0.0, 70.0), 30.0, Color::srgb(1.0, 0.86, 0.3), 1.4, Vec2::Y * 40.0, Kind::Text);
+        ring(&mut commands, &art, me, 90.0, Color::srgb(1.0, 0.86, 0.3), 0.5);
+        for k in 0..8 {
+            let fx = Fx::new(Kind::Spin, 0.7, spread(*counter + k) * 260.0);
+            sprite(&mut commands, &art.star, me, 18.0, 0.0, fx);
+        }
+    }
     if game.events.is_empty() {
         return;
     }
-    let Some(world) = game.world() else { return };
     let mut numbers = existing.iter().filter(|f| f.kind == Kind::Number).count();
     let mut particles = existing.iter().filter(|f| f.kind == Kind::Particle).count();
     let mut words = existing.iter().filter(|f| f.kind == Kind::Text).count();
-    let me = v(world.player.pos);
-    let mut say = |commands: &mut Commands, w: String, at: Vec2, size: f32, color: Color, life: f32| {
+    let mut say = |commands: &mut Commands, w: &str, at: Vec2, size: f32, color: Color, life: f32| {
         if words < MAX_WORDS {
             words += 1;
-            text(commands, w, at, size, color, Fx::new(Kind::Text, life, Vec2::Y * 32.0));
+            shadowed(commands, w, at, size, color, life, Vec2::Y * 32.0, Kind::Text);
         }
     };
+    let uno = weapon_index("Uno Reverse Card").map(|i| art.weapon_icons[i].clone());
+    let hammer = weapon_index("Ban Hammer").map(|i| art.weapon_icons[i].clone());
     for e in &game.events {
         *counter = counter.wrapping_add(1);
         let n = *counter;
         match *e {
             Event::SlopHit { at, amount, kind } => {
+                if particles < MAX_PARTICLES {
+                    particles += 1;
+                    particle(&mut commands, &art, v(at) + spread(n) * 8.0, 11.0, Color::WHITE, Fx::new(Kind::Particle, 0.1, Vec2::ZERO));
+                }
                 if numbers >= MAX_NUMBERS {
                     continue;
                 }
                 numbers += 1;
                 let w = if amount < 1.0 { format!("{amount:.1}") } else { format!("{amount:.0}") };
                 let at = v(at) + spread(n) * 14.0 + Vec2::Y * 18.0;
-                text(&mut commands, w, at, 20.0, theme::type_color(kind), Fx::new(Kind::Number, 0.6, Vec2::new(0.0, 70.0)));
+                let size = if amount >= 40.0 { 30.0 } else if amount >= 15.0 { 25.0 } else { 21.0 };
+                shadowed(&mut commands, &w, at, size, theme::type_text(kind), 0.6, Vec2::new(0.0, 80.0), Kind::Number);
             }
             Event::SlopDied { at, spec } => {
                 let look = world.setup.specs.get(spec as usize).map_or(SlopLook::Archetype(Archetype::ChadGpt), |s| s.look);
                 let at = v(at);
-                for k in 0..7 {
+                for k in 0..9 {
                     if particles >= MAX_PARTICLES {
                         break;
                     }
                     particles += 1;
-                    particle(&mut commands, &art, at, 7.0, look_color(look), Fx::new(Kind::Particle, 0.45, spread(n * 7 + k) * 220.0));
+                    particle(&mut commands, &art, at, 8.0, look_color(look), Fx::new(Kind::Particle, 0.5, spread(n * 7 + k) * 260.0));
                 }
-                say(&mut commands, "[removed]".into(), at + Vec2::Y * 10.0, 13.0, theme::QUIET, 0.7);
+                ring(&mut commands, &art, at, 34.0, look_color(look), 0.22);
+                say(&mut commands, DELETED_LINES[n as usize % DELETED_LINES.len()], at + Vec2::Y * 10.0, 13.0, theme::QUIET, 0.7);
             }
             Event::SpawnWarning { at } => {
                 commands.spawn((
@@ -178,77 +256,154 @@ fn spawn_fx(mut commands: Commands, game: Res<Game>, art: Res<Art>, mut shake: R
             }
             Event::Named { at, spec } => {
                 if let Some(s) = world.setup.specs.get(spec as usize) {
-                    let color = if s.elite { theme::PLAYER_RED } else { Color::srgb(0.85, 0.42, 0.1) };
-                    say(&mut commands, format!("{}!", s.name), v(at) + Vec2::Y * 40.0, 16.0, color, 1.6);
+                    let color = if s.elite { theme::PLAYER_RED } else { Color::srgb(1.0, 0.62, 0.25) };
+                    say(&mut commands, &format!("{}!", s.name), v(at) + Vec2::Y * 40.0, 17.0, color, 1.6);
                 }
             }
             Event::PlayerHurt { amount } => {
                 shake.trauma = (shake.trauma + 0.25 + amount * 0.015).min(1.0);
-                say(&mut commands, format!("-{:.0}", amount.max(1.0)), me + Vec2::new(22.0, 34.0), 22.0, theme::DANGER, 0.7);
+                say(&mut commands, &format!("-{:.0}", amount.max(1.0)), me + Vec2::new(22.0, 34.0), 24.0, theme::DANGER, 0.7);
             }
-            Event::Dodged => say(&mut commands, "Nope.".into(), me + Vec2::new(0.0, 40.0), 18.0, theme::QUIET, 0.8),
-            Event::SlopDodged { at } => say(&mut commands, "dodged".into(), v(at) + Vec2::Y * 24.0, 14.0, theme::QUIET, 0.6),
-            Event::Blocked => say(&mut commands, "Blocked!".into(), me + Vec2::new(0.0, 44.0), 18.0, theme::type_color(slop_sim::DamageType::Fact), 0.8),
-            Event::SecondWind => say(&mut commands, "Good night's sleep!".into(), me + Vec2::new(0.0, 50.0), 22.0, theme::mental_health_color(1.0), 1.5),
+            Event::Dodged => say(&mut commands, "Nope.", me + Vec2::new(0.0, 40.0), 18.0, theme::PAPER, 0.8),
+            Event::SlopDodged { at } => say(&mut commands, "dodged", v(at) + Vec2::Y * 24.0, 14.0, theme::QUIET, 0.6),
+            Event::Blocked => say(&mut commands, "Blocked!", me + Vec2::new(0.0, 44.0), 18.0, theme::type_text(DamageType::Fact), 0.8),
+            Event::SecondWind => say(&mut commands, "Good night's sleep!", me + Vec2::new(0.0, 50.0), 22.0, theme::mental_health_color(1.0), 1.5),
             Event::Swing { at, angle, range, weapon, .. } => {
                 let spray = world.player.weapons.get(weapon as usize).is_some_and(|w| matches!(w.def().pattern, Pattern::Cone { .. }));
                 let image = if spray { art.spray.clone() } else { art.swing.clone() };
-                let mut fx = Fx::new(Kind::Flash, if spray { 0.14 } else { 0.16 }, Vec2::ZERO);
-                fx.base_alpha = if spray { 0.55 } else { 0.7 };
+                let fx = Fx::new(Kind::Flash, if spray { 0.14 } else { 0.2 }, Vec2::ZERO).alpha(if spray { 0.55 } else { 0.8 });
                 commands.spawn((
                     Sprite { image, custom_size: Some(Vec2::splat(range * 2.0)), ..default() },
                     Transform::from_xyz(at.x, at.y, Z_FX - 0.5).with_rotation(Quat::from_rotation_z(angle)),
                     fx,
                 ));
             }
-            Event::Beam { from, to } => line(&mut commands, &art, v(from), v(to), 10.0, Color::srgba(1.0, 0.95, 0.6, 0.85), 0.18),
-            Event::Chain { from, to } => line(&mut commands, &art, v(from), v(to), 4.0, theme::type_color(slop_sim::DamageType::Sarcasm), 0.25),
-            Event::Splash { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.85, 0.6, 0.9), 0.3),
-            Event::Slam { at, radius } => {
-                shake.trauma = (shake.trauma + 0.3).min(1.0);
-                ring(&mut commands, &art, v(at), radius, theme::type_color(slop_sim::DamageType::Fact), 0.35);
-                say(&mut commands, "BANNED".into(), v(at) + Vec2::Y * 20.0, 18.0, theme::type_color(slop_sim::DamageType::Fact), 0.6);
+            Event::Attacked { weapon, to } => {
+                let Some(w) = world.player.weapons.get(weapon as usize) else { continue };
+                let def = &WEAPONS[w.def];
+                let dir = (v(to) - me).normalize_or(Vec2::X);
+                let muzzle = me + dir * 52.0;
+                let color = theme::type_text(def.kind);
+                match def.pattern {
+                    Pattern::Shot { .. } | Pattern::Burst { .. } | Pattern::Mark { .. } | Pattern::Stun { .. } => {
+                        let fx = Fx::new(Kind::Flash, 0.07, Vec2::ZERO);
+                        sprite(&mut commands, &art.star, muzzle, 24.0, n as f32, fx);
+                        for k in 0..3 {
+                            let d = Vec2::from_angle(dir.to_angle() + (jitter(n * 3 + k) - 0.5) * 0.9);
+                            particle(&mut commands, &art, muzzle, 5.0, color, Fx::new(Kind::Particle, 0.18, d * 380.0));
+                        }
+                    }
+                    Pattern::Cone { half_angle } => {
+                        for k in 0..10 {
+                            let a = dir.to_angle() + (jitter(n * 10 + k) - 0.5) * 2.0 * half_angle;
+                            let speed = 380.0 + 260.0 * jitter(n * 31 + k);
+                            particle(&mut commands, &art, me + dir * 30.0, 7.0, Color::srgb(0.55, 0.8, 1.0), Fx::new(Kind::Particle, 0.32, Vec2::from_angle(a) * speed));
+                        }
+                    }
+                    Pattern::Ring => {
+                        for k in 0..6u32 {
+                            let d = Vec2::from_angle(k as f32 * 1.047 + jitter(n) * 3.0);
+                            let key = KEYS[((n + k) % KEYS.len() as u32) as usize];
+                            shadowed(&mut commands, key, me + d * 30.0, 15.0, theme::PAPER, 0.45, d * 300.0, Kind::Particle);
+                        }
+                    }
+                    Pattern::Aura => say(&mut commands, "clap", me + Vec2::new(0.0, 46.0), 15.0, color, 0.45),
+                    Pattern::Zone { .. } | Pattern::Lob { .. } => {
+                        for k in 0..3 {
+                            particle(&mut commands, &art, me + dir * 30.0, 6.0, color, Fx::new(Kind::Particle, 0.2, Vec2::from_angle(dir.to_angle() + (jitter(n + k) - 0.5)) * 220.0));
+                        }
+                    }
+                    Pattern::Orbit { .. } if n % 7 == 0 => say(&mut commands, "woof", v(to) + Vec2::Y * 28.0, 15.0, theme::PAPER, 0.5),
+                    _ => {}
+                }
             }
-            Event::Ring { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.2),
-            Event::Reflected { at } => say(&mut commands, "No u.".into(), v(at) + Vec2::Y * 24.0, 16.0, theme::type_color(slop_sim::DamageType::Sarcasm), 0.8),
-            Event::BubblePopped { at, line } => {
-                let words = BUBBLE_LINES.get(line as usize).copied().unwrap_or("...");
-                for (k, ch) in words.chars().filter(|c| c.is_alphanumeric()).step_by(2).take(6).enumerate() {
+            Event::Beam { from, to } => {
+                line(&mut commands, &art, v(from), v(to), 36.0, Color::srgba(1.0, 0.95, 0.6, 0.25), 0.22);
+                line(&mut commands, &art, v(from), v(to), 9.0, Color::srgba(1.0, 0.98, 0.8, 0.95), 0.16);
+                ring(&mut commands, &art, v(to), 24.0, Color::srgb(1.0, 0.95, 0.6), 0.2);
+            }
+            Event::Chain { from, to } => {
+                // Air Quotes jump in a zigzag, with the quotes flying off.
+                let (a, b) = (v(from), v(to));
+                let side = (b - a).perp().normalize_or(Vec2::Y);
+                let p1 = a.lerp(b, 0.33) + side * 14.0;
+                let p2 = a.lerp(b, 0.66) - side * 14.0;
+                let gold = theme::type_text(DamageType::Sarcasm);
+                for (x, y) in [(a, p1), (p1, p2), (p2, b)] {
+                    line(&mut commands, &art, x, y, 4.0, gold, 0.25);
+                }
+                shadowed(&mut commands, "\"", b + Vec2::new(-8.0, 20.0), 26.0, gold, 0.4, Vec2::new(-40.0, 60.0), Kind::Particle);
+                shadowed(&mut commands, "\"", b + Vec2::new(8.0, 20.0), 26.0, gold, 0.4, Vec2::new(40.0, 60.0), Kind::Particle);
+            }
+            Event::Splash { at, radius } => {
+                shake.trauma = shake.trauma.max(0.15);
+                ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.85, 0.6, 0.9), 0.3);
+                for k in 0..8 {
                     if particles < MAX_PARTICLES {
                         particles += 1;
-                        text(&mut commands, ch.to_string(), v(at), 15.0, theme::INK, Fx::new(Kind::Particle, 0.5, spread(n * 11 + k as u32) * 160.0));
+                        particle(&mut commands, &art, v(at), 9.0, Color::srgb(0.72, 0.35, 0.25), Fx::new(Kind::Particle, 0.45, spread(n * 5 + k) * 300.0));
+                    }
+                }
+            }
+            Event::Slam { at, radius } => {
+                shake.trauma = (shake.trauma + 0.35).min(1.0);
+                if let Some(h) = &hammer {
+                    sprite(&mut commands, h, v(at) + Vec2::new(10.0, 30.0), 96.0, 0.0, Fx::new(Kind::Drop, 0.35, Vec2::ZERO));
+                }
+                ring(&mut commands, &art, v(at), radius, theme::type_text(DamageType::Fact), 0.35);
+                for k in 0..10 {
+                    particle(&mut commands, &art, v(at), 10.0, Color::srgb(0.7, 0.7, 0.75), Fx::new(Kind::Particle, 0.4, spread(n * 13 + k) * 340.0));
+                }
+                say(&mut commands, "BANNED", v(at) + Vec2::Y * 30.0, 22.0, theme::DANGER, 0.7);
+            }
+            Event::Ring { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.2),
+            Event::Reflected { at } => {
+                if let Some(u) = &uno {
+                    sprite(&mut commands, u, v(at), 40.0, 0.0, Fx::new(Kind::Spin, 0.45, Vec2::Y * 40.0));
+                }
+                say(&mut commands, "No u.", v(at) + Vec2::Y * 30.0, 17.0, theme::type_text(DamageType::Sarcasm), 0.8);
+            }
+            Event::BubblePopped { at, line } => {
+                let words = BUBBLE_LINES.get(line as usize).copied().unwrap_or("...");
+                for (k, ch) in words.chars().filter(|c| c.is_alphanumeric()).step_by(3).take(3).enumerate() {
+                    if particles < MAX_PARTICLES {
+                        particles += 1;
+                        text(&mut commands, ch.to_string(), v(at), 13.0, theme::QUIET, Fx::new(Kind::Particle, 0.5, spread(n * 11 + k as u32) * 160.0));
                     }
                 }
             }
             Event::Agreed { at, line } => {
                 let w = AGREE_LINES.get(line as usize).copied().unwrap_or("Type AMEN.");
-                say(&mut commands, w.into(), v(at) + Vec2::Y * 40.0, 16.0, theme::AGREE, 1.4);
+                say(&mut commands, w, v(at) + Vec2::Y * 40.0, 16.0, Color::srgb(0.5, 0.95, 0.5), 1.4);
             }
-            Event::Healed { at } => say(&mut commands, "+HP".into(), v(at) + Vec2::Y * 30.0, 15.0, theme::AGREE, 0.8),
-            Event::Scattered { at } => say(&mut commands, "Listicle scattered!".into(), v(at) + Vec2::Y * 30.0, 16.0, theme::INK, 1.0),
-            Event::Reposted { at } => say(&mut commands, "[repost]".into(), v(at) + Vec2::Y * 30.0, 15.0, theme::QUIET, 0.9),
-            Event::Split { at } => say(&mut commands, "I came across your profile.".into(), v(at) + Vec2::Y * 34.0, 14.0, theme::INK, 1.2),
-            Event::Hatched { at } => say(&mut commands, "Surprise!".into(), v(at) + Vec2::Y * 30.0, 16.0, theme::INK, 1.0),
-            Event::Grabbed => say(&mut commands, "Grabbed!".into(), me + Vec2::new(0.0, 44.0), 18.0, theme::DANGER, 0.8),
+            Event::Healed { at } => say(&mut commands, "+HP", v(at) + Vec2::Y * 30.0, 15.0, Color::srgb(0.5, 0.95, 0.5), 0.8),
+            Event::Scattered { at } => say(&mut commands, "Listicle scattered!", v(at) + Vec2::Y * 30.0, 16.0, theme::PAPER, 1.0),
+            Event::Reposted { at } => say(&mut commands, "[repost]", v(at) + Vec2::Y * 30.0, 15.0, theme::QUIET, 0.9),
+            Event::Split { at } => say(&mut commands, "I came across your profile.", v(at) + Vec2::Y * 34.0, 14.0, theme::PAPER, 1.2),
+            Event::Hatched { at } => say(&mut commands, "Surprise!", v(at) + Vec2::Y * 30.0, 16.0, theme::PAPER, 1.0),
+            Event::Grabbed => say(&mut commands, "Grabbed!", me + Vec2::new(0.0, 44.0), 18.0, theme::DANGER, 0.8),
             Event::LancerAim { from, dir } => {
                 let (from, dir) = (v(from), v(dir));
                 let centre = from + dir * (AIM_LENGTH / 2.0);
-                let mut fx = Fx::new(Kind::Warning, LANCE_AIM as f32 / TICK_RATE as f32, Vec2::ZERO);
-                fx.base_alpha = 0.55;
+                let fx = Fx::new(Kind::Warning, LANCE_AIM as f32 / TICK_RATE as f32, Vec2::ZERO).alpha(0.55);
                 commands.spawn((
                     Sprite { image: art.dot.clone(), custom_size: Some(Vec2::new(AIM_LENGTH, 3.0)), color: theme::DANGER, ..default() },
                     Transform::from_xyz(centre.x, centre.y, Z_FX).with_rotation(Quat::from_rotation_z(dir.to_angle())),
                     fx,
                 ));
+                // Clawed thinks out loud while it aims.
+                if n % 2 == 0 {
+                    say(&mut commands, CLAWED_LINES[(n / 2) as usize % CLAWED_LINES.len()], from + Vec2::Y * 46.0, 15.0, Color::srgb(1.0, 0.66, 0.5), 1.2);
+                }
             }
             Event::Status { kind } => {
                 let (w, color) = status_words(kind);
-                say(&mut commands, w.into(), me + Vec2::new(0.0, 52.0), 18.0, color, 1.0);
+                say(&mut commands, w, me + Vec2::new(0.0, 52.0), 18.0, color, 1.0);
             }
-            Event::ActiveUsed { active } => say(&mut commands, active_words(active).into(), me + Vec2::new(0.0, 60.0), 20.0, theme::type_color(slop_sim::DamageType::Grass), 1.0),
+            Event::ActiveUsed { active } => say(&mut commands, active_words(active), me + Vec2::new(0.0, 60.0), 20.0, theme::type_text(DamageType::Grass), 1.0),
             Event::Friend { from, to } => line(&mut commands, &art, v(from), v(to), 14.0, Color::srgba(0.4, 0.9, 0.5, 0.8), 0.35),
-            Event::LootBox { at } => say(&mut commands, "Loot Box! Opens in the next shop.".into(), v(at) + Vec2::Y * 40.0, 16.0, Color::srgb(0.9, 0.7, 0.1), 1.6),
-            Event::Hustle { level } => say(&mut commands, format!("Rise and grind! Speed x{level:.2}"), me + Vec2::new(0.0, 80.0), 20.0, theme::PLAYER_RED, 1.5),
+            Event::LootBox { at } => say(&mut commands, "Loot Box! Opens in the next shop.", v(at) + Vec2::Y * 40.0, 16.0, Color::srgb(1.0, 0.8, 0.2), 1.6),
+            Event::Hustle { level } => say(&mut commands, &format!("Rise and grind! Speed x{level:.2}"), me + Vec2::new(0.0, 80.0), 20.0, theme::PLAYER_RED, 1.5),
             Event::WaveCleared => {
                 for (k, s) in world.slop.iter().enumerate() {
                     let at = v(s.pos);
@@ -263,6 +418,27 @@ fn spawn_fx(mut commands: Commands, game: Res<Game>, art: Res<Art>, mut shake: R
             Event::BossIntro { .. } | Event::BossPhase { .. } | Event::Regenerate { .. } => shake.trauma = shake.trauma.max(0.5),
             Event::Fired { .. } | Event::LikeCollected { .. } | Event::BombWarning { .. } | Event::AdBreak => {}
         }
+    }
+}
+
+/// Fading dots behind your projectiles, in the colour of their damage type.
+fn trails(mut commands: Commands, game: Res<Game>, art: Res<Art>, existing: Query<&Fx>, mut frame: Local<u32>) {
+    let Some(world) = game.world() else { return };
+    if game.paused || game.frozen {
+        return;
+    }
+    *frame = frame.wrapping_add(1);
+    let mut count = existing.iter().filter(|f| f.kind == Kind::Trail).count();
+    for p in world.projectiles.iter().filter(|p| !p.hostile && (p.id + *frame) % 2 == 0) {
+        if count >= MAX_TRAILS {
+            break;
+        }
+        if matches!(p.look, Look::Bubble | Look::Post) {
+            continue;
+        }
+        count += 1;
+        let fx = Fx::new(Kind::Trail, 0.18, Vec2::ZERO).alpha(0.6);
+        particle(&mut commands, &art, v(p.pos), (p.radius * 1.3).clamp(5.0, 14.0), theme::type_text(p.kind), fx);
     }
 }
 
@@ -281,11 +457,25 @@ fn animate(mut commands: Commands, time: Res<Time>, mut fx: Query<(Entity, &mut 
         let a = match f.kind {
             Kind::Warning => f.base_alpha * (0.6 + 0.4 * (time.elapsed_secs() * 14.0).sin()),
             Kind::Number => {
-                tf.scale = Vec3::splat(1.0 + 0.5 * (left - 0.75).max(0.0) * 4.0);
+                tf.scale = Vec3::splat(1.0 + 0.6 * (left - 0.75).max(0.0) * 4.0);
                 f.base_alpha * left.sqrt()
             }
             Kind::Ring => {
                 tf.scale = Vec3::splat(0.3 + 0.7 * (1.0 - left));
+                f.base_alpha * left
+            }
+            Kind::Spin => {
+                tf.rotate_z(14.0 * dt);
+                f.base_alpha * left.sqrt()
+            }
+            Kind::Drop => {
+                // Swings down in the first third of its life, then rests.
+                let s = ((1.0 - left) * 3.0).min(1.0);
+                tf.rotation = Quat::from_rotation_z(1.3 * (1.0 - s) - 0.25 * s);
+                f.base_alpha * (left * 2.0).min(1.0)
+            }
+            Kind::Trail => {
+                tf.scale = Vec3::splat(left);
                 f.base_alpha * left
             }
             _ => f.base_alpha * left,

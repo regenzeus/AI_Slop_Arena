@@ -67,6 +67,8 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
     if let Some(name) = auto.holding.take() {
         auto.shoot(&mut commands, &name);
         game.paused = false;
+        game.frozen = false;
+        game.dirty = true;
         auto.wait = 4;
         return;
     }
@@ -95,17 +97,32 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 game.act(UiAction::StartRun);
             }
         }
+        Screen::Briefing => {
+            if auto.wants("briefing") {
+                auto.holding = Some("briefing".into());
+                auto.wait = 12;
+            } else {
+                game.act(UiAction::BeginRun);
+            }
+        }
         Screen::Run => {
             let Some(run) = game.run.as_ref() else { return };
             let wave = run.wave;
             let settled = game.since_end > END_PAUSE + 0.1;
             let name = match &run.phase {
+                Phase::Wave if wave == 4 && run.world.as_ref().is_some_and(|w| w.tick >= 900) && auto.wants("pause") => {
+                    // The pause screen, with the build so far.
+                    game.paused = true;
+                    game.dirty = true;
+                    auto.holding = Some("pause".into());
+                    auto.wait = 12;
+                    return;
+                }
                 Phase::Wave => {
                     let tick = run.world.as_ref().map_or(0, |w| w.tick);
                     WAVE_SHOTS.iter().find(|&&(w, t)| w == wave && tick >= t).map(|(w, t)| format!("wave{w:02}_{:02}s", t / 60))
                 }
                 Phase::LevelUp(_) if settled => Some("levelup".into()),
-                Phase::PatchNotes(_) if settled => Some(format!("patchnotes_w{wave:02}")).filter(|_| wave == 1 || wave == 9),
                 Phase::Shop => SHOP_SHOTS.contains(&wave).then(|| format!("shop_w{wave:02}")),
                 Phase::Over { .. } if settled => Some("over".into()),
                 _ => None,
@@ -113,7 +130,7 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
             let over = run.is_over();
             if let Some(name) = name.filter(|n| auto.wants(n)) {
                 // Hold the screen still while it is captured.
-                game.paused = true;
+                game.frozen = true;
                 game.dirty = true;
                 auto.holding = Some(name);
                 auto.wait = 12;

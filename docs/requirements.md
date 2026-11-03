@@ -34,6 +34,7 @@ client (autoplay screenshots or play), **I** inspection of the code.
 | WPN-06 | The Fact-Check Flashlight strips beauty filters. | T |
 | WPN-07 | The Frisbee comes back; the Uno Reverse Card turns bubbles around at the slop. | T |
 | WPN-08 | Seed Bombs heal you inside their patch; the Dog Walk's dog circles you. | T |
+| WPN-09 | Your weapons are drawn around you: they aim at what they attack, guns kick back, melee weapons sweep through their arc, thrown ones lunge, and every weapon has its own attack effect (muzzle flash, spray, flying keys, zigzag quotes, falling hammer, brick debris, trails). | D |
 
 ## Slop
 
@@ -73,23 +74,25 @@ client (autoplay screenshots or play), **I** inspection of the code.
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| RUN-01 | A run is 20 waves. After every wave: level-ups, patch notes, then the shop; the first shop comes after wave 1. | T |
+| RUN-01 | A run is 20 waves. After every wave: level-ups, then the shop; the first shop comes after wave 1. | T |
 | RUN-02 | Your hero, items and level-ups make up the loadout you take into a wave. | T |
-| RUN-03 | Clearing a wave pays its Clout, interest and side-hustle income, and Clout is also XP. Burnout ends the run. | T |
+| RUN-03 | Clearing a wave pays its Likes, a Creator Fund payout (8 + 2 per wave), interest and side-hustle income; Likes and the payout are also XP. Burnout ends the run. | T |
 | WAVE-01 | A timed wave is cleared when its time runs out and credits half of the coins left on the floor. | T |
 | WAVE-02 | Spawns ramp up within a wave; elites appear from wave 6. | T |
 | WAVE-03 | Waves get longer and harder; waves 10 and 20 are boss waves that end when the boss dies. | T |
 | WAVE-04 | Platform house rules shape the spawn table (support, shooters, tanks, reposts, all brainrot). | T |
 | WAVE-05 | Wave 10 brings the platform's boss and wave 20 The Model, which copies your most-used weapons. | T |
 | LEVEL-01 | Each level offers four different stat upgrades; Luck makes better ones likelier. | T |
+| LEVEL-02 | XP per level is tuned so a wave is worth about one level: the heuristic lab bot is at level 18 to 24 after wave 19. | L |
 | ITEM-01 | More than thirty items in four kinds (healthy habits, risky habits, side hustles, actives); risky items carry a drawback. | T |
 | SHOP-01 | The shop has five offers, at least one in a damage type you use. Buying a weapon you own upgrades it; six weapon slots; selling refunds half. | T |
 | SHOP-02 | Offer tiers get better with waves and Luck. | T |
-| SHOP-03 | Prices rise 4% per wave; rerolls get dearer within a shop. | T |
+| SHOP-03 | Prices rise 4% per wave. A reroll costs 2 + wave / 4 and gets dearer within a shop. | T |
 | SHOP-04 | Locked offers survive rerolls and carry into the next shop. | T |
+| SHOP-05 | The economy lets you buy: the heuristic lab bot buys one to two things per shop in waves 1 to 3 and three or more from wave 5. | L |
 | EVO-01 | After every wave the base model's resistances move towards your kill share, zero-sum and capped. | T |
 | EVO-02 | Brainrot that hurt you and lived long breeds; children mutate their numbers and sometimes a part. | T |
-| EVO-03 | Patch notes after each wave say what the slop learned. | T, D |
+| EVO-03 | Patch notes after each wave say what the slop learned; they are shown in the shop. | T, D |
 | EVO-04 | Model Collapse measures how evenly your kills spread over the four damage types. | T |
 | BAL-01 | Hard but manageable: the heuristic lab bot wins 20% to 40% of runs. | L |
 | BAL-02 | Random play rarely wins: the random lab bot wins under 10% of runs. | L |
@@ -99,19 +102,25 @@ client (autoplay screenshots or play), **I** inspection of the code.
 | ID | Requirement | Verified by |
 | --- | --- | --- |
 | UI-01 | The client runs waves at 60 ticks per second from keyboard input; P pauses. | D |
-| UI-02 | A camera follows you with a slight lead and never shows much beyond the walls. | D |
+| UI-02 | A camera follows you without looking ahead, so turning around does not swing the view, and never shows much beyond the walls. Floors are dark so characters and danger stand out. | D |
 | UI-03 | Slop show a health bar for three seconds after being hit. | D |
 | UI-04 | Damage numbers appear in the colour of their damage type. | D |
-| UI-05 | The HUD shows Mental Health (a brain) with statuses, the wave timer or the boss's health, Clout (a coin with a thumbs-up, never a heart), level and weapons. | D |
+| UI-05 | The HUD shows Mental Health (a brain) with statuses, the wave timer or the boss's health, Clout (a coin with a thumbs-up, never a heart) and level, with level-ups earned so far in the wave. Weapons and items are not shown during a wave; pause shows them. | D |
 | UI-06 | Autoplay plays a whole run with the bots and screenshots every kind of screen. | D |
 | UI-07 | Resizing the window scales the arena view and the HUD. | D |
 | UI-08 | Title and hero select; every choice works by mouse and by keyboard. | T, D |
-| UI-09 | Level-up screen with four cards. | D |
-| UI-10 | Patch notes screen styled as a changelog, with the model's resistances. | D |
-| UI-11 | Full-screen shop: offer cards with tier frames and upgrade ribbons, lock, reroll, your weapons with sell buttons, items and stats. | D |
+| UI-09 | Level-up screen with four cards, each with the stat's icon and its value before and after. | D |
+| UI-10 | Once per run, before wave 1, a briefing shows the platform, its slop, both bosses and how the slop learns. | D |
+| UI-11 | Full-screen shop: offer cards with icons, tier frames and upgrade ribbons, lock, reroll, your weapons and items, the patch notes, and the stats down the whole right side. | D |
 | UI-12 | End screen for victory or Burnout with the run's summary. | D |
+| UI-13 | Pause shows your whole build: weapons, items and stats. Every stat, item, weapon and resistance has a tooltip; a stat's tooltip explains its mechanics with your current numbers. | T, D |
+| UI-14 | Every screen works by keyboard alone: arrows or WASD move the focus to the nearest element in that direction, Enter presses it, Space continues, L or X locks or sells; the mouse focuses what it hovers. | T, D |
+| UI-15 | Behind the title and hero screens the bots play a mid-run wave, silently. | D |
 | ART-01 | Every sprite is drawn in code with outlines and anti-aliased edges; characters flash white when hit. | T, D |
 | ART-02 | Every character, brainrot part and boss has its own picture. | T, D |
 | ART-03 | Each platform has its own floor. | D |
-| FEEL-01 | Hits, deaths, pops, swings, beams, chains, splashes and statuses have visible effects and screen shake, capped so crowds stay readable. | D |
+| ART-04 | Every weapon, item, stat and damage type has its own icon, drawn in code. | T, D |
+| ART-05 | Each hero has their own look, in the menus and in the arena. | D |
+| FEEL-01 | Hits, deaths, pops, swings, beams, chains, splashes and statuses have visible effects and screen shake, capped so crowds stay readable. Kill streaks and level-ups are announced. | D |
+| FEEL-03 | The slop talks in character: ChadGPT in assistant clichés, Clawed while it aims, Yes-Bots agreeing, Thought Leaders posting; deleted slop leaves varied removal notices. | T, D |
 | FEEL-02 | Placeholder sounds are synthesised in code and rate-limited. | T, D |

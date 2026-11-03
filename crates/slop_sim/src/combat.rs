@@ -172,8 +172,11 @@ impl World {
                 continue;
             }
             let fired = self.attack(wi, def_index, damage, range);
+            if let Some(to) = fired {
+                self.events.push(Event::Attacked { weapon: wi as u8, to });
+            }
             let w = &mut self.player.weapons[wi];
-            if fired {
+            if fired.is_some() {
                 w.cooldown += def.cooldown * TICK_RATE as f32;
             } else {
                 // Ready, waiting for something to hit.
@@ -182,8 +185,9 @@ impl World {
         }
     }
 
-    /// One attack of weapon slot `wi`. Returns false when there was nothing to attack.
-    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32) -> bool {
+    /// One attack of weapon slot `wi`, returning where it was aimed; None when
+    /// there was nothing to attack.
+    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32) -> Option<V2> {
         let def = &WEAPONS[def_index];
         let at = self.player.pos;
         let slot = Some(wi);
@@ -196,19 +200,19 @@ impl World {
                     let push = (self.slop[*j].pos - at).normalized() * def.knockback;
                     self.damage_slop(*j, damage, def.kind, push, dog, slot);
                 }
-                return true;
+                return Some(dog);
             }
             Pattern::Ring | Pattern::Aura => {
                 let hits = self.around(at, range);
                 if hits.is_empty() {
-                    return false;
+                    return None;
                 }
                 for j in hits {
                     let push = (self.slop[j].pos - at).normalized() * def.knockback;
                     self.damage_slop(j, damage, def.kind, push, at, slot);
                 }
                 self.events.push(Event::Ring { at, radius: range });
-                return true;
+                return Some(at);
             }
             Pattern::Reflect => {
                 let bubble = self
@@ -218,9 +222,9 @@ impl World {
                     .filter(|(_, p)| p.hostile && p.life > 0 && p.pos.distance_sq(at) < range * range)
                     .min_by(|a, b| a.1.pos.distance_sq(at).total_cmp(&b.1.pos.distance_sq(at)))
                     .map(|(i, _)| i);
-                let Some(b) = bubble else { return false };
+                let b = bubble?;
                 let from = self.projectiles[b].pos;
-                let Some(t) = nearest_slop(&self.grid, &self.slop, from, 600.0, None) else { return false };
+                let t = nearest_slop(&self.grid, &self.slop, from, 600.0, None)?;
                 let dir = (self.slop[t].pos - from).normalized();
                 let p = &mut self.projectiles[b];
                 p.hostile = false;
@@ -232,11 +236,11 @@ impl World {
                 p.doomscroll = false;
                 p.shove = 0.0;
                 self.events.push(Event::Reflected { at: from });
-                return true;
+                return Some(from);
             }
             _ => {}
         }
-        let Some(target) = nearest_slop(&self.grid, &self.slop, at, range, None) else { return false };
+        let target = nearest_slop(&self.grid, &self.slop, at, range, None)?;
         let goal = self.slop[target].pos;
         let aim = (goal - at).normalized();
         let life = |speed: f32| (range / speed * TICK_RATE as f32 * 1.15) as u16 + 4;
@@ -300,11 +304,11 @@ impl World {
                     self.damage_slop(j, damage, def.kind, push, at, slot);
                 }
                 self.events.push(Event::Swing { at, angle: aim.angle(), range, half_angle, weapon: wi as u8 });
-                return true;
+                return Some(goal);
             }
             Pattern::Chain { links } => {
                 self.chain_hit(at, target, links, damage, def.kind, slot);
-                return true;
+                return Some(goal);
             }
             Pattern::Beam { width } => {
                 let end = at + aim * range;
@@ -320,13 +324,13 @@ impl World {
                     self.damage_slop(j, damage, def.kind, V2::ZERO, at, slot);
                 }
                 self.events.push(Event::Beam { from: at, to: end });
-                return true;
+                return Some(goal);
             }
             Pattern::Zone { radius, seconds, heal } => {
                 let id = self.id();
                 let ticks = (seconds * TICK_RATE as f32) as u16;
                 self.zones.push(Zone { id, kind: ZoneKind::Seed { heal }, pos: goal, radius, ticks, max_ticks: ticks, vel: V2::ZERO, damage, spec: wi as u16 });
-                return true;
+                return Some(goal);
             }
             Pattern::Slam { radius, execute } => {
                 let hits = self.around(goal, radius);
@@ -343,7 +347,7 @@ impl World {
                     }
                 }
                 self.events.push(Event::Slam { at: goal, radius });
-                return true;
+                return Some(goal);
             }
             Pattern::Orbit { .. } | Pattern::Ring | Pattern::Aura | Pattern::Reflect => unreachable!("handled above"),
         }
@@ -354,7 +358,7 @@ impl World {
             self.projectiles.push(p);
         }
         self.events.push(Event::Fired { weapon: wi as u8 });
-        true
+        Some(goal)
     }
 
     pub(crate) fn move_projectiles(&mut self) {

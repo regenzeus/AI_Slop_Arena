@@ -9,6 +9,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | ACT-01 | `actives_fire_on_their_triggers` | crates/slop_sim/src/tests.rs |
 | ART-01 | `shapes_have_soft_edges_and_outlines` | crates/slop_game/src/art.rs |
 | ART-02 | `every_character_is_drawn_and_not_empty` | crates/slop_game/src/art.rs |
+| ART-04 | `every_weapon_item_and_stat_has_a_distinct_icon` | crates/slop_game/src/icons.rs |
 | BOSS-01 | `every_boss_fights_and_can_be_beaten` | crates/slop_sim/src/tests.rs |
 | BOSS-07 | `the_model_regenerates_unless_your_build_was_varied` | crates/slop_sim/src/tests.rs |
 | BRAIN-01 | `brainrot_parts_shape_the_spec` | crates/slop_sim/src/tests.rs |
@@ -22,6 +23,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | FAIR-02 | `em_dashes_and_bombs_are_telegraphed` | crates/slop_sim/src/tests.rs |
 | FAIR-03 | `a_hit_gives_brief_invulnerability` | crates/slop_sim/src/tests.rs |
 | FEEL-02 | `sounds_are_valid_wav` | crates/slop_game/src/audio.rs |
+| FEEL-03 | `content_is_sane` | crates/slop_sim/src/content.rs |
 | HERO-01 | `a_run_starts_with_the_heroes_loadout_and_walks_through_the_phases` | crates/slop_rules/src/tests.rs |
 | HERO-01 | `heroes_start_with_real_weapons_and_items` | crates/slop_rules/src/heroes.rs |
 | ITEM-01 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
@@ -52,6 +54,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | STAT-01 | `scepticism_is_capped` | crates/slop_sim/src/stats.rs |
 | STATUS-01 | `statuses_hurt_reverse_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
 | UI-08 | `actions_walk_from_title_to_a_run_and_report_rule_errors` | crates/slop_game/src/state.rs |
+| UI-13 | `every_stat_explains_its_current_effect` | crates/slop_rules/src/items.rs |
+| UI-14 | `arrows_pick_the_nearest_element_in_their_direction` | crates/slop_game/src/ui.rs |
 | WAVE-01 | `a_wave_clears_on_time_and_burnout_ends_it` | crates/slop_sim/src/tests.rs |
 | WAVE-02 | `the_wave_ramps_up_and_elites_drop_loot_boxes` | crates/slop_sim/src/tests.rs |
 | WAVE-03 | `twenty_waves_ramp_up_with_bosses_at_ten_and_twenty` | crates/slop_rules/src/waves.rs |
@@ -69,11 +73,14 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 ## Requirements without an automated test
 
 - ART-03
+- ART-05
 - BAL-01
 - BAL-02
 - BRAIN-03
 - FAIR-04
 - FEEL-01
+- LEVEL-02
+- SHOP-05
 - SIM-04
 - UI-01
 - UI-02
@@ -86,3 +93,5 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - UI-10
 - UI-11
 - UI-12
+- UI-15
+- WPN-09

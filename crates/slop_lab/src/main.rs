@@ -4,7 +4,7 @@
 //! slop_lab bench                  time a crowded arena (SIM-04)
 //! slop_lab determinism            replay a whole run twice and compare (SIM-01)
 //! slop_lab balance [runs]         bots play whole runs; win rates by policy, hero and platform (BAL-02)
-//! slop_lab wave N [runs]          how far the heuristic bot gets, with the wave it died in
+//! slop_lab economy [runs]         Clout, levels and purchases per wave for the heuristic bot
 //! ```
 
 use std::collections::BTreeMap;
@@ -23,7 +23,8 @@ fn main() {
         Some("bench") => bench(),
         Some("determinism") => determinism(),
         Some("balance") => balance(n(1, 60)),
-        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs]>"),
+        Some("economy") => economy(n(1, 30)),
+        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs]|economy [runs]>"),
     }
 }
 
@@ -150,4 +151,68 @@ fn balance(runs: u64) {
     }
     let _ = Platform::ALL;
     println!("({:.0} s)", start.elapsed().as_secs_f64());
+}
+
+/// Per wave, averaged over the runs that reached its shop: Clout earned in
+/// the wave, Clout held when the shop opens, levels, and tiers bought.
+fn economy(runs: u64) {
+    #[derive(Default, Clone, Copy)]
+    struct Row {
+        runs: u32,
+        earned: u32,
+        held: u32,
+        levels: u32,
+        level: u32,
+        bought: u32,
+        rerolls: u32,
+    }
+    let mut rows = [Row::default(); 21];
+    for seed in 1..=runs {
+        let hero = Hero::ALL[(seed % 5) as usize];
+        let mut run = Run::new(seed, hero);
+        let mut rng = slop_sim::rng::Rng::new(seed, 11);
+        loop {
+            match run.phase {
+                Phase::Over { .. } => break,
+                Phase::Wave => {
+                    let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
+                    run.step(input);
+                }
+                Phase::Shop => {
+                    let owned = |run: &Run| run.items.iter().map(|(_, n)| *n).sum::<u32>() + run.weapons.iter().map(|w| w.tier as u32).sum::<u32>();
+                    let before = owned(&run);
+                    let r = run.reports.last().unwrap();
+                    let row = &mut rows[r.wave as usize];
+                    row.runs += 1;
+                    row.earned += r.likes;
+                    row.held += run.clout;
+                    row.levels += r.levels;
+                    row.level += run.level;
+                    // The bot buys, rerolls and starts the next wave in one decision.
+                    let rerolls_before = run.shop.rerolls;
+                    bot::decide(&mut run, Policy::Heuristic, &mut rng);
+                    row.bought += owned(&run).saturating_sub(before);
+                    row.rerolls += run.shop.rerolls.saturating_sub(rerolls_before);
+                }
+                _ => {
+                    bot::decide(&mut run, Policy::Heuristic, &mut rng);
+                }
+            }
+        }
+    }
+    println!("wave  runs  earned  held@shop  levels  level  bought  rerolls");
+    for (w, r) in rows.iter().enumerate().filter(|(_, r)| r.runs > 0) {
+        let n = r.runs as f32;
+        println!(
+            "{:>4}  {:>4}  {:>6.1}  {:>9.1}  {:>6.2}  {:>5.1}  {:>6.2}  {:>7.2}",
+            w,
+            r.runs,
+            r.earned as f32 / n,
+            r.held as f32 / n,
+            r.levels as f32 / n,
+            r.level as f32 / n,
+            r.bought as f32 / n,
+            r.rerolls as f32 / n
+        );
+    }
 }

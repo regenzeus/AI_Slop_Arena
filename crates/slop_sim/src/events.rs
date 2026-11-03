@@ -39,8 +39,11 @@ pub enum Event {
     SecondWind,
     /// A melee swing or a spray: drawn as a fading sector.
     Swing { at: V2, angle: f32, range: f32, half_angle: f32, weapon: u8 },
-    /// A weapon fired.
+    /// A weapon fired projectiles.
     Fired { weapon: u8 },
+    /// Any attack of weapon slot `weapon`, aimed at `to`: the client turns
+    /// and kicks the weapon.
+    Attacked { weapon: u8, to: V2 },
     /// A fact-check beam.
     Beam { from: V2, to: V2 },
     /// One link of Air Quotes or a chain letter.

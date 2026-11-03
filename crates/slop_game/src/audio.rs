@@ -9,7 +9,8 @@ use bevy::prelude::*;
 use slop_sim::Event;
 
 use crate::play::Simulation;
-use crate::state::Game;
+use crate::state::{Cue, Game, Screen};
+use crate::ui::Nav;
 
 const RATE: u32 = 22_050;
 const MASTER: f32 = 0.35;
@@ -35,6 +36,15 @@ enum Sound {
     Grab,
     Cleared,
     Burnout,
+    LevelUp,
+    Buy,
+    Reroll,
+    Error,
+    Tick,
+    Go,
+    Thud,
+    Clack,
+    Zap,
 }
 
 #[derive(Resource)]
@@ -140,6 +150,34 @@ fn synth(sound: Sound) -> Vec<f32> {
             }
         }
         Sound::Burnout => note(&mut s, 0.0, Wave::Square, 420.0, 70.0, 0.7, 0.4),
+        Sound::LevelUp => {
+            for (i, f) in [523.0, 784.0, 1047.0, 1568.0].iter().enumerate() {
+                note(&mut s, i as f32 * 0.06, Wave::Square, *f, *f, 0.14, 0.18);
+            }
+        }
+        Sound::Buy => {
+            note(&mut s, 0.0, Wave::Sine, 1568.0, 1568.0, 0.06, 0.3);
+            note(&mut s, 0.06, Wave::Sine, 2093.0, 2093.0, 0.12, 0.3);
+            note(&mut s, 0.0, Wave::Noise, 0.0, 0.0, 0.03, 0.1);
+        }
+        Sound::Reroll => {
+            for i in 0..4 {
+                note(&mut s, i as f32 * 0.035, Wave::Noise, 0.0, 0.0, 0.03, 0.18);
+            }
+            note(&mut s, 0.12, Wave::Sine, 600.0, 900.0, 0.08, 0.25);
+        }
+        Sound::Error => note(&mut s, 0.0, Wave::Square, 140.0, 120.0, 0.16, 0.25),
+        Sound::Tick => note(&mut s, 0.0, Wave::Sine, 1800.0, 1600.0, 0.02, 0.12),
+        Sound::Go => {
+            note(&mut s, 0.0, Wave::Square, 392.0, 392.0, 0.08, 0.2);
+            note(&mut s, 0.08, Wave::Square, 784.0, 784.0, 0.16, 0.2);
+        }
+        Sound::Thud => {
+            note(&mut s, 0.0, Wave::Sine, 140.0, 45.0, 0.22, 0.7);
+            note(&mut s, 0.0, Wave::Noise, 0.0, 0.0, 0.08, 0.35);
+        }
+        Sound::Clack => note(&mut s, 0.0, Wave::Square, 2400.0, 1800.0, 0.015, 0.15),
+        Sound::Zap => note(&mut s, 0.0, Wave::Sine, 1200.0, 2400.0, 0.1, 0.22),
     }
     s
 }
@@ -157,6 +195,15 @@ fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
         Sound::Grab,
         Sound::Cleared,
         Sound::Burnout,
+        Sound::LevelUp,
+        Sound::Buy,
+        Sound::Reroll,
+        Sound::Error,
+        Sound::Tick,
+        Sound::Go,
+        Sound::Thud,
+        Sound::Clack,
+        Sound::Zap,
     ];
     let clips = all.iter().map(|&s| (s, sources.add(AudioSource { bytes: wav(&synth(s)).into() }))).collect();
     commands.insert_resource(Sounds { clips });
@@ -165,16 +212,37 @@ fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
 /// Seconds between two plays of the same sound.
 fn gap(sound: Sound) -> f32 {
     match sound {
-        Sound::Hit | Sound::Shoot | Sound::Swing => 0.06,
+        Sound::Hit | Sound::Shoot | Sound::Swing | Sound::Clack => 0.06,
+        Sound::Tick => 0.03,
         Sound::Death | Sound::Like | Sound::Pop => 0.05,
         _ => 0.12,
     }
 }
 
-fn play(mut commands: Commands, game: Res<Game>, sounds: Res<Sounds>, time: Res<Time>, mut last: Local<HashMap<Sound, f32>>) {
+fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: Res<Sounds>, time: Res<Time>, mut last: Local<HashMap<Sound, f32>>) {
     let now = time.elapsed_secs();
-    for e in &game.events {
-        let sound = match e {
+    let mut queue: Vec<Sound> = game
+        .cues
+        .drain(..)
+        .map(|c| match c {
+            Cue::Buy => Sound::Buy,
+            Cue::Reroll => Sound::Reroll,
+            Cue::Level => Sound::LevelUp,
+            Cue::Error => Sound::Error,
+            Cue::Go => Sound::Go,
+            Cue::Tick => Sound::Tick,
+        })
+        .collect();
+    if nav.moved {
+        queue.push(Sound::Tick);
+    }
+    // The demo behind the menus plays silently.
+    let events: &[Event] = if matches!(game.screen, Screen::Run) { &game.events } else { &[] };
+    if game.level_flash {
+        queue.push(Sound::LevelUp);
+    }
+    for e in events {
+        queue.push(match e {
             Event::SlopHit { .. } => Sound::Hit,
             Event::SlopDied { .. } => Sound::Death,
             Event::BubblePopped { .. } => Sound::Pop,
@@ -185,13 +253,17 @@ fn play(mut commands: Commands, game: Res<Game>, sounds: Res<Sounds>, time: Res<
             Event::Agreed { .. } => Sound::Agree,
             Event::Grabbed => Sound::Grab,
             Event::WaveCleared => Sound::Cleared,
-            Event::Splash { .. } | Event::Slam { .. } => Sound::Hit,
+            Event::Splash { .. } | Event::Slam { .. } => Sound::Thud,
+            Event::Ring { .. } => Sound::Clack,
+            Event::Beam { .. } => Sound::Zap,
             Event::Reflected { .. } | Event::ActiveUsed { .. } => Sound::Agree,
             Event::Status { .. } => Sound::Grab,
             Event::BossIntro { .. } | Event::Regenerate { .. } => Sound::Burnout,
             Event::Burnout => Sound::Burnout,
             _ => continue,
-        };
+        });
+    }
+    for sound in queue {
         if last.get(&sound).is_some_and(|t| now - t < gap(sound)) {
             continue;
         }

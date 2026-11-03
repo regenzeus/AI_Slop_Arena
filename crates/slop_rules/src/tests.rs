@@ -19,12 +19,11 @@ fn survive(run: &mut Run) {
     }
 }
 
-/// From the end of a wave through level-ups and patch notes into the shop.
+/// From the end of a wave through the level-ups into the shop.
 fn to_shop(run: &mut Run) {
     while let Phase::LevelUp(_) = run.phase {
         run.choose_level(0).unwrap();
     }
-    run.close_patch_notes().unwrap();
     assert!(matches!(run.phase, Phase::Shop));
 }
 
@@ -42,7 +41,7 @@ fn a_run_starts_with_the_heroes_loadout_and_walks_through_the_phases() {
     assert!(matches!(run.phase, Phase::Wave));
     assert_eq!(run.wave, 1);
     survive(&mut run);
-    assert!(matches!(run.phase, Phase::LevelUp(_) | Phase::PatchNotes(_)), "{:?}", run.phase);
+    assert!(matches!(run.phase, Phase::LevelUp(_) | Phase::Shop), "{:?}", run.phase);
     to_shop(&mut run);
     assert_eq!(run.wave, 2, "the shop sells for the next wave");
     assert!(run.shop.offers.len() >= 5);
@@ -71,8 +70,9 @@ fn clearing_a_wave_pays_clout_interest_and_xp() {
     survive(&mut run);
     let report = run.reports.last().unwrap().clone();
     assert!(report.cleared && report.likes > 0);
-    assert_eq!(run.clout, report.likes + report.interest + report.income as u32);
-    assert!(run.level >= 1 || run.xp == report.likes);
+    assert_eq!(report.payout, crate::run::payout(1));
+    assert_eq!(run.clout, report.likes + report.payout + report.interest + report.income as u32);
+    assert!(run.level >= 1 || run.xp == report.likes + report.payout);
 }
 
 // REQ: RUN-03
@@ -131,9 +131,9 @@ fn locked_offers_survive_rerolls_and_the_next_shop() {
     let kept = run.shop.offers[0].goods;
     run.reroll().unwrap();
     assert!(run.shop.offers.iter().any(|o| o.locked && o.goods == kept));
-    let cost = run.shop.reroll_cost();
+    let cost = run.reroll_cost();
     run.reroll().unwrap();
-    assert!(run.shop.reroll_cost() > cost, "rerolls get pricier");
+    assert!(run.reroll_cost() > cost, "rerolls get pricier");
     run.next_wave().unwrap();
     survive(&mut run);
     to_shop(&mut run);
@@ -179,7 +179,8 @@ fn the_slop_trains_between_waves() {
     while let Phase::LevelUp(_) = run.phase {
         run.choose_level(0).unwrap();
     }
-    let Phase::PatchNotes(notes) = &run.phase else { panic!() };
+    assert!(matches!(run.phase, Phase::Shop));
+    let notes = run.notes.as_ref().expect("patch notes after a wave");
     assert_eq!(notes.version, "Slop v1.1");
     assert!(!notes.lines.is_empty());
     // The Boomer's Newspaper Roll kills with Fact, so Fact resistance rose.

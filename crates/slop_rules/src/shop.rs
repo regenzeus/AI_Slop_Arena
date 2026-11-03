@@ -56,12 +56,13 @@ pub struct Shop {
 }
 
 impl Shop {
-    /// 5 Clout, then 3 more each time in the same shop; free rerolls first.
-    pub fn reroll_cost(&self) -> u32 {
+    /// Cheap early, a little dearer later and with every reroll in the same
+    /// shop; free rerolls first.
+    pub fn reroll_cost(&self, wave: u32) -> u32 {
         if self.free_rerolls > 0 {
             0
         } else {
-            5 + 3 * self.rerolls
+            2 + wave / 4 + (1 + wave / 5) * self.rerolls
         }
     }
 }
@@ -124,10 +125,11 @@ mod tests {
     #[test]
     fn prices_rise_with_waves_and_discounts_apply() {
         let rock = Goods::Weapon { def: 0, tier: 1 };
-        assert_eq!(price(rock, 1, 0.0, 0.0), 20);
-        assert!((41..=43).contains(&price(rock, 20, 0.0, 0.0)));
+        assert_eq!(price(rock, 1, 0.0, 0.0), 16);
+        assert!((33..=35).contains(&price(rock, 20, 0.0, 0.0)));
         assert!(price(rock, 10, 0.08, 0.0) < price(rock, 10, 0.0, 0.0));
         let shop = Shop { rerolls: 2, ..Shop::default() };
-        assert_eq!(shop.reroll_cost(), 11);
+        assert_eq!(shop.reroll_cost(1), 4);
+        assert!(shop.reroll_cost(20) > shop.reroll_cost(1));
     }
 }

@@ -10,14 +10,13 @@ use slop_sim::Event;
 
 use crate::art::Art;
 use crate::play::Simulation;
-use crate::screens::roman;
 use crate::state::{Game, Screen};
 use crate::theme;
-use crate::views::VIEW;
+/// The size the HUD and screens are laid out for.
+const LAYOUT: Vec2 = Vec2::new(1600.0, 900.0);
 
 const BAR_W: f32 = 260.0;
 const PROGRESS_W: f32 = 560.0;
-const SLOTS: usize = 6;
 
 pub struct HudPlugin;
 
@@ -30,7 +29,7 @@ impl Plugin for HudPlugin {
 /// The HUD is laid out for 1600 x 900 and scales with the window (UI-07).
 fn scale_ui(windows: Query<&Window, With<PrimaryWindow>>, mut scale: ResMut<UiScale>) {
     if let Ok(w) = windows.single() {
-        let k = (w.width() / VIEW.x).min(w.height() / VIEW.y).max(0.5);
+        let k = (w.width() / LAYOUT.x).min(w.height() / LAYOUT.y).max(0.5);
         if (scale.0 - k).abs() > 0.01 {
             scale.0 = k;
         }
@@ -57,12 +56,6 @@ struct CloutText;
 struct LevelText;
 #[derive(Component)]
 struct XpFill;
-#[derive(Component)]
-struct Chip(usize);
-#[derive(Component)]
-struct ChipText(usize);
-#[derive(Component)]
-struct Paused;
 #[derive(Component)]
 struct Vignette;
 #[derive(Component)]
@@ -180,21 +173,9 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                         });
                 });
             });
-            // Weapons.
-            root.spawn(Node { position_type: PositionType::Absolute, bottom: Val::Px(16.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, column_gap: Val::Px(8.0), ..default() })
-                .with_children(|p| {
-                    for i in 0..SLOTS {
-                        p.spawn((
-                            Chip(i),
-                            Node { padding: UiRect::axes(Val::Px(10.0), Val::Px(6.0)), border: UiRect::all(Val::Px(3.0)), ..default() },
-                            BackgroundColor(theme::PANEL),
-                            BorderColor::all(theme::QUIET),
-                        ))
-                        .with_children(|c| {
-                            c.spawn((ChipText(i), Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER)));
-                        });
-                    }
-                });
+            // The way to your build: pause shows everything.
+            root.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(20.0), bottom: Val::Px(14.0), ..default() }, BackgroundColor(Color::NONE)))
+                .with_children(|h| label(h, "P  pause: your build and stats", 14.0, Color::srgba(1.0, 1.0, 1.0, 0.45)));
         });
 
     commands.spawn((Banner, overlay(), GlobalZIndex(6), Visibility::Hidden)).with_children(|p| {
@@ -203,10 +184,6 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                 b.spawn((BannerTitle, Text::new(""), TextFont { font_size: 46.0, ..default() }, TextColor(theme::PAPER)));
                 b.spawn((BannerLine, Text::new(""), TextFont { font_size: 18.0, ..default() }, TextColor(theme::QUIET)));
             });
-    });
-    commands.spawn((Paused, overlay(), BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.45)), GlobalZIndex(8), Visibility::Hidden)).with_children(|p| {
-        label(p, "PAUSED", 48.0, theme::PAPER);
-        label(p, "P to resume    Q to quit", 18.0, theme::QUIET);
     });
 }
 
@@ -234,22 +211,19 @@ fn update(
         Query<&mut Text, With<TimeText>>,
         Query<&mut Text, With<CloutText>>,
         Query<&mut Text, With<LevelText>>,
-        Query<(&ChipText, &mut Text)>,
         Query<&mut Text, With<BannerTitle>>,
     )>,
-    mut banner_line: Query<&mut Text, (With<BannerLine>, Without<BannerTitle>, Without<ChipText>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>)>,
+    mut banner_line: Query<&mut Text, (With<BannerLine>, Without<BannerTitle>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>)>,
     mut shown: ParamSet<(
         Query<&mut Visibility, With<Hud>>,
-        Query<&mut Visibility, With<Paused>>,
         Query<&mut Visibility, With<Ad>>,
         Query<&mut Visibility, With<Popup>>,
         Query<&mut Visibility, With<Banner>>,
-        Query<(&Chip, &mut BorderColor, &mut Visibility)>,
     )>,
 ) {
     let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     let run_screen = game.screen == Screen::Run;
-    let between = game.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::Shop | Phase::Over { .. }));
+    let between = game.since_end > crate::play::END_PAUSE && game.run.as_ref().is_some_and(|r| !matches!(r.phase, Phase::Wave));
     let Some(run) = game.run.as_ref().filter(|_| run_screen) else {
         if let Ok(mut v) = shown.p0().single_mut() {
             *v = Visibility::Hidden;
@@ -269,19 +243,9 @@ fn update(
     if let Ok(mut node) = nodes.p1().single_mut() {
         node.width = Val::Px(PROGRESS_W * boss.map_or(world.progress(), |(_, h)| h));
     }
-    let need = slop_rules::levels::xp_for(run.level + 1) as f32;
-    let xp = (run.xp + if in_wave { world.clout } else { 0 }) as f32;
+    let (gained, progress) = game.levels_in_wave();
     if let Ok(mut node) = nodes.p2().single_mut() {
-        node.width = Val::Px(160.0 * (xp / need).min(1.0));
-    }
-    for (chip, mut border, mut v) in &mut shown.p5() {
-        match p.weapons.get(chip.0) {
-            Some(w) => {
-                *v = Visibility::Inherited;
-                *border = BorderColor::all(theme::type_color(w.def().kind));
-            }
-            None => *v = Visibility::Hidden,
-        }
+        node.width = Val::Px(160.0 * progress.min(1.0));
     }
     if game.events.iter().any(|e| matches!(e, Event::PlayerHurt { .. })) {
         *vignette = 0.28;
@@ -335,15 +299,10 @@ fn update(
         **t = (run.clout + if in_wave { world.clout } else { 0 }).to_string();
     }
     if let Ok(mut t) = texts.p5().single_mut() {
-        **t = format!("Level {}", run.level);
-    }
-    for (chip, mut t) in &mut texts.p6() {
-        if let Some(w) = p.weapons.get(chip.0) {
-            **t = format!("{} {}", w.def().name, roman(w.tier));
-        }
+        **t = if gained > 0 { format!("Level {}  +{} LEVEL UP", run.level + gained, gained) } else { format!("Level {}", run.level) };
     }
     let banner = game.banner.as_ref().filter(|_| !between);
-    if let (Some((title, line, _)), Ok(mut t)) = (banner, texts.p7().single_mut()) {
+    if let (Some((title, line, _)), Ok(mut t)) = (banner, texts.p6().single_mut()) {
         **t = title.clone();
         if let Ok(mut l) = banner_line.single_mut() {
             **l = line.clone();
@@ -351,18 +310,15 @@ fn update(
     }
 
     if let Ok(mut v) = shown.p0().single_mut() {
-        *v = vis(!between);
+        *v = vis(!between && !game.paused);
     }
     if let Ok(mut v) = shown.p1().single_mut() {
-        *v = vis(game.paused && in_wave);
-    }
-    if let Ok(mut v) = shown.p2().single_mut() {
         *v = vis(in_wave && world.ad_break > 0);
     }
-    if let Ok(mut v) = shown.p3().single_mut() {
-        *v = vis(in_wave && p.status.popup > 0);
+    if let Ok(mut v) = shown.p2().single_mut() {
+        *v = vis(in_wave && p.status.popup > 0 && !game.paused);
     }
-    if let Ok(mut v) = shown.p4().single_mut() {
-        *v = vis(banner.is_some());
+    if let Ok(mut v) = shown.p3().single_mut() {
+        *v = vis(banner.is_some() && !game.paused);
     }
 }
