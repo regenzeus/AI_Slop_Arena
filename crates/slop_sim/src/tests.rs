@@ -64,14 +64,20 @@ fn same_seed_and_inputs_replay_exactly() {
     assert_ne!(a.checksum(), bot_wave(8, 1800).checksum());
 }
 
-// REQ: SIM-02
+// REQ: SIM-02, MAP-02
 #[test]
-fn you_stay_inside_the_arena() {
+fn the_map_is_endless_but_walls_stop_you() {
     let mut w = armed(&[]);
-    for _ in 0..900 {
-        w.step(Input { x: -1.0, y: -1.0 });
+    for _ in 0..1800 {
+        w.step(Input { x: -1.0, y: -0.2 });
     }
-    assert!(w.player.pos.x >= PLAYER_RADIUS && w.player.pos.x < PLAYER_RADIUS + 1.0);
+    assert!(w.player.pos.x < -3000.0, "no edge to the map");
+    let at = w.player.pos;
+    w.map.add_fence(at + V2::new(-200.0, 0.0), V2::new(60.0, 400.0), 1, 600);
+    for _ in 0..120 {
+        w.step(Input { x: -1.0, y: 0.0 });
+    }
+    assert!(w.player.pos.x > at.x - 140.0 - PLAYER_RADIUS - 1.0, "the fence stops you");
 }
 
 // REQ: SIM-03
@@ -79,7 +85,7 @@ fn you_stay_inside_the_arena() {
 fn movement_eases_to_full_speed_and_diagonals_are_not_faster() {
     let mut w = armed(&[]);
     w.step(Input { x: 1.0, y: 0.0 });
-    assert!(w.player.vel.x < PLAYER_SPEED * 0.5);
+    assert!(w.player.vel.x < PLAYER_SPEED * 0.6);
     for _ in 0..60 {
         w.step(Input { x: 1.0, y: 1.0 });
     }
@@ -449,7 +455,7 @@ fn likes_fly_to_you_and_fakes_explode() {
     w.likes.push(Like { id: 2, pos: p + V2::new(400.0, 0.0), value: 5, pulled: false, fake: false });
     w.likes.push(Like { id: 3, pos: p + V2::new(-60.0, 0.0), value: 1, pulled: false, fake: true });
     run(&mut w, 30);
-    assert_eq!(w.clout, 3);
+    assert_eq!(w.xp, 3, "Likes are experience");
     assert!(w.player.mental_health < 100.0 && w.player.status.anxiety > 0);
 }
 
@@ -462,7 +468,6 @@ fn a_wave_clears_on_time_and_burnout_ends_it() {
     w.likes.push(Like { id: 1, pos: V2::new(100.0, 100.0), value: 10, pulled: false, fake: false });
     run(&mut w, 120);
     assert_eq!(w.outcome, Outcome::Cleared);
-    assert_eq!(w.clout, 5);
 
     let mut w = armed(&[]);
     w.player.mental_health = 1.0;
@@ -512,12 +517,13 @@ fn every_boss_fights_and_can_be_beaten() {
             let input = bot::steer(&w);
             w.step(input);
             intro |= w.drain_events().iter().any(|e| matches!(e, Event::BossIntro { .. }));
-            if w.outcome != Outcome::Running {
+            if w.boss.is_none() {
                 break;
             }
         }
         assert!(intro, "{kind:?}");
-        assert_eq!(w.outcome, Outcome::Cleared, "{kind:?} should fall within two minutes");
+        assert!(w.boss.is_none(), "{kind:?} should fall within two minutes");
+        assert!(w.pickups.iter().any(|p| p.kind == PickupKind::Chest), "{kind:?} drops a chest");
     }
 }
 

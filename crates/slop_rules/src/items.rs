@@ -1,5 +1,6 @@
-//! Coping mechanisms: every item, as data (ITEM-01). Items stack without limit;
-//! their drawbacks and their price are what make each purchase a choice.
+//! Coping mechanisms: every item, as data (ITEM-01). Items are passives with
+//! levels, picked on level-ups, bought from vending machines or found in
+//! chests; you carry six. Shrine blessings are here too (MAP-03).
 
 use slop_sim::world::{Active, Loadout};
 use slop_sim::{DamageType, Stats};
@@ -132,25 +133,30 @@ pub enum Mod {
     ChainLetter,
     Fluent,
     Active(Active),
-    /// Interest on unspent Clout rises to this share, capped at 20.
+    /// Interest on unspent Clout every minute, capped at 20.
     Interest(f32),
-    /// Clout at the end of every wave.
+    /// Clout every minute.
     WaveIncome(u32),
-    /// Clout per wave for every wave survived so far.
+    /// Clout every minute for every minute survived so far.
     InfluencerDeal,
-    /// Clout changes by -10% to +25% after each wave.
+    /// Every minute your Clout changes by -10% to +25%.
     CryptoWallet,
+    /// Machines on the map cost this much less, or more.
     ShopDiscount(f32),
     ShopPriceUp(f32),
-    /// Selling refunds this share.
-    SellRefund(f32),
+    /// More free rerolls on level-ups.
+    ExtraReroll(u32),
     FreeReroll,
+    /// One more choice on every level-up.
     ExtraOffer,
+    /// More experience from Likes, and more Clout from coins.
+    XpBonus(f32),
+    CloutBonus(f32),
     /// The slop learns this much faster.
     LearnFaster(f32),
     /// Patch notes preview the next training run.
     Preview,
-    /// The shop always offers a Fact weapon.
+    /// Level-ups offer Fact weapons more often.
     FactWeapons,
 }
 
@@ -194,9 +200,9 @@ pub const ITEMS: &[ItemDef] = &[
     item("Noise-Cancelling Headphones", Healthy, 2, &[Mod::NoiseCancel], "Blocks one speech bubble every 3 s", "Bubbles hit the headphones instead."),
     item("Ad Blocker", Healthy, 1, &[Mod::AdBlocker], "Pop-ups never appear", "Worth every cent."),
     item("Weighted Blanket", Healthy, 1, &[Mod::Stat(Composure, 5.0), Mod::Stat(Speed, -5.0)], "+5 Composure, -5% Speed", "Heavy, safe, sleepy."),
-    item("Library Card", Healthy, 2, &[Mod::TypeBonus(DamageType::Fact, 0.15), Mod::FactWeapons], "Fact weapons +15% damage; the shop always offers a Fact weapon", "Free knowledge. Remember that?"),
+    item("Library Card", Healthy, 2, &[Mod::TypeBonus(DamageType::Fact, 0.15), Mod::FactWeapons], "Fact weapons +15% damage; level-ups offer Fact weapons more often", "Free knowledge. Remember that?"),
     item("Running Shoes", Healthy, 1, &[Mod::Stat(Speed, 10.0)], "+10% Speed", "Outrun the algorithm."),
-    item("Good Night's Sleep", Healthy, 3, &[Mod::SecondWind], "Once per wave, survive a killing blow with 1 Mental Health", "Rare. Like in real life."),
+    item("Good Night's Sleep", Healthy, 3, &[Mod::SecondWind], "Once per platform, survive a killing blow with 1 Mental Health", "Rare. Like in real life."),
     item("Group Chat", Healthy, 2, &[Mod::GroupChat], "+1% Conviction for every 5 slop on screen", "Your friends hate this too."),
     item("Touch-Grass Badge", Healthy, 2, &[Mod::Stat(SelfCare, 3.0), Mod::TypeBonus(DamageType::Grass, 0.10)], "+3 Self-Care, +10% Grass damage", "Official proof you went outside."),
     item("Self-Help Book", Healthy, 1, &[Mod::Stat(MentalHealth, 10.0), Mod::Stat(SelfCare, 1.0)], "+10 Mental Health, +1 Self-Care", "Chapter one: stop reading self-help books."),
@@ -205,20 +211,46 @@ pub const ITEMS: &[ItemDef] = &[
     item("Doomscrolling", Risky, 2, &[Mod::LikeBonus(0.5), Mod::Doomscrolling], "+50% Likes. -1 Mental Health per second while slop is on screen", "Just one more."),
     item("Hot Take", Risky, 2, &[Mod::TypeBonus(DamageType::Sarcasm, 0.25), Mod::HotTake], "+25% Sarcasm damage. Hits on you are 10% harder", "Ratio incoming."),
     item("Dumbphone", Risky, 1, &[Mod::Stat(Scepticism, 15.0), Mod::Dumbphone, Mod::Stat(Curiosity, -40.0)], "+15% Scepticism, immune to Doomscroll. -40 Curiosity", "Snake still slaps."),
-    item("Burner Account", Risky, 2, &[Mod::FreeReroll, Mod::LearnFaster(0.25)], "One free reroll per shop. The slop learns 25% faster", "Nobody will ever know."),
-    item("Clickbait Thumbnail", Risky, 2, &[Mod::LikeBonus(0.3), Mod::ShopPriceUp(0.1)], "+30% Likes. Shop prices +10%", "YOU WON'T BELIEVE THIS ITEM."),
-    item("Side Hustle", Hustle, 1, &[Mod::WaveIncome(8)], "+8 Clout at the end of every wave", "Passive income, allegedly."),
-    item("Savings Account", Hustle, 2, &[Mod::Interest(0.10)], "Interest on unspent Clout rises to 10%, up to 20 per wave", "Boring. Works."),
+    item("Burner Account", Risky, 2, &[Mod::FreeReroll, Mod::FreeReroll, Mod::LearnFaster(0.25)], "Two more free rerolls on level-ups. The slop learns 25% faster", "Nobody will ever know."),
+    item("Clickbait Thumbnail", Risky, 2, &[Mod::LikeBonus(0.3), Mod::ShopPriceUp(0.1)], "+30% Likes. Machines cost 10% more", "YOU WON'T BELIEVE THIS ITEM."),
+    item("Side Hustle", Hustle, 1, &[Mod::WaveIncome(6)], "+6 Clout every minute", "Passive income, allegedly."),
+    item("Savings Account", Hustle, 2, &[Mod::Interest(0.10)], "Every minute, 10% interest on your Clout, up to 20", "Boring. Works."),
     item("Referral Link", Hustle, 1, &[Mod::LikeBonus(0.1)], "+10% Likes", "Use my code."),
-    item("Coupon Clipper", Hustle, 2, &[Mod::ShopDiscount(0.08)], "Shop prices -8%", "Ten cents off."),
-    item("Garage Sale", Hustle, 1, &[Mod::SellRefund(0.75)], "Selling a weapon refunds 75% instead of 50%", "Everything must go."),
-    item("Influencer Deal", Hustle, 2, &[Mod::InfluencerDeal, Mod::Stat(Conviction, -5.0)], "+1 Clout per wave for every wave survived. -5% Conviction", "Brought to you by nobody."),
-    item("Crypto Wallet", Hustle, 2, &[Mod::CryptoWallet], "After each wave your Clout changes by -10% to +25%", "To the moon. Or not."),
+    item("Coupon Clipper", Hustle, 2, &[Mod::ShopDiscount(0.1)], "Machines cost 10% less", "Ten cents off."),
+    item("Garage Sale", Hustle, 1, &[Mod::CloutBonus(0.3), Mod::ExtraReroll(1)], "+30% Clout from coins, +1 free reroll on level-ups", "Everything must go."),
+    item("Influencer Deal", Hustle, 2, &[Mod::InfluencerDeal, Mod::Stat(Conviction, -5.0)], "Every minute: +1 Clout per minute survived. -5% Conviction", "Brought to you by nobody."),
+    item("Crypto Wallet", Hustle, 2, &[Mod::CryptoWallet], "Every minute your Clout changes by -10% to +25%", "To the moon. Or not."),
     item("Log Off", Act, 2, &[Mod::Active(Active::LogOff)], "With 8 slop close: dash away, invulnerable. Every 12 s", "Bye."),
     item("Block Button", Act, 2, &[Mod::Active(Active::BlockButton)], "Deletes a bubble about to hit you, and the next one. Every 4 s", "Blocked and reported."),
     item("Digital Detox", Act, 2, &[Mod::Active(Active::DigitalDetox)], "With 2 statuses: clear them and push slop back. Every 20 s", "Phone in the drawer."),
     item("Unsubscribe", Act, 3, &[Mod::Active(Active::Unsubscribe)], "Below 30% Mental Health: all slop on screen lose 10% HP and stall. Every 45 s", "You will not be missed."),
     item("Phone a Friend", Act, 3, &[Mod::Active(Active::PhoneAFriend)], "An elite or boss near: a friend runs through it for 40. Every 25 s", "Real friends. Remember those?"),
+];
+
+impl ItemDef {
+    /// How many levels the item has: effects that are on or off have one.
+    pub fn max_level(&self) -> u32 {
+        let unique = self.mods.iter().any(|m| {
+            matches!(m, Mod::Active(_) | Mod::AdBlocker | Mod::NoiseCancel | Mod::Dumbphone | Mod::TherapyDog | Mod::FactWeapons | Mod::Fluent | Mod::ChainLetter | Mod::SecondWind | Mod::GroupChat)
+        });
+        if unique {
+            1
+        } else {
+            5
+        }
+    }
+}
+
+/// Shrine blessings (MAP-03): pick one of three; they last the whole run.
+pub const BLESSINGS: &[ItemDef] = &[
+    item("Blessing of Virality", Healthy, 3, &[Mod::XpBonus(0.25)], "+25% experience from Likes", "Your posts are doing numbers."),
+    item("Blessing of Engagement", Healthy, 3, &[Mod::Stat(Conviction, 20.0)], "+20% Conviction", "Everyone is reacting."),
+    item("Blessing of the Algorithm", Healthy, 3, &[Mod::ExtraOffer], "One more choice on every level-up", "It finally recommends you."),
+    item("Blessing of Moderation", Healthy, 3, &[Mod::Stat(Composure, 8.0), Mod::Stat(SelfCare, 2.0)], "+8 Composure, +2 Self-Care", "The mods are on your side."),
+    item("Blessing of Reach", Healthy, 3, &[Mod::Stat(Reach, 25.0), Mod::Stat(Curiosity, 60.0)], "+25% Reach, +60 Curiosity", "Seen by everyone."),
+    item("Blessing of Clout", Hustle, 3, &[Mod::CloutBonus(0.6), Mod::WaveIncome(5)], "+60% Clout from coins, +5 Clout every minute", "Monetised."),
+    item("Blessing of Haste", Healthy, 3, &[Mod::Stat(Focus, 18.0), Mod::Stat(Speed, 8.0)], "+18% Focus, +8% Speed", "Speedrun any%."),
+    item("Blessing of Thick Skin", Healthy, 3, &[Mod::Stat(MentalHealth, 60.0), Mod::Stat(Scepticism, 8.0)], "+60 Mental Health, +8% Scepticism", "Comments don't reach you."),
 ];
 
 pub fn item_index(name: &str) -> Option<usize> {
@@ -252,6 +284,7 @@ pub fn apply(m: Mod, l: &mut Loadout, weapon_types: usize) {
         Mod::Dumbphone => p.dumbphone = true,
         Mod::ChainLetter => p.chain_letter = true,
         Mod::Fluent => p.fluent = true,
+        Mod::XpBonus(v) => p.like_bonus += v,
         Mod::Active(a) => {
             if !p.actives.contains(&a) {
                 p.actives.push(a);

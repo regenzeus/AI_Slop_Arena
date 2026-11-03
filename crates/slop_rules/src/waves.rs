@@ -1,39 +1,41 @@
-//! The 20 waves of a run (WAVE-03 to WAVE-06): how long each lasts, how hard
-//! it is, who spawns on each platform, and the bosses of waves 10 and 20.
+//! The director of the Feed (RUN-10, RUN-11): who spawns, how many, and how
+//! tough, as the minutes go by; and the bosses at the end of each platform.
+//! Nothing here counts waves any more: difficulty is a function of time.
 
 use slop_sim::content::{Archetype, Body, BossKind, Look, Pattern, Platform, Role, WEAPONS};
-use slop_sim::spec::SlopSpec;
-use slop_sim::world::{ModelSetup, Spawn, WaveSetup};
+use slop_sim::spec::{SlopSpec, Traits};
+use slop_sim::world::{ModelSetup, Spawn};
 
 use crate::training::Training;
 
-pub const WAVES: u32 = 20;
+/// Seconds on a platform before its boss arrives.
+pub const BOSS_AFTER: f32 = 270.0;
+/// Seconds after the sixth boss before The Model arrives.
+pub const MODEL_AFTER: f32 = 90.0;
 
-/// Seconds to survive; 0 for boss waves, which last until the boss dies.
-pub fn seconds(wave: u32) -> f32 {
-    const S: [f32; 20] = [30., 35., 40., 45., 50., 55., 60., 65., 70., 0., 75., 75., 80., 80., 85., 85., 90., 90., 90., 0.];
-    S[(wave.clamp(1, WAVES) - 1) as usize]
+/// How far into the old 20-wave curve `minutes` of the Feed are: wave 20's
+/// strength arrives around half an hour in, and it keeps climbing.
+pub fn stage(minutes: f32) -> f32 {
+    1.0 + minutes * 0.62
 }
 
-pub fn is_boss(wave: u32) -> bool {
-    wave == 10 || wave == 20
-}
-
-/// Viral waves: twice the slop at half the HP.
-pub fn is_viral(wave: u32) -> bool {
-    wave == 5 || wave == 15
-}
-
-/// HP, damage and speed multipliers of slop in a wave.
-pub fn scaling(wave: u32, platform: Platform) -> (f32, f32, f32) {
-    let w = (wave - 1) as f32;
-    let hp = 1.0 + 0.22 * w + 0.04 * w * w;
-    let damage = 1.0 + 0.11 * w;
-    let mut speed = 1.0 + 0.01 * w;
+/// HP, damage and speed multipliers of slop at `stage`.
+pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
+    let w = (stage - 1.0).max(0.0);
+    // Fragile at first, like a horde should be; steep later.
+    let hp = 0.3 + 0.12 * w + 0.035 * w * w;
+    let damage = 1.0 + 0.1 * w;
+    let mut speed = 1.0 + 0.01 * w.min(30.0);
     if platform == Platform::LinkedOut {
-        speed += 0.01 * w;
+        speed += 0.15;
     }
     (hp, damage, speed)
+}
+
+/// Spawn credits per second at `stage`; a credit buys 20 base HP of slop.
+pub fn rate(stage: f32) -> f32 {
+    let w = stage - 1.0;
+    2.6 + 0.55 * w + 0.015 * w * w
 }
 
 /// What a weapon looks like when The Model copies it.
@@ -49,20 +51,20 @@ pub fn weapon_look(def: usize) -> Look {
     }
 }
 
-/// A wave ready to play, and which specs are which brainrot genome.
-pub struct Built {
-    pub setup: WaveSetup,
+/// A spawn table ready to hand to the world, and which specs are which
+/// brainrot genome.
+pub struct Table {
+    pub specs: Vec<SlopSpec>,
+    pub spawns: Vec<Spawn>,
+    pub rate: f32,
+    pub elite_chance: f32,
+    pub repost_chance: f32,
     pub genomes: Vec<(usize, usize)>,
 }
 
-/// Builds wave `wave` on `platform` against the current training. `damage`
-/// is the damage each weapon has dealt over the run, for The Model.
-pub fn build(wave: u32, platform: Platform, training: &Training, damage: &[f32]) -> Built {
-    let (mut hp, dmg, speed) = scaling(wave, platform);
-    let viral = is_viral(wave);
-    if viral {
-        hp *= 0.5;
-    }
+/// Who spawns on `platform` at `stage`, against the current training.
+pub fn table(stage: f32, platform: Platform, training: &Training) -> Table {
+    let (hp, dmg, speed) = scaling(stage, platform);
     let mut specs = Vec::new();
     let mut spawns = Vec::new();
     let mut genomes = Vec::new();
@@ -77,11 +79,10 @@ pub fn build(wave: u32, platform: Platform, training: &Training, damage: &[f32])
         };
         base * k
     };
-    let mut add = |spec: SlopSpec, w: u32, from: f32, group: u8| -> usize {
-        // A credit buys 20 base HP: tough slop and packs cost more.
+    let mut add = |spec: SlopSpec, w: u32, group: u8| -> usize {
         let cost = spec.hp / hp * group as f32 / 20.0;
         specs.push(spec);
-        spawns.push(Spawn { spec: specs.len() - 1, weight: w, from, group, cost });
+        spawns.push(Spawn { spec: specs.len() - 1, weight: w, from: 0.0, group, cost });
         specs.len() - 1
     };
     let archetype = |a: Archetype| {
@@ -90,77 +91,113 @@ pub fn build(wave: u32, platform: Platform, training: &Training, damage: &[f32])
         s
     };
     if !clocktok {
-        add(archetype(Archetype::ChadGpt), weight(Role::Shooter, 3), 0.0, 1);
-        add(archetype(Archetype::ListicleDrone), weight(Role::Swarmer, 3), 0.0, 5);
-        if wave >= 3 {
-            add(archetype(Archetype::Clawed), weight(Role::Shooter, 2), 4.0, 1);
+        add(archetype(Archetype::ChadGpt), weight(Role::Shooter, 3), 1);
+        add(archetype(Archetype::ListicleDrone), weight(Role::Swarmer, 4), 5);
+        if stage >= 2.0 {
+            add(archetype(Archetype::Clawed), weight(Role::Shooter, 2), 1);
         }
-        if wave >= 4 {
-            add(archetype(Archetype::YesBot), weight(Role::Support, 1), 8.0, 1);
+        if stage >= 3.0 {
+            add(archetype(Archetype::YesBot), weight(Role::Support, 1), 1);
         }
-        if wave >= 6 {
-            add(archetype(Archetype::Hallucinator), weight(Role::Special, 1), 10.0, 1);
+        if stage >= 4.5 {
+            add(archetype(Archetype::Hallucinator), weight(Role::Special, 1), 1);
         }
-        if wave >= 2 {
-            for &a in platform.locals() {
-                add(archetype(a), weight(a.def().role, 2), 5.0, 1);
-            }
+        for &a in platform.locals() {
+            add(archetype(a), weight(a.def().role, 2), 1);
         }
     }
-    if wave >= 3 || clocktok {
+    if stage >= 2.5 || clocktok {
         for (g, genome) in training.pool.iter().enumerate() {
-            let spec = SlopSpec::brainrot(genome.name.clone(), genome.body, genome.object, genome.accessory, genome.toughness, genome.pace, genome.resist)
-                .scaled(hp, dmg, speed);
+            let spec = SlopSpec::brainrot(genome.name.clone(), genome.body, genome.object, genome.accessory, genome.toughness, genome.pace, genome.resist).scaled(hp, dmg, speed);
             let group = if genome.body == Body::Shrimp { 4 } else { 1 };
-            let w = if clocktok { weight(spec.role, 2) } else { 1 };
-            let index = add(spec, w, 2.0, group);
+            let w = if clocktok { weight(spec.role, 2) } else { 1 + (stage / 6.0) as u32 };
+            let index = add(spec, w, group);
             genomes.push((index, g));
         }
     }
-
-    let w = (wave - 1) as f32;
-    let mut rate = (0.35 + 0.12 * w, 0.7 + 0.32 * w);
-    if viral {
-        rate = (rate.0 * 1.6, rate.1 * 1.6);
-    }
+    let mut r = rate(stage);
     if clocktok {
         // All brainrot, much of it fast: fewer of them.
-        rate = (rate.0 * 0.8, rate.1 * 0.8);
+        r *= 0.8;
     }
-    let mut setup = WaveSetup {
-        number: wave,
-        seconds: seconds(wave),
-        platform: Some(platform),
+    Table {
         specs,
         spawns,
-        rate,
-        elite_chance: if wave >= 6 { 0.015 + 0.003 * (wave - 6) as f32 } else { 0.0 },
-        boss: None,
+        rate: r,
+        elite_chance: if stage >= 4.0 { 0.006 + 0.0012 * stage } else { 0.0 },
         repost_chance: if platform == Platform::Thredd { 0.25 } else { 0.0 },
-        model: ModelSetup::default(),
-    };
-    if is_boss(wave) {
-        setup.rate = (0.5 + 0.03 * w, 1.2 + 0.05 * w);
-        let kind = if wave == 20 { BossKind::TheModel } else { platform.boss() };
-        let best = training.best();
-        setup.model.parts = Some((best.body, best.object, best.accessory));
-        if wave == 20 {
-            setup.model.collapse = crate::training::collapse(&training.kills);
-            let mut order: Vec<usize> = (0..damage.len()).filter(|&d| damage[d] > 0.0).collect();
-            order.sort_by(|&a, &b| damage[b].total_cmp(&damage[a]));
-            for (k, d) in order.into_iter().take(3).enumerate() {
-                setup.model.copies[k] = Some(weapon_look(d));
-            }
-        }
-        let (base_hp, _, _) = kind.base();
-        // Platform bosses come at wave 10, when a build is still young.
-        let boss_hp = if wave == 20 { base_hp } else { base_hp * 0.55 };
-        let mut boss = SlopSpec::boss(kind, boss_hp).scaled(1.0, dmg, 1.0);
-        boss.resist = training.model.map(|r| r * 0.5);
-        setup.specs.push(boss);
-        setup.boss = Some(setup.specs.len() - 1);
+        genomes,
     }
-    Built { setup, genomes }
+}
+
+/// Elite affixes (ELITE-01).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Affix {
+    /// Takes half damage from everything but Fact.
+    Verified,
+    /// Bursts into four copies.
+    Viral,
+    /// Drops Clout.
+    Sponsored,
+    /// Fast.
+    Trending,
+    /// Leaves slowing puddles.
+    Toxic,
+}
+
+impl Affix {
+    pub const ALL: [Affix; 5] = [Affix::Verified, Affix::Viral, Affix::Sponsored, Affix::Trending, Affix::Toxic];
+
+    pub fn name(self) -> &'static str {
+        ["Verified", "Viral", "Sponsored", "Trending", "Toxic"][self as usize]
+    }
+
+    pub fn blurb(self) -> &'static str {
+        [
+            "Half damage from everything but Fact.",
+            "Bursts into four copies when deleted.",
+            "Drops a pile of Clout.",
+            "Fast. Very fast.",
+            "Leaves puddles of downvotes behind.",
+        ][self as usize]
+    }
+}
+
+/// An elite of `base` with an affix: bigger, tougher, and it drops a chest.
+pub fn elite(base: &SlopSpec, affix: Affix) -> SlopSpec {
+    let mut s = base.clone().elite();
+    s.name = format!("{} {}", affix.name(), base.name);
+    match affix {
+        Affix::Verified => s.traits.0 |= Traits::VERIFIED,
+        Affix::Viral => s.traits.0 |= Traits::VIRAL,
+        Affix::Sponsored => s.traits.0 |= Traits::SPONSORED,
+        Affix::Trending => s.speed *= 1.6,
+        Affix::Toxic => s.traits.0 |= Traits::TOXIC,
+    }
+    s
+}
+
+/// The boss of `platform` (or The Model) arriving `minutes` into the Feed,
+/// with what The Model knows about you. `damage` is the damage each weapon
+/// has dealt over the run.
+pub fn boss(kind: BossKind, minutes: f32, training: &Training, damage: &[f32]) -> (SlopSpec, ModelSetup) {
+    let mut model = ModelSetup::default();
+    let best = training.best();
+    model.parts = Some((best.body, best.object, best.accessory));
+    if kind == BossKind::TheModel {
+        model.collapse = crate::training::collapse(&training.kills);
+        let mut order: Vec<usize> = (0..damage.len()).filter(|&d| damage[d] > 0.0).collect();
+        order.sort_by(|&a, &b| damage[b].total_cmp(&damage[a]));
+        for (k, d) in order.into_iter().take(3).enumerate() {
+            model.copies[k] = Some(weapon_look(d));
+        }
+    }
+    let (base_hp, _, _) = kind.base();
+    let k = if kind == BossKind::TheModel { 0.45 + 0.05 * minutes } else { 0.3 + 0.09 * minutes };
+    let (_, dmg, _) = scaling(stage(minutes), Platform::FaceSlop);
+    let mut spec = SlopSpec::boss(kind, base_hp * k).scaled(1.0, dmg.min(3.0), 1.0);
+    spec.resist = training.model.map(|r| r * 0.5);
+    (spec, model)
 }
 
 #[cfg(test)]
@@ -168,16 +205,15 @@ mod tests {
     use super::*;
     use slop_sim::rng::Rng;
 
-    // REQ: WAVE-03
+    // REQ: RUN-10
     #[test]
-    fn twenty_waves_ramp_up_with_bosses_at_ten_and_twenty() {
-        let total: f32 = (1..=WAVES).map(seconds).sum();
-        assert!((1100.0..1300.0).contains(&total), "{total} s of timed waves, plus two boss fights");
-        assert!(is_boss(10) && is_boss(20) && !is_boss(9));
-        assert_eq!(seconds(10), 0.0);
-        let (hp1, d1, _) = scaling(1, Platform::FaceSlop);
-        let (hp20, d20, _) = scaling(20, Platform::FaceSlop);
-        assert!(hp20 > hp1 * 4.0 && d20 > d1 * 2.0);
+    fn the_feed_gets_harder_with_time() {
+        let (hp1, d1, _) = scaling(stage(0.0), Platform::FaceSlop);
+        let (hp30, d30, _) = scaling(stage(30.0), Platform::FaceSlop);
+        assert!(hp30 > hp1 * 8.0 && d30 > d1 * 2.0);
+        assert!(rate(stage(30.0)) > rate(stage(0.0)) * 5.0);
+        let (hp60, ..) = scaling(stage(60.0), Platform::FaceSlop);
+        assert!(hp60 > hp30 * 2.5, "it never stops climbing");
     }
 
     // REQ: WAVE-04
@@ -185,33 +221,39 @@ mod tests {
     fn house_rules_shape_the_spawn_table() {
         let mut rng = Rng::new(1, 1);
         let t = Training::new(&mut rng);
-        let clock = build(3, Platform::ClockTok, &t, &[]);
-        assert!(clock.setup.specs.iter().all(|s| s.is_brainrot()), "ClockTok is all brainrot");
-        let face = build(1, Platform::FaceSlop, &t, &[]);
-        assert!(face.setup.specs.iter().all(|s| !s.is_brainrot()), "wave 1 is chatbots only");
-        let thredd = build(8, Platform::Thredd, &t, &[]);
-        assert!(thredd.setup.repost_chance > 0.0);
-        let insta = build(8, Platform::InstaSlop, &t, &[]);
-        let tank_weight = |b: &Built| -> u32 {
-            b.setup.spawns.iter().filter(|s| b.setup.specs[s.spec].role == Role::Tank).map(|s| s.weight).sum()
-        };
-        assert!(tank_weight(&insta) > tank_weight(&build(8, Platform::MeTube, &t, &[])));
+        let clock = table(3.0, Platform::ClockTok, &t);
+        assert!(clock.specs.iter().all(|s| s.is_brainrot()), "ClockTok is all brainrot");
+        let face = table(1.0, Platform::FaceSlop, &t);
+        assert!(face.specs.iter().all(|s| !s.is_brainrot()), "the first minutes are chatbots");
+        assert!(table(8.0, Platform::Thredd, &t).repost_chance > 0.0);
+        let tank_weight = |b: &Table| -> u32 { b.spawns.iter().filter(|s| b.specs[s.spec].role == Role::Tank).map(|s| s.weight).sum() };
+        assert!(tank_weight(&table(8.0, Platform::InstaSlop, &t)) > tank_weight(&table(8.0, Platform::MeTube, &t)));
     }
 
-    // REQ: WAVE-05, PLAT-01
+    // REQ: RUN-11, BOSS-07
     #[test]
-    fn boss_waves_carry_their_boss_and_the_model_learns_your_weapons() {
+    fn bosses_grow_with_time_and_the_model_copies_your_weapons() {
         let mut rng = Rng::new(1, 1);
         let t = Training::new(&mut rng);
-        let ten = build(10, Platform::MeTube, &t, &[]);
-        let boss = &ten.setup.specs[ten.setup.boss.unwrap()];
-        assert_eq!(boss.name, BossKind::ContentFarm.name());
+        let (early, _) = boss(BossKind::ContentFarm, 4.5, &t, &[]);
+        let (late, _) = boss(BossKind::ContentFarm, 25.0, &t, &[]);
+        assert!(late.hp > early.hp * 2.0);
         let mut dmg = vec![0.0; WEAPONS.len()];
         dmg[0] = 500.0;
         dmg[8] = 300.0;
-        let twenty = build(20, Platform::MeTube, &t, &dmg);
-        assert_eq!(twenty.setup.specs[twenty.setup.boss.unwrap()].name, "The Model");
-        assert_eq!(twenty.setup.model.copies[0], Some(Look::Rock));
-        assert_eq!(twenty.setup.model.copies[1], Some(Look::Pen));
+        let (model, setup) = boss(BossKind::TheModel, 30.0, &t, &dmg);
+        assert_eq!(model.name, "The Model");
+        assert_eq!(setup.copies[0], Some(Look::Rock));
+        assert_eq!(setup.copies[1], Some(Look::Pen));
+    }
+
+    // REQ: ELITE-01
+    #[test]
+    fn elites_carry_their_affix() {
+        let base = SlopSpec::archetype(Archetype::ChadGpt);
+        let e = elite(&base, Affix::Verified);
+        assert!(e.elite && e.traits.has(Traits::VERIFIED) && e.hp > base.hp * 2.0);
+        assert_eq!(e.name, "Verified ChadGPT");
+        assert!(elite(&base, Affix::Trending).speed > base.speed * 1.5);
     }
 }

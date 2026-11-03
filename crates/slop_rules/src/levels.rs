@@ -1,15 +1,34 @@
-//! Levels: Clout earned is also XP. Each level gained offers four stat
-//! upgrades after the wave; you pick one (LEVEL-01).
+//! Levels: Likes are experience. Levels come fast early and slower later
+//! (LEVEL-01); each one is a pick of three in `run`. Stat-ups are one kind of
+//! pick.
 
 use slop_sim::rng::Rng;
 
 use crate::items::StatKind;
 
-/// XP needed to go from level `n - 1` to `n`. Tuned so a wave is worth about
-/// one level: early waves pay little, late waves a lot.
+/// XP needed to go from level `n - 1` to `n`: the first levels take seconds,
+/// late ones about a minute.
 pub fn xp_for(level: u32) -> u32 {
     let n = level as f32;
-    (12.0 + 3.0 * n + 0.42 * n * n) as u32
+    (3.0 + 3.0 * n + 0.3 * n * n) as u32
+}
+
+/// One stat-up, of a stat not in `skip`.
+pub fn stat_up(rng: &mut Rng, luck: f32, skip: &[StatKind]) -> Option<StatUp> {
+    let pool: Vec<StatKind> = StatKind::ALL.iter().copied().filter(|s| !skip.contains(s)).collect();
+    if pool.is_empty() {
+        return None;
+    }
+    let stat = pool[rng.below(pool.len() as u32) as usize];
+    let roll = rng.f32() - luck * 0.01;
+    let tier = if roll < 0.08 {
+        3
+    } else if roll < 0.30 {
+        2
+    } else {
+        1
+    };
+    Some(StatUp { stat, amount: base(stat) * [1.0, 1.5, 2.0][tier as usize - 1], tier })
 }
 
 /// One upgrade on offer.

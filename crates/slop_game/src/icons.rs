@@ -224,12 +224,94 @@ pub fn weapon(index: usize) -> Canvas {
             p.stick(46.0, 34.0, 70.0, 56.0, 15.5, hex(RED));
         }
         // CAPTCHA Turret
-        _ => {
+        21 => {
             p.rect(50.0, 82.0, 26.0, 8.0, 3.0, hex(DARK));
             p.rect(50.0, 44.0, 32.0, 32.0, 5.0, WHITE);
             p.sdf_fill(|x, y| capsule(x, y, 36.0, 44.0, 46.0, 56.0, 4.5).min(capsule(x, y, 46.0, 56.0, 66.0, 30.0, 4.5)), hex(0x2F80ED));
         }
+        _ => return feed_weapon(index),
     }
+    p.c
+}
+
+/// Weapons added with the Feed (WPN-11), and merged weapons (WPN-12).
+fn feed_weapon(index: usize) -> Canvas {
+    let def = &slop_sim::content::WEAPONS[index];
+    if def.evolved {
+        return merged(index);
+    }
+    let mut p = pen();
+    match def.name {
+        "Rubber Duck" => {
+            p.ellipse(50.0, 64.0, 32.0, 22.0, hex(GOLD));
+            p.circle(36.0, 38.0, 17.0, hex(GOLD));
+            p.tri((18.0, 38.0), (6.0, 44.0), (18.0, 46.0), hex(ORANGE));
+            p.dot(32.0, 34.0, 3.5, INK);
+            p.sdf_fill(|x, y| ellipse(x, y, 62.0, 60.0, 14.0, 7.0), alpha(WHITE, 0.4));
+        }
+        "Office Memo" => {
+            p.sdf(|x, y| polygon(x, y, &[(10.0, 60.0), (90.0, 22.0), (48.0, 78.0)]), WHITE);
+            p.sdf(|x, y| polygon(x, y, &[(48.0, 78.0), (90.0, 22.0), (56.0, 58.0)]), hex(0xD8DAE2));
+            p.line(56.0, 58.0, 44.0, 70.0, 1.5, alpha(INK, 0.6));
+        }
+        "Sticky Notes" => {
+            p.rect(42.0, 46.0, 24.0, 24.0, 2.0, hex(0xF2E66B));
+            p.rect(58.0, 58.0, 24.0, 24.0, 2.0, hex(PINK));
+            p.line(44.0, 54.0, 70.0, 54.0, 2.0, alpha(INK, 0.5));
+            p.line(44.0, 64.0, 64.0, 64.0, 2.0, alpha(INK, 0.5));
+        }
+        "Side-Eye" => {
+            p.ellipse(50.0, 50.0, 38.0, 20.0, WHITE);
+            p.circle(76.0, 50.0, 12.0, hex(PURPLE));
+            p.dot(80.0, 50.0, 5.0, INK);
+            p.stick(16.0, 26.0, 80.0, 22.0, 4.0, hex(DARK));
+        }
+        "Ratio" => {
+            p.rect(50.0, 50.0, 34.0, 26.0, 6.0, hex(DARK));
+            p.sdf_fill(|x, y| capsule(x, y, 36.0, 58.0, 50.0, 40.0, 4.0).min(capsule(x, y, 50.0, 40.0, 64.0, 58.0, 4.0)), hex(RED));
+            p.line(28.0, 66.0, 72.0, 66.0, 3.0, hex(RED));
+        }
+        "Sunflower Patch" => {
+            p.stick(50.0, 56.0, 50.0, 92.0, 4.0, hex(LEAF));
+            leaf(&mut p, 62.0, 76.0, 0.4, hex(GREEN));
+            for k in 0..10 {
+                let a = k as f32 * std::f32::consts::TAU / 10.0;
+                p.ellipse(50.0 + a.cos() * 22.0, 40.0 + a.sin() * 22.0, 9.0, 9.0, hex(GOLD));
+            }
+            p.circle(50.0, 40.0, 16.0, hex(0x7A4E2D));
+        }
+        _ => {
+            // Leaf Blower
+            p.rect(36.0, 58.0, 22.0, 18.0, 6.0, hex(ORANGE));
+            p.stick(52.0, 52.0, 90.0, 34.0, 7.0, hex(0x5A5F70));
+            p.stick(26.0, 74.0, 30.0, 90.0, 4.0, hex(DARK));
+            leaf(&mut p, 84.0, 64.0, 0.35, hex(GREEN));
+        }
+    }
+    p.c
+}
+
+/// A merged weapon: its two parents on a golden burst (WPN-12).
+fn merged(index: usize) -> Canvas {
+    let name = slop_sim::content::WEAPONS[index].name;
+    let (a, b) = slop_sim::content::MERGES
+        .iter()
+        .find(|m| m.2 == name)
+        .and_then(|m| Some((slop_sim::content::weapon_index(m.0)?, slop_sim::content::weapon_index(m.1)?)))
+        .unwrap_or((0, 1));
+    let mut p = pen();
+    let points: Vec<(f32, f32)> = (0..16)
+        .map(|k| {
+            let ang = k as f32 * std::f32::consts::TAU / 16.0;
+            let r = if k % 2 == 0 { 48.0 } else { 34.0 };
+            (50.0 + ang.cos() * r, 50.0 + ang.sin() * r)
+        })
+        .collect();
+    p.sdf_fill(|x, y| polygon(x, y, &points), alpha(hex(GOLD), 0.55));
+    p.sdf_fill(|x, y| circle(x, y, 50.0, 50.0, 30.0), alpha(WHITE, 0.25));
+    let size = p.c.w as f32;
+    p.c.stamp(&weapon(a), -size * 0.04, -size * 0.04, 0.78);
+    p.c.stamp(&weapon(b), size * 0.36, size * 0.36, 0.62);
     p.c
 }
 
@@ -580,15 +662,6 @@ pub fn reroll() -> Canvas {
     p.c
 }
 
-pub fn lock() -> Canvas {
-    let mut p = pen();
-    p.sdf(|x, y| (circle(x, y, 50.0, 40.0, 18.0).abs() - 5.0).max(y - 44.0).min(rbox(x, y, 32.0, 46.0, 5.0, 6.0, 1.0)).min(rbox(x, y, 68.0, 46.0, 5.0, 6.0, 1.0)), hex(GREY));
-    p.rect(50.0, 64.0, 28.0, 22.0, 5.0, hex(GOLD));
-    p.dot(50.0, 60.0, 5.0, INK);
-    p.stick(50.0, 62.0, 50.0, 72.0, 2.5, INK);
-    p.c
-}
-
 /// A level-up: a five-pointed star.
 pub fn star() -> Canvas {
     let mut p = pen();
@@ -646,7 +719,7 @@ fn icon_sheet() {
     all.extend((0..ITEMS.len()).map(item));
     all.extend(StatKind::ALL.iter().map(|k| stat(*k)));
     all.extend(DamageType::ALL.iter().map(|t| damage_type(*t)));
-    all.extend([reroll(), lock(), star()]);
+    all.extend([reroll(), star()]);
     let s = ICON as u32;
     let cols = 12;
     let rows = all.len() as u32 / cols + 1;

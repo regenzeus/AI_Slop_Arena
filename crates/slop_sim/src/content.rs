@@ -3,8 +3,28 @@
 
 use crate::stats::DamageType;
 
-/// Damage multiplier for weapon tiers I to IV.
-pub const TIER_DAMAGE: [f32; 4] = [1.0, 1.6, 2.5, 4.0];
+/// Damage multiplier at weapon levels 1 to 8 (WPN-10).
+pub const LEVEL_DAMAGE: [f32; 8] = [1.0, 1.25, 1.5, 1.8, 2.1, 2.45, 2.8, 3.3];
+
+/// What a level adds besides damage: extra projectiles, area, and the
+/// cooldown multiplier.
+pub fn level_extra(level: u8) -> (u8, f32, f32) {
+    let shots = (level >= 3) as u8 + (level >= 8) as u8;
+    let area = if level >= 5 { 1.25 } else { 1.0 };
+    let haste = if level >= 7 { 0.8 } else { 1.0 };
+    (shots, area, haste)
+}
+
+/// What reaching `level` adds, for the level-up card.
+pub fn level_note(level: u8) -> &'static str {
+    match level {
+        3 => "+1 projectile (or +1 bounce, +1 link)",
+        5 => "+25% area and range",
+        7 => "Attacks 25% faster",
+        8 => "+1 more projectile. Max level: ready to merge",
+        _ => "More damage",
+    }
+}
 
 /// How a projectile is drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -26,10 +46,13 @@ pub enum Look {
     Letter,
     /// A thought-leadership post: pushes you back.
     Post,
+    Duck,
+    Plane,
+    Note,
 }
 
 impl Look {
-    pub const ALL: [Look; 15] = [
+    pub const ALL: [Look; 18] = [
         Look::Rock,
         Look::Bullet,
         Look::Pen,
@@ -45,6 +68,9 @@ impl Look {
         Look::Arrow,
         Look::Letter,
         Look::Post,
+        Look::Duck,
+        Look::Plane,
+        Look::Note,
     ];
 }
 
@@ -102,6 +128,8 @@ pub struct WeaponDef {
     pub knockback: f32,
     /// Rare weapons only appear in the shop from wave 6.
     pub rare: bool,
+    /// Made by merging two weapons; never offered on a level-up.
+    pub evolved: bool,
     pub flavour: &'static str,
 }
 
@@ -116,7 +144,21 @@ const fn weapon(
     knockback: f32,
     flavour: &'static str,
 ) -> WeaponDef {
-    WeaponDef { name, kind, pattern, damage, cooldown, range, knockback, rare: false, flavour }
+    WeaponDef { name, kind, pattern, damage, cooldown, range, knockback, rare: false, evolved: false, flavour }
+}
+
+#[allow(clippy::too_many_arguments)]
+const fn evolved(
+    name: &'static str,
+    kind: DamageType,
+    pattern: Pattern,
+    damage: f32,
+    cooldown: f32,
+    range: f32,
+    knockback: f32,
+    flavour: &'static str,
+) -> WeaponDef {
+    WeaponDef { name, kind, pattern, damage, cooldown, range, knockback, rare: false, evolved: true, flavour }
 }
 
 use DamageType::{Analog, Fact, Grass, Sarcasm};
@@ -152,6 +194,7 @@ pub const WEAPONS: &[WeaponDef] = &[
         range: 300.0,
         knockback: 320.0,
         rare: true,
+        evolved: false,
         flavour: "Rule 1: no slop.",
     },
     WeaponDef {
@@ -163,9 +206,59 @@ pub const WEAPONS: &[WeaponDef] = &[
         range: 460.0,
         knockback: 0.0,
         rare: true,
+        evolved: false,
         flavour: "Select all squares with bots.",
     },
+    // Added with the endless Feed (WPN-11).
+    weapon("Rubber Duck", Analog, Pattern::Lob { speed: 400.0, splash: 65.0, look: Look::Duck }, 12.0, 1.3, 400.0, 200.0, "Explain your bug to it. Then throw it."),
+    weapon("Office Memo", Fact, Pattern::Shot { speed: 620.0, radius: 9.0, pierce: 2, look: Look::Plane }, 8.0, 0.95, 480.0, 60.0, "Per my last memo."),
+    weapon("Sticky Notes", Fact, Pattern::Burst { speed: 560.0, radius: 7.0, count: 4, spread: 0.3, look: Look::Note }, 4.0, 1.0, 380.0, 40.0, "Reminder: the slop is watching."),
+    weapon("Side-Eye", Sarcasm, Pattern::Beam { width: 10.0 }, 9.0, 1.3, 430.0, 0.0, "Oh. Okay then."),
+    weapon("Ratio", Sarcasm, Pattern::Slam { radius: 80.0, execute: 14.0 }, 14.0, 2.0, 300.0, 260.0, "Ratio + L + touch grass."),
+    weapon("Sunflower Patch", Grass, Pattern::Zone { radius: 95.0, seconds: 5.0, heal: 1.5 }, 6.0, 3.4, 360.0, 0.0, "Faces the sun. Not your feed."),
+    weapon("Leaf Blower", Grass, Pattern::Cone { half_angle: 0.38 }, 4.0, 0.3, 240.0, 320.0, "Loud. Effective. Judged by neighbours."),
+    // Merged weapons (WPN-12): only made by `MERGES`, never offered.
+    evolved("Meteor Shower", Analog, Pattern::Burst { speed: 700.0, radius: 12.0, count: 7, spread: 0.32, look: Look::Rock }, 22.0, 0.9, 560.0, 360.0, "Rocks, but from space."),
+    evolved("Home Run", Analog, Pattern::Arc { half_angle: 2.6 }, 48.0, 1.1, 160.0, 900.0, "Out of the park. Out of the feed."),
+    evolved("Mass Mailer", Analog, Pattern::Burst { speed: 980.0, radius: 6.0, count: 9, spread: 0.12, look: Look::Staple }, 9.0, 0.35, 560.0, 60.0, "Reply-all, but violent."),
+    evolved("Rage Quit", Analog, Pattern::Ring, 30.0, 0.55, 190.0, 420.0, "Alt+F4 for everyone nearby."),
+    evolved("Peer Review", Fact, Pattern::Mark { speed: 820.0, radius: 11.0, pierce: 99, bonus: 0.5, seconds: 6.0 }, 18.0, 0.8, 620.0, 80.0, "Reviewer 2 has notes."),
+    evolved("Breaking News", Fact, Pattern::Beam { width: 42.0 }, 30.0, 0.8, 760.0, 0.0, "This just in: you're deleted."),
+    evolved("Permaban", Fact, Pattern::Slam { radius: 170.0, execute: 140.0 }, 70.0, 1.6, 420.0, 520.0, "Banned. Forever. No appeal."),
+    evolved("Infinite Uno", Sarcasm, Pattern::Ricochet { speed: 720.0, radius: 14.0, bounces: 14 }, 16.0, 0.9, 520.0, 60.0, "No u. No u. No u. No u."),
+    evolved("Standing Ovation", Sarcasm, Pattern::Chain { links: 14 }, 16.0, 0.7, 520.0, 0.0, "Bravo. Bravo. Bravo."),
+    evolved("Main Character", Sarcasm, Pattern::Aura, 14.0, 0.5, 230.0, 220.0, "The plot revolves around you now."),
+    evolved("Rewilding", Grass, Pattern::Zone { radius: 150.0, seconds: 6.0, heal: 3.0 }, 16.0, 1.6, 480.0, 0.0, "The parking lot is a meadow now."),
+    evolved("Dog Park", Grass, Pattern::Orbit { radius: 115.0 }, 26.0, 0.25, 115.0, 300.0, "Every dog. All at once."),
+    evolved("Hurricane Season", Grass, Pattern::Cone { half_angle: 0.85 }, 9.0, 0.18, 330.0, 520.0, "Mother Nature hit reply-all."),
 ];
+
+/// Merge recipes (WPN-12): two weapons, both at max level, become one
+/// stronger weapon when you open a chest.
+pub const MERGES: &[(&str, &str, &str)] = &[
+    ("Rock", "Slingshot", "Meteor Shower"),
+    ("Stick", "Baseball Bat", "Home Run"),
+    ("Pistol", "Stapler", "Mass Mailer"),
+    ("Brick", "Mechanical Keyboard", "Rage Quit"),
+    ("Red Pen", "Library Book", "Peer Review"),
+    ("Newspaper Roll", "Fact-Check Flashlight", "Breaking News"),
+    ("Ban Hammer", "CAPTCHA Turret", "Permaban"),
+    ("Eye-Roll", "Uno Reverse Card", "Infinite Uno"),
+    ("Air Quotes", "Slow Clap", "Standing Ovation"),
+    ("Side-Eye", "Ratio", "Main Character"),
+    ("Garden Hose", "Seed Bomb", "Rewilding"),
+    ("Frisbee", "Dog Walk", "Dog Park"),
+    ("Leaf Blower", "Sunflower Patch", "Hurricane Season"),
+];
+
+/// What `def` merges with, and into, by weapon index.
+pub fn merge_of(def: usize) -> Option<(usize, usize)> {
+    let name = WEAPONS.get(def)?.name;
+    MERGES.iter().find_map(|&(a, b, into)| {
+        let other = if a == name { b } else if b == name { a } else { return None };
+        Some((weapon_index(other)?, weapon_index(into)?))
+    })
+}
 
 pub fn weapon_index(name: &str) -> Option<usize> {
     WEAPONS.iter().position(|w| w.name == name)
@@ -615,7 +708,13 @@ mod tests {
     // REQ: FEEL-03
     #[test]
     fn content_is_sane() {
-        assert_eq!(WEAPONS.len(), 22);
+        assert_eq!(WEAPONS.iter().filter(|w| !w.evolved).count(), 29);
+        for &(a, b, into) in MERGES {
+            let (ia, ib, ii) = (weapon_index(a).unwrap(), weapon_index(b).unwrap(), weapon_index(into).unwrap());
+            assert!(!WEAPONS[ia].evolved && !WEAPONS[ib].evolved && WEAPONS[ii].evolved, "{into}");
+            assert_eq!(merge_of(ia), Some((ib, ii)));
+        }
+        assert_eq!(WEAPONS.iter().filter(|w| w.evolved).count(), MERGES.len(), "every merged weapon has a recipe");
         for w in WEAPONS {
             assert!(w.damage > 0.0 && w.cooldown > 0.0 && w.range > 0.0, "{}", w.name);
         }

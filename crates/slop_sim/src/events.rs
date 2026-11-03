@@ -2,9 +2,10 @@
 //! simulation never reads its own events.
 
 use crate::content::BossKind;
+use crate::map::PropKind;
 use crate::stats::DamageType;
 use crate::vec::V2;
-use crate::world::Active;
+use crate::world::{Active, PickupKind};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum StatusKind {
@@ -95,6 +96,22 @@ pub enum Event {
     /// The Model tried "Regenerate response".
     Regenerate { at: V2 },
     LikeCollected { value: u32 },
+    /// You picked something up.
+    PickedUp { kind: PickupKind, at: V2 },
+    /// A Mass Report deleted the slop on screen.
+    MassReport { at: V2 },
+    /// You broke an ad or a miner.
+    Broke { at: V2, kind: PropKind },
+    /// You used a prop: the rules decide what happens.
+    PropUsed { at: V2, kind: PropKind },
+    /// A data center finished uploading, or a comment section was survived.
+    PropDone { at: V2, kind: PropKind },
+    /// A boss was deleted; the Feed moves on.
+    BossDefeated { kind: BossKind, at: V2 },
+    /// A Sarcasm hit confused a slop.
+    Confused { at: V2 },
+    /// A block of the map will close for maintenance.
+    Maintenance { at: V2, half: V2 },
     WaveCleared,
     Burnout,
 }

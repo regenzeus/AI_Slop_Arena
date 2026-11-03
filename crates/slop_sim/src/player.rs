@@ -9,7 +9,7 @@ use crate::vec::V2;
 use crate::world::*;
 
 /// Share of the gap to the wanted velocity closed each tick, so movement eases.
-const ACCELERATION: f32 = 0.3;
+const ACCELERATION: f32 = 0.5;
 const HIT_INVULNERABLE: u16 = 30;
 const DODGE_INVULNERABLE: u16 = 15;
 const GRAB_SLOW: f32 = 0.2;
@@ -39,7 +39,7 @@ impl World {
             p.facing = dir.normalized();
         }
         let mut slow = (1.0 - GRAB_SLOW * p.grabbed as f32).max(MIN_GRAB_SPEED);
-        if zones.iter().any(|z| z.kind == ZoneKind::Downvote && z.pos.distance_sq(p.pos) < z.radius * z.radius) {
+        if zones.iter().any(|z| z.kind == ZoneKind::Downvote && z.contains(p.pos, 0.0)) {
             slow *= DOWNVOTE_SLOW;
         }
         let mut want = dir * (PLAYER_SPEED * p.stats.speed * slow);
@@ -49,8 +49,7 @@ impl World {
         p.vel += (want - p.vel) * ACCELERATION;
         let mut step = p.vel * DT;
         for z in zones.iter().filter(|z| z.kind == ZoneKind::Banner) {
-            let across = if z.vel.y != 0.0 { (p.pos.y - z.pos.y).abs() } else { (p.pos.x - z.pos.x).abs() };
-            if across < z.radius {
+            if z.contains(p.pos, 0.0) {
                 step += z.vel.normalized() * (BANNER_PUSH * DT);
             }
         }
@@ -58,7 +57,7 @@ impl World {
             p.dash -= 1;
             step += p.dash_dir * (DASH_SPEED * DT);
         }
-        p.pos = clamp_to_arena(p.pos + step, PLAYER_RADIUS);
+        p.pos += step;
         p.mental_health = (p.mental_health + p.stats.self_care * SELF_CARE_RATE * DT).min(p.stats.max_mental_health);
     }
 

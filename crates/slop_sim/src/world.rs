@@ -1,13 +1,15 @@
-//! The arena: one human against a wave of slop, stepped at a fixed 60 ticks
-//! per second (SIM-01). Everything the client shows is read from here, and a
-//! seed plus the input of every tick replays a wave exactly.
+//! The Feed: one human against endless slop on an endless map, stepped at a
+//! fixed 60 ticks per second (SIM-01). Everything the client shows is read
+//! from here, and a seed plus the input of every tick replays a run exactly.
 //!
 //! The work of a tick is split over modules: `ai` (slop), `combat` (weapons,
 //! projectiles, zones), `player` (you, statuses, actives), `hazards` and
-//! `boss`. This module holds the state, spawning and the end of a wave.
+//! `boss`, `map` (walls and props) and `pickups`. This module holds the
+//! state, spawning, and keeping the action around you.
 
 use crate::content::{Archetype, BossKind, Look, Platform, WeaponDef, WEAPONS};
 use crate::events::Event;
+use crate::map::{Map, PropKind, PropState};
 use crate::rng::Rng;
 use crate::spatial::Grid;
 use crate::spec::{Movement, SlopLook, SlopSpec, Traits};
@@ -16,8 +18,12 @@ use crate::vec::V2;
 
 pub const TICK_RATE: u32 = 60;
 pub const DT: f32 = 1.0 / TICK_RATE as f32;
-/// Side of the square arena in world units; the client shows 1600 x 900 of it.
-pub const ARENA: f32 = 2400.0;
+/// Slop farther than this from you are moved back in front of you.
+pub const RELOCATE: f32 = 1500.0;
+/// Projectiles farther than this from you are gone.
+pub(crate) const SHOT_RANGE_MAX: f32 = 1700.0;
+/// The highest weapon level.
+pub const MAX_LEVEL: u8 = 8;
 pub const PLAYER_RADIUS: f32 = 16.0;
 /// Base movement speed in units per second.
 pub const PLAYER_SPEED: f32 = 300.0;
@@ -46,8 +52,12 @@ const SPAWN_CLOSEST: f32 = 480.0;
 /// No new spawns in the last seconds of a timed wave.
 const SPAWN_STOP: f32 = 2.0;
 const LIKE_PULL_SPEED: f32 = 700.0;
-/// Share of uncollected Likes credited when a wave is cleared.
-const LEFTOVER_SHARE: f32 = 0.5;
+/// Pickups on the floor at most; old Clout makes room.
+const MAX_PICKUPS: usize = 160;
+/// Likes on the floor at most.
+const MAX_LIKES: usize = 300;
+/// Ticks a Server Outage freezes the slop.
+const FREEZE_TICKS: u16 = 480;
 const SCATTER_TICKS: u16 = 90;
 const REPOST_HP: f32 = 0.6;
 
@@ -62,8 +72,8 @@ pub struct Input {
 pub struct Weapon {
     /// Index into `WEAPONS`.
     pub def: usize,
-    /// Tier 1 to 4.
-    pub tier: u8,
+    /// Level 1 to `MAX_LEVEL`.
+    pub level: u8,
     /// Ticks until it may attack again.
     pub cooldown: f32,
     /// Weapons can be switched off for testing.
@@ -73,8 +83,8 @@ pub struct Weapon {
 }
 
 impl Weapon {
-    pub fn new(def: usize, tier: u8) -> Weapon {
-        Weapon { def, tier: tier.clamp(1, 4), cooldown: 0.0, enabled: true, phase: 0.0 }
+    pub fn new(def: usize, level: u8) -> Weapon {
+        Weapon { def, level: level.clamp(1, MAX_LEVEL), cooldown: 0.0, enabled: true, phase: 0.0 }
     }
 
     pub fn def(&self) -> &'static WeaponDef {
@@ -133,6 +143,10 @@ pub struct Perks {
     pub second_wind: u8,
     /// Houseplant: heal per Grass kill.
     pub houseplant: u8,
+    /// Weapons you carry of each damage type, for set bonuses (DMG-03).
+    pub type_count: [u8; 4],
+    /// Mental Health healed per Grass kill from the Grass set.
+    pub grass_heal: f32,
     /// Therapy Dog with a Dog Walk: block a hit every 10 s.
     pub therapy_dog: bool,
     /// Hot Take: slop near you hits 10% harder.
@@ -149,7 +163,7 @@ pub struct Perks {
 /// What you bring into a wave.
 #[derive(Clone, Debug)]
 pub struct Loadout {
-    /// Weapon index and tier.
+    /// Weapon index and level.
     pub weapons: Vec<(usize, u8)>,
     pub stats: Stats,
     pub perks: Perks,
@@ -188,6 +202,8 @@ impl Status {
 #[derive(Clone, Debug)]
 pub struct Player {
     pub pos: V2,
+    /// Position at the start of the tick, for drawing between ticks.
+    pub prev: V2,
     pub vel: V2,
     /// Last direction moved.
     pub facing: V2,
@@ -215,7 +231,8 @@ impl Player {
     pub fn new(loadout: &Loadout) -> Player {
         let stats = loadout.stats;
         Player {
-            pos: V2::new(ARENA / 2.0, ARENA / 2.0),
+            pos: V2::ZERO,
+            prev: V2::ZERO,
             vel: V2::ZERO,
             facing: V2::new(1.0, 0.0),
             mental_health: stats.max_mental_health,
@@ -243,6 +260,7 @@ pub struct Slop {
     /// Index into the wave's specs.
     pub spec: u16,
     pub pos: V2,
+    pub prev: V2,
     /// Velocity it chose this tick, for drawing.
     pub moving: V2,
     /// Knockback velocity, decaying.
@@ -273,6 +291,11 @@ pub struct Slop {
     /// Offset from you while a Six-Finger Hand holds on.
     pub grab: Option<V2>,
     pub stunned: u16,
+    /// Damage-type effects, in ticks: Analog staggers, Sarcasm confuses,
+    /// Grass roots (DMG-02).
+    pub staggered: u16,
+    pub confused: u16,
+    pub rooted: u16,
     /// Ticks its beauty filter is switched off by a fact-check.
     pub shield_off: u16,
     /// Damage taken is multiplied by this (bosses in invulnerable phases).
@@ -285,6 +308,8 @@ pub struct Slop {
     pub born: u32,
     /// Mental Health it took from you, for training.
     pub dealt: f32,
+    /// The prop whose challenge it belongs to, or 0.
+    pub tag: u32,
 }
 
 impl Slop {
@@ -303,6 +328,7 @@ impl Slop {
 pub struct Projectile {
     pub id: u32,
     pub pos: V2,
+    pub prev: V2,
     pub vel: V2,
     pub radius: f32,
     pub damage: f32,
@@ -343,6 +369,7 @@ impl Projectile {
         Projectile {
             id,
             pos,
+            prev: pos,
             vel,
             radius,
             damage,
@@ -387,6 +414,7 @@ pub struct Warning {
     pub pack: u32,
     pub number: u8,
     pub elite: bool,
+    pub tag: u32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -403,17 +431,75 @@ pub enum ZoneKind {
     Filter,
 }
 
+/// The outline of a zone (ZONE-02).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Shape {
+    Circle,
+    /// A rectangle with these half sizes.
+    Rect(V2),
+    /// A ring: inside `radius`, outside this.
+    Ring(f32),
+}
+
 #[derive(Clone, Debug)]
 pub struct Zone {
     pub id: u32,
     pub kind: ZoneKind,
     pub pos: V2,
+    /// Outer radius of a circle or a ring.
     pub radius: f32,
+    pub shape: Shape,
     pub ticks: u16,
     pub max_ticks: u16,
     pub vel: V2,
     pub damage: f32,
     pub spec: u16,
+}
+
+impl Zone {
+    pub fn new(id: u32, kind: ZoneKind, pos: V2, radius: f32, ticks: u16) -> Zone {
+        Zone { id, kind, pos, radius, shape: Shape::Circle, ticks, max_ticks: ticks, vel: V2::ZERO, damage: 0.0, spec: NO_SPEC }
+    }
+
+    /// Whether `p` is inside, with `margin` of slack.
+    pub fn contains(&self, p: V2, margin: f32) -> bool {
+        let d = p - self.pos;
+        match self.shape {
+            Shape::Circle => d.length_sq() < (self.radius + margin) * (self.radius + margin),
+            Shape::Rect(h) => d.x.abs() < h.x + margin && d.y.abs() < h.y + margin,
+            Shape::Ring(inner) => {
+                let l = d.length();
+                l < self.radius + margin && l > inner - margin
+            }
+        }
+    }
+}
+
+/// Things on the floor you pick up by walking over them (LOOT-01).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PickupKind {
+    /// "Touch Grass": heals.
+    Food,
+    /// "Algorithm Boost": every Like flies to you.
+    Magnet,
+    /// "Mass Report": deletes the slop on screen.
+    Bomb,
+    /// "Server Outage": freezes the slop.
+    Freeze,
+    /// Clout: money for the map's machines.
+    Clout,
+    /// A chest: an upgrade, or a merge.
+    Chest,
+}
+
+#[derive(Clone, Debug)]
+pub struct Pickup {
+    pub id: u32,
+    pub kind: PickupKind,
+    pub pos: V2,
+    /// Clout in a coin; chest quality.
+    pub value: u32,
+    pub pulled: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -558,8 +644,18 @@ pub struct World {
     pub warnings: Vec<Warning>,
     pub zones: Vec<Zone>,
     pub boss: Option<BossState>,
-    /// Currency earned this wave.
+    pub map: Map,
+    pub pickups: Vec<Pickup>,
+    /// Likes collected: experience.
+    pub xp: u32,
+    /// Clout picked up: money.
     pub clout: u32,
+    /// Ticks the slop stay frozen (Server Outage).
+    pub freeze: u16,
+    /// Chests picked up and not yet opened by the rules, by value.
+    pub chests: Vec<u32>,
+    /// Props you just used, for the rules: (prop id).
+    pub used: Vec<u32>,
     pub outcome: Outcome,
     pub tally: Tally,
     pub spec_tally: Vec<SpecTally>,
@@ -584,10 +680,6 @@ pub struct World {
     pub(crate) rng_spawn: Rng,
     pub(crate) rng_combat: Rng,
     pub(crate) rng_ai: Rng,
-}
-
-pub(crate) fn clamp_to_arena(p: V2, margin: f32) -> V2 {
-    V2::new(p.x.clamp(margin, ARENA - margin), p.y.clamp(margin, ARENA - margin))
 }
 
 /// The nearest living slop within `range` of `at`, other than `skip`.
@@ -621,7 +713,13 @@ impl World {
             warnings: Vec::new(),
             zones: Vec::new(),
             boss: None,
+            map: Map::new(seed),
+            pickups: Vec::new(),
+            xp: 0,
             clout: 0,
+            freeze: 0,
+            chests: Vec::new(),
+            used: Vec::new(),
             outcome: Outcome::Running,
             tally,
             spec_tally: vec![SpecTally::default(); n],
@@ -714,7 +812,8 @@ impl World {
         self.slop.push(Slop {
             id,
             spec: spec as u16,
-            pos: clamp_to_arena(at, sp.radius),
+            pos: at,
+            prev: at,
             moving: V2::ZERO,
             push: V2::ZERO,
             radius: sp.radius,
@@ -737,6 +836,9 @@ impl World {
             fleeing: 0,
             grab: None,
             stunned: 0,
+            staggered: 0,
+            confused: 0,
+            rooted: 0,
             shield_off: 0,
             armor: 1.0,
             grown: 1.0,
@@ -745,11 +847,69 @@ impl World {
             split: false,
             born: self.tick,
             dealt: 0.0,
+            tag: 0,
         });
         if let Some(t) = self.spec_tally.get_mut(spec) {
             t.spawned += 1;
         }
         id
+    }
+
+    /// Changes what spawns from now on; the rules call this as the run goes
+    /// on (RUN-10). New specs are added after the old ones, which slop
+    /// already out keep using. Returns the index of the first new spec.
+    pub fn retune(&mut self, specs: Vec<SlopSpec>, spawns: Vec<Spawn>, rate: f32, elite_chance: f32, platform: Option<Platform>, repost_chance: f32) -> usize {
+        let base = self.setup.specs.len();
+        for s in specs {
+            self.setup.specs.push(s);
+            self.spec_tally.push(SpecTally::default());
+        }
+        self.setup.spawns = spawns
+            .into_iter()
+            .map(|mut s| {
+                s.spec += base;
+                s
+            })
+            .collect();
+        self.setup.rate = (rate, rate);
+        self.setup.elite_chance = elite_chance;
+        if platform != self.setup.platform {
+            self.hazard_timer = 300;
+            self.zones.retain(|z| !matches!(z.kind, ZoneKind::Downvote | ZoneKind::Filter | ZoneKind::Banner));
+        }
+        self.setup.platform = platform;
+        self.setup.repost_chance = repost_chance;
+        base
+    }
+
+    /// Adds a spec for slop the rules place themselves (elites, bosses).
+    pub fn add_spec(&mut self, spec: SlopSpec) -> usize {
+        self.setup.specs.push(spec);
+        self.spec_tally.push(SpecTally::default());
+        self.setup.specs.len() - 1
+    }
+
+    /// Brings a boss in now, near you (RUN-11).
+    pub fn summon_boss(&mut self, spec: SlopSpec, model: ModelSetup) {
+        self.setup.model = model;
+        let i = self.add_spec(spec);
+        self.start_boss(i);
+    }
+
+    /// Warns of `count` slop of `spec`, off-screen or around `near`, tagged
+    /// with `tag` (a prop's challenge) when not 0.
+    pub fn summon(&mut self, spec: usize, count: u32, near: Option<V2>, tag: u32) {
+        for k in 0..count {
+            let at = match near {
+                Some(c) => {
+                    let p = c + V2::from_angle(k as f32 * std::f32::consts::TAU / count.max(1) as f32 + self.rng_spawn.range(0.0, 0.6)) * self.rng_spawn.range(220.0, 340.0);
+                    self.map.resolve(p, 40.0)
+                }
+                None => self.spawn_point(),
+            };
+            self.warnings.push(Warning { pos: at, spec: spec as u16, ticks: SPAWN_WARNING, pack: 0, number: 1, elite: false, tag });
+            self.events.push(Event::SpawnWarning { at });
+        }
     }
 
     /// Advances one tick.
@@ -758,15 +918,32 @@ impl World {
             return;
         }
         self.tick += 1;
+        self.player.prev = self.player.pos;
+        for s in &mut self.slop {
+            s.prev = s.pos;
+        }
+        for p in &mut self.projectiles {
+            p.prev = p.pos;
+        }
+        self.map.ensure(self.player.pos);
+        self.map.tick_fences();
         self.move_player(input);
         self.tick_status();
         self.spawn();
-        self.grid.rebuild(self.slop.iter().map(|s| s.pos));
+        self.relocate();
+        self.grid.rebuild(self.player.pos, self.slop.iter().map(|s| s.pos));
         self.hazards();
-        self.boss_think();
-        self.think();
+        if self.freeze == 0 {
+            self.boss_think();
+            self.think();
+        } else {
+            self.freeze -= 1;
+        }
         self.separate();
-        self.touch();
+        self.collide_walls();
+        if self.freeze == 0 {
+            self.touch();
+        }
         self.use_actives();
         self.fire_weapons();
         self.move_projectiles();
@@ -774,6 +951,8 @@ impl World {
         self.flush_pending();
         self.bury();
         self.collect_likes();
+        self.collect_pickups();
+        self.use_props();
         self.tick_timers();
         self.check_end();
     }
@@ -785,15 +964,20 @@ impl World {
         self.warnings.retain_mut(|w| {
             w.ticks -= 1;
             if w.ticks == 0 {
-                ready.push((w.spec, w.pos, w.pack, w.number, w.elite));
+                ready.push((w.spec, w.pos, w.pack, w.number, w.elite, w.tag));
                 false
             } else {
                 true
             }
         });
-        for (spec, pos, pack, number, elite) in ready {
+        for (spec, pos, pack, number, elite, tag) in ready {
             let spec = if elite { self.elite_spec(spec as usize) } else { spec as usize };
-            self.place(spec, pos, pack, number);
+            let id = self.place(spec, pos, pack, number);
+            if tag != 0 {
+                if let Some(s) = self.slop.last_mut().filter(|s| s.id == id) {
+                    s.tag = tag;
+                }
+            }
             let sp = &self.setup.specs[spec];
             if sp.is_brainrot() || sp.elite {
                 self.events.push(Event::Named { at: pos, spec: spec as u16 });
@@ -805,9 +989,11 @@ impl World {
         if self.setup.spawns.is_empty() || (timed && t >= self.setup.seconds - SPAWN_STOP) {
             return;
         }
-        let progress = if timed { t / self.setup.seconds } else { (t / 120.0).min(1.0) };
+        let progress = if timed { t / self.setup.seconds } else { 1.0 };
         let (lo, hi) = self.setup.rate;
-        self.spawn_credit += (lo + (hi - lo) * progress) * DT;
+        // A boss on the field holds back the crowd.
+        let calm = if self.boss.is_some() { 0.45 } else { 1.0 };
+        self.spawn_credit += (lo + (hi - lo) * progress) * calm * DT;
         while self.spawn_credit >= 1.0 && self.slop.len() + self.warnings.len() < MAX_SLOP {
             let Some(entry) = self.pick_spawn(t) else { break };
             self.spawn_credit -= entry.cost.max(0.2);
@@ -822,8 +1008,8 @@ impl World {
             for n in 1..=entry.group {
                 let offset = if entry.group > 1 { V2::from_angle(n as f32 * 1.2566) * 30.0 } else { V2::ZERO };
                 let spec = entry.spec;
-                let pos = clamp_to_arena(at + offset, self.setup.specs[spec].radius);
-                self.warnings.push(Warning { pos, spec: spec as u16, ticks: SPAWN_WARNING, pack, number: n, elite });
+                let pos = self.map.resolve(at + offset, self.setup.specs[spec].radius);
+                self.warnings.push(Warning { pos, spec: spec as u16, ticks: SPAWN_WARNING, pack, number: n, elite, tag: 0 });
                 self.events.push(Event::SpawnWarning { at: pos });
             }
         }
@@ -884,30 +1070,80 @@ impl World {
         self.setup.specs.len() - 1
     }
 
-    /// Somewhere just off-screen, inside the arena, never right next to you.
+    /// Somewhere just off-screen, never right next to you, never in a wall.
+    /// Most slop come from where you are heading.
     pub(crate) fn spawn_point(&mut self) -> V2 {
         let player = self.player.pos;
-        let mut last = player;
-        for _ in 0..8 {
-            let angle = self.rng_spawn.range(0.0, std::f32::consts::TAU);
-            let d = self.rng_spawn.range(SPAWN_MIN, SPAWN_MAX);
-            let p = clamp_to_arena(player + V2::from_angle(angle) * d, 40.0);
-            if p.distance(player) >= SPAWN_CLOSEST {
-                return p;
-            }
-            last = p;
+        let heading = self.player.vel;
+        let angle = if heading.length_sq() > 400.0 && self.rng_spawn.chance(0.5) {
+            heading.angle() + self.rng_spawn.range(-1.1, 1.1)
+        } else {
+            self.rng_spawn.range(0.0, std::f32::consts::TAU)
+        };
+        let d = self.rng_spawn.range(SPAWN_MIN, SPAWN_MAX);
+        let p = self.map.resolve(player + V2::from_angle(angle) * d, 40.0);
+        if p.distance(player) >= SPAWN_CLOSEST {
+            p
+        } else {
+            player + V2::from_angle(angle) * SPAWN_MAX
         }
-        last
     }
 
-    /// Removes dead slop: Likes, explosions, reposts, scattering packs
-    /// (SLOP-03, SLOP-05).
+    /// Slop left far behind come back in front of you (MAP-01): the map is
+    /// endless, the crowd is not.
+    fn relocate(&mut self) {
+        let me = self.player.pos;
+        let far: Vec<usize> = (0..self.slop.len())
+            .filter(|&i| {
+                let s = &self.slop[i];
+                let sp = &self.setup.specs[s.spec as usize];
+                s.pos.distance_sq(me) > RELOCATE * RELOCATE && !matches!(sp.movement, Movement::Boss(_) | Movement::Stand) && s.tag == 0
+            })
+            .collect();
+        for i in far {
+            let at = self.spawn_point();
+            let s = &mut self.slop[i];
+            s.pos = at;
+            s.prev = at;
+            s.grab = None;
+        }
+    }
+
+    /// Nothing walks through walls or closed fences (MAP-02).
+    fn collide_walls(&mut self) {
+        let p = &mut self.player;
+        p.pos = self.map.resolve(p.pos, PLAYER_RADIUS);
+        let specs = &self.setup.specs;
+        for s in &mut self.slop {
+            if s.grab.is_some() || specs[s.spec as usize].traits.has(Traits::FLIES) {
+                continue;
+            }
+            s.pos = self.map.resolve(s.pos, s.radius);
+        }
+    }
+
+    /// Something drops at `at`.
+    pub(crate) fn drop_pickup(&mut self, kind: PickupKind, at: V2, value: u32) {
+        if self.pickups.len() >= MAX_PICKUPS {
+            if let Some(i) = self.pickups.iter().position(|p| p.kind == PickupKind::Clout) {
+                self.pickups.remove(i);
+            }
+        }
+        let id = self.id();
+        let jitter = V2::new(self.rng_combat.range(-10.0, 10.0), self.rng_combat.range(-10.0, 10.0));
+        self.pickups.push(Pickup { id, kind, pos: at + jitter, value, pulled: false });
+    }
+
+    /// Removes dead slop: Likes, drops, explosions, reposts, scattering packs
+    /// (SLOP-03, SLOP-05, LOOT-01).
     fn bury(&mut self) {
         let mut scatter = Vec::new();
         let mut drops = Vec::new();
+        let mut loot: Vec<(PickupKind, V2, u32)> = Vec::new();
         let mut blasts = Vec::new();
         let mut reposts = Vec::new();
-        let mut boss_died = false;
+        let mut virals = Vec::new();
+        let mut boss_died = None;
         for s in self.slop.iter().filter(|s| s.hp <= 0.0) {
             let sp = &self.setup.specs[s.spec as usize];
             let clone = sp.traits.has(Traits::CLONE);
@@ -915,7 +1151,7 @@ impl World {
                 t.alive_ticks += self.tick - s.born;
             }
             if self.boss.as_ref().is_some_and(|b| b.id == s.id) {
-                boss_died = true;
+                boss_died = Some(s.pos);
             }
             if !clone {
                 self.tally.kills += 1;
@@ -927,11 +1163,29 @@ impl World {
                 drops.push((s.pos, value));
                 if sp.elite {
                     self.tally.loot_boxes += 1;
+                    loot.push((PickupKind::Chest, s.pos, 1));
                     self.events.push(Event::LootBox { at: s.pos });
                 }
-                if s.last_type == crate::stats::DamageType::Grass as u8 && self.player.perks.houseplant > 0 {
+                if sp.traits.has(Traits::SPONSORED) {
+                    for _ in 0..6 {
+                        loot.push((PickupKind::Clout, s.pos, 3));
+                    }
+                } else {
+                    let roll = self.rng_combat.below(1000);
+                    if roll < 25 {
+                        loot.push((PickupKind::Clout, s.pos, 1 + self.rng_combat.below(3)));
+                    } else if roll < 29 {
+                        loot.push((PickupKind::Food, s.pos, 0));
+                    }
+                }
+                let grass = s.last_type == crate::stats::DamageType::Grass as u8;
+                let heal = if grass { self.player.perks.houseplant as f32 + self.player.perks.grass_heal } else { 0.0 };
+                if heal > 0.0 {
                     let p = &mut self.player;
-                    p.mental_health = (p.mental_health + p.perks.houseplant as f32).min(p.stats.max_mental_health);
+                    p.mental_health = (p.mental_health + heal).min(p.stats.max_mental_health);
+                }
+                if sp.traits.has(Traits::VIRAL) && !s.reposted {
+                    virals.push((s.spec, s.pos));
                 }
             }
             self.events.push(Event::SlopDied { at: s.pos, spec: s.spec });
@@ -954,6 +1208,9 @@ impl World {
             let id = self.id();
             self.likes.push(Like { id, pos: at + jitter, value, pulled: false, fake: false });
         }
+        for (kind, at, value) in loot {
+            self.drop_pickup(kind, at, value);
+        }
         for at in blasts {
             self.events.push(Event::Splash { at, radius: 70.0 });
             if at.distance(self.player.pos) < 70.0 + PLAYER_RADIUS {
@@ -969,6 +1226,19 @@ impl World {
             }
             self.events.push(Event::Reposted { at });
         }
+        // Viral elites burst into four small copies of themselves.
+        for (spec, at) in virals {
+            for k in 0..4 {
+                let id = self.place(spec as usize, at + V2::from_angle(k as f32 * 1.57) * 30.0, 0, 1);
+                if let Some(s) = self.slop.iter_mut().find(|s| s.id == id) {
+                    s.reposted = true;
+                    s.hp *= 0.15;
+                    s.max_hp *= 0.15;
+                    s.radius *= 0.6;
+                }
+            }
+            self.events.push(Event::Split { at });
+        }
         for (pack, at) in scatter {
             let mut any = false;
             for s in self.slop.iter_mut().filter(|s| s.pack == pack) {
@@ -979,12 +1249,12 @@ impl World {
                 self.events.push(Event::Scattered { at });
             }
         }
-        if boss_died {
-            self.boss_defeated();
+        if let Some(at) = boss_died {
+            self.boss_defeated(at);
         }
     }
 
-    /// Likes within Curiosity fly to you and become Clout; fakes explode
+    /// Likes within Curiosity fly to you and become experience; fakes explode
     /// (LIKE-01).
     fn collect_likes(&mut self) {
         let p = self.player.pos;
@@ -1011,8 +1281,15 @@ impl World {
             l.pos += (p - l.pos).normalized() * step;
             true
         });
+        // Too many on the floor: the farthest are credited at once, so nothing
+        // earned is lost and the floor stays readable.
+        if self.likes.len() > MAX_LIKES {
+            self.likes.sort_by(|a, b| b.pos.distance_sq(p).total_cmp(&a.pos.distance_sq(p)));
+            let extra = self.likes.len() - MAX_LIKES;
+            got += self.likes.drain(..extra).filter(|l| !l.fake).map(|l| l.value).sum::<u32>();
+        }
         if got > 0 {
-            self.clout += got;
+            self.xp += got;
             self.tally.likes_collected += got;
             self.events.push(Event::LikeCollected { value: got });
         }
@@ -1020,6 +1297,181 @@ impl World {
             self.events.push(Event::Splash { at: p, radius: 50.0 });
             self.hurt(5.0, NO_SPEC);
             self.add_anxiety();
+        }
+    }
+
+    /// Food, magnets, bombs, freezes, Clout and chests (LOOT-01).
+    fn collect_pickups(&mut self) {
+        let me = self.player.pos;
+        let pull = self.player.stats.curiosity * 0.7;
+        let step = LIKE_PULL_SPEED * DT;
+        let mut got = Vec::new();
+        self.pickups.retain_mut(|k| {
+            let d = k.pos.distance(me);
+            if k.kind == PickupKind::Clout && d < pull {
+                k.pulled = true;
+            }
+            if k.pulled {
+                k.pos += (me - k.pos).normalized() * step.min(d);
+            }
+            if d < PLAYER_RADIUS + 22.0 {
+                got.push((k.kind, k.value, k.pos));
+                return false;
+            }
+            true
+        });
+        for (kind, value, at) in got {
+            match kind {
+                PickupKind::Food => {
+                    let p = &mut self.player;
+                    p.mental_health = (p.mental_health + 25.0 + p.stats.max_mental_health * 0.1).min(p.stats.max_mental_health);
+                }
+                PickupKind::Magnet => {
+                    for l in self.likes.iter_mut().filter(|l| !l.fake) {
+                        l.pulled = true;
+                    }
+                }
+                PickupKind::Bomb => {
+                    for j in 0..self.slop.len() {
+                        let s = &self.slop[j];
+                        let d = s.pos - me;
+                        if d.x.abs() > 900.0 || d.y.abs() > 520.0 || s.hp <= 0.0 {
+                            continue;
+                        }
+                        let boss = matches!(self.setup.specs[s.spec as usize].movement, Movement::Boss(_));
+                        if boss {
+                            let hit = s.max_hp * 0.05;
+                            self.slop[j].hp -= hit;
+                        } else {
+                            self.slop[j].hp = 0.0;
+                            self.slop[j].last_type = crate::stats::DamageType::Fact as u8;
+                        }
+                    }
+                    self.events.push(Event::MassReport { at: me });
+                }
+                PickupKind::Freeze => self.freeze = FREEZE_TICKS,
+                PickupKind::Clout => self.clout += value,
+                PickupKind::Chest => self.chests.push(value),
+            }
+            self.events.push(Event::PickedUp { kind, at });
+        }
+    }
+
+    /// Props you walk into or stand in (MAP-03). Breakables drop loot; the
+    /// rest are handed to the rules through `used`.
+    fn use_props(&mut self) {
+        let me = self.player.pos;
+        let mut broke = Vec::new();
+        let mut uploads = Vec::new();
+        let mut finished = Vec::new();
+        let mut used = Vec::new();
+        let tagged: Vec<u32> = self.slop.iter().map(|s| s.tag).chain(self.warnings.iter().map(|w| w.tag)).filter(|&t| t != 0).collect();
+        for p in &mut self.map.props {
+            if p.state == PropState::Done || p.pos.distance_sq(me) > 900.0 * 900.0 {
+                continue;
+            }
+            let k = p.kind;
+            let inside = p.pos.distance(me) < k.radius() + PLAYER_RADIUS * 0.5;
+            if k.breakable() {
+                if inside {
+                    p.state = PropState::Done;
+                    broke.push((k, p.pos));
+                }
+                continue;
+            }
+            match (k, p.state) {
+                (PropKind::Hotspot, _) => {
+                    p.state = if inside { PropState::Active } else { PropState::Idle };
+                    if inside && p.left > 0 {
+                        p.left -= 1;
+                        let h = &mut self.player;
+                        h.mental_health = (h.mental_health + h.stats.max_mental_health * 0.04 * DT).min(h.stats.max_mental_health);
+                        if p.left == 0 {
+                            p.state = PropState::Done;
+                        }
+                    }
+                }
+                (PropKind::DataCenter, PropState::Active) => {
+                    if inside {
+                        p.left = p.left.saturating_sub(1);
+                        if p.left % 90 == 0 {
+                            uploads.push(p.pos);
+                        }
+                    }
+                    if p.left == 0 {
+                        p.state = PropState::Done;
+                        finished.push((k, p.pos));
+                    }
+                }
+                (PropKind::CommentSection, PropState::Active) => {
+                    if !tagged.contains(&p.id) {
+                        p.state = PropState::Done;
+                        finished.push((k, p.pos));
+                    }
+                }
+                (_, PropState::Idle) => {
+                    let need = k.charge();
+                    if !inside {
+                        p.charge = 0;
+                    } else if p.charge < need {
+                        p.charge += 1;
+                        if p.charge == need {
+                            used.push(p.id);
+                            if k == PropKind::DataCenter {
+                                p.state = PropState::Active;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (k, at) in broke {
+            self.events.push(Event::Broke { at, kind: k });
+            match k {
+                PropKind::LostPhone => self.drop_pickup(PickupKind::Chest, at, 1),
+                PropKind::CryptoMiner => {
+                    for _ in 0..4 {
+                        self.drop_pickup(PickupKind::Clout, at, 3);
+                    }
+                }
+                _ => {
+                    let roll = self.rng_combat.below(100);
+                    let kind = match (k, roll) {
+                        (PropKind::PopupAd, 0..=59) => PickupKind::Clout,
+                        (PropKind::PopupAd, 60..=84) => PickupKind::Food,
+                        (PropKind::PopupAd, _) => PickupKind::Magnet,
+                        (_, 0..=34) => PickupKind::Clout,
+                        (_, 35..=59) => PickupKind::Food,
+                        (_, 60..=74) => PickupKind::Magnet,
+                        (_, 75..=87) => PickupKind::Freeze,
+                        _ => PickupKind::Bomb,
+                    };
+                    let value = if kind == PickupKind::Clout { 2 + self.rng_combat.below(4) } else { 0 };
+                    self.drop_pickup(kind, at, value);
+                }
+            }
+        }
+        // An upload draws the slop in.
+        for at in uploads {
+            if let Some(e) = self.pick_spawn(self.elapsed()) {
+                self.summon(e.spec, 3, Some(at), 0);
+            }
+        }
+        for (k, at) in finished {
+            self.drop_pickup(PickupKind::Chest, at, 1);
+            if k == PropKind::CommentSection {
+                for _ in 0..5 {
+                    self.drop_pickup(PickupKind::Clout, at, 4);
+                }
+            }
+            self.events.push(Event::PropDone { at, kind: k });
+        }
+        for id in used {
+            let at = self.map.props.iter().find(|p| p.id == id).map_or(me, |p| p.pos);
+            let kind = self.map.props.iter().find(|p| p.id == id).map_or(PropKind::Vending, |p| p.kind);
+            self.events.push(Event::PropUsed { at, kind });
+            self.used.push(id);
         }
     }
 
@@ -1037,6 +1489,9 @@ impl World {
             s.marked = s.marked.saturating_sub(1);
             s.fleeing = s.fleeing.saturating_sub(1);
             s.stunned = s.stunned.saturating_sub(1);
+            s.staggered = s.staggered.saturating_sub(1);
+            s.confused = s.confused.saturating_sub(1);
+            s.rooted = s.rooted.saturating_sub(1);
             s.shield_off = s.shield_off.saturating_sub(1);
             if s.agreed_ticks > 0 {
                 s.agreed_ticks -= 1;
@@ -1055,7 +1510,7 @@ impl World {
     }
 
     /// Burnout at 0 Mental Health; a timed wave is cleared when its time
-    /// runs out, and Likes still on the floor count half (WAVE-01).
+    /// runs out (WAVE-01). An endless run only ends in Burnout.
     fn check_end(&mut self) {
         if self.player.mental_health <= 0.0 {
             self.player.mental_health = 0.0;
@@ -1067,10 +1522,6 @@ impl World {
     }
 
     pub(crate) fn clear(&mut self) {
-        let left: u32 = self.likes.iter().filter(|l| !l.fake).map(|l| l.value).sum();
-        let credited = (left as f32 * LEFTOVER_SHARE) as u32;
-        self.clout += credited;
-        self.tally.likes_collected += credited;
         for s in &self.slop {
             if let Some(t) = self.spec_tally.get_mut(s.spec as usize) {
                 t.alive_ticks += self.tick - s.born;
@@ -1093,6 +1544,7 @@ impl World {
         };
         mix(self.tick);
         mix(self.clout);
+        mix(self.xp);
         mix(self.player.pos.x.to_bits());
         mix(self.player.pos.y.to_bits());
         mix(self.player.mental_health.to_bits());

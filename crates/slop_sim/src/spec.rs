@@ -35,6 +35,11 @@ impl Traits {
     pub const CLONE: u32 = 1 << 23;
     pub const LONG_REACH: u32 = 1 << 24;
     pub const AGREE: u32 = 1 << 25;
+    /// Elite affixes (ELITE-01).
+    pub const VERIFIED: u32 = 1 << 26;
+    pub const VIRAL: u32 = 1 << 27;
+    pub const SPONSORED: u32 = 1 << 28;
+    pub const TOXIC: u32 = 1 << 29;
 
     pub fn has(self, flag: u32) -> bool {
         self.0 & flag != 0

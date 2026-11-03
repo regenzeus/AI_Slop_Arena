@@ -231,6 +231,7 @@ fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: R
             Cue::Error => Sound::Error,
             Cue::Go => Sound::Go,
             Cue::Tick => Sound::Tick,
+            Cue::Chest => Sound::Cleared,
         })
         .collect();
     if nav.moved {
@@ -260,6 +261,11 @@ fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: R
             Event::Status { .. } => Sound::Grab,
             Event::BossIntro { .. } | Event::Regenerate { .. } => Sound::Burnout,
             Event::Burnout => Sound::Burnout,
+            Event::PickedUp { .. } => Sound::Buy,
+            Event::MassReport { .. } => Sound::Burnout,
+            Event::BossDefeated { .. } | Event::PropDone { .. } => Sound::Cleared,
+            Event::PropUsed { .. } => Sound::LevelUp,
+            Event::Broke { .. } => Sound::Pop,
             _ => continue,
         });
     }

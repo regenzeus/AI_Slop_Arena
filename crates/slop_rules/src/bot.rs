@@ -1,144 +1,133 @@
 //! Bots that play whole runs: they steer with `slop_sim::bot` and make every
-//! choice between waves. The lab measures balance with them (BAL-02) and the
-//! client's autoplay uses them.
+//! choice the Feed asks for. The lab measures balance with them (BAL-02) and
+//! the client's autoplay and title-screen demo use them.
 
-use slop_sim::content::WEAPONS;
+use slop_sim::content::{merge_of, WEAPONS};
 use slop_sim::rng::Rng;
 
 use crate::heroes::Hero;
 use crate::items::{ItemKind, StatKind, ITEMS};
-use crate::run::{Phase, Run, WEAPON_SLOTS};
-use crate::shop::Goods;
+use crate::run::{Choice, Phase, Run, WEAPON_SLOTS};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Policy {
-    /// Upgrades what it has, spreads damage types, saves for good items.
+    /// Levels what it has, chases merges, spreads damage types.
     Heuristic,
-    /// Buys and picks at random.
+    /// Picks at random.
     Random,
 }
 
 /// How a bot's run ended.
 #[derive(Clone, Debug)]
 pub struct Summary {
+    /// The Model fell before Burnout.
     pub victory: bool,
-    /// The wave it reached (20 when it won).
-    pub wave: u32,
+    /// Minutes survived.
+    pub minutes: f32,
+    pub bosses: u32,
     pub level: u32,
+    pub kills: u32,
     pub weapons: Vec<(String, u8)>,
 }
 
 fn stat_value(stat: StatKind, run: &Run) -> f32 {
     let s = run.stats();
     match stat {
-        StatKind::MentalHealth => {
-            if s.max_mental_health < 160.0 {
-                3.0
-            } else {
-                1.5
-            }
-        }
+        StatKind::MentalHealth if s.max_mental_health < 180.0 => 3.0,
+        StatKind::MentalHealth => 1.5,
         StatKind::Conviction | StatKind::Focus => 3.0,
         StatKind::Composure => 2.5,
         StatKind::Scepticism => 2.0,
         StatKind::SelfCare | StatKind::Reach | StatKind::Speed => 1.5,
         StatKind::Luck => 0.8,
-        StatKind::Curiosity => 0.5,
+        StatKind::Curiosity => 1.0,
     }
 }
 
-/// How much the heuristic bot wants an offer.
-fn offer_value(run: &Run, i: usize) -> f32 {
-    let o = &run.shop.offers[i];
-    match o.goods {
-        Goods::Weapon { def, tier } => {
-            if let Some(w) = run.weapons.iter().find(|w| w.def == def) {
-                if w.tier >= 4 {
-                    0.0
-                } else {
-                    9.0 + w.tier as f32
-                }
-            } else if run.weapons.len() < WEAPON_SLOTS {
-                let new_type = !run.weapons.iter().any(|w| WEAPONS[w.def].kind == WEAPONS[def].kind);
-                7.0 + tier as f32 + if new_type { 2.0 } else { 0.0 }
-            } else {
-                0.0
-            }
+/// How much the heuristic bot wants a choice.
+fn value(run: &Run, c: Choice) -> f32 {
+    match c {
+        Choice::WeaponLevel(d) => {
+            let partner = merge_of(d).is_some_and(|(o, _)| run.weapons.iter().any(|w| w.def == o));
+            10.0 + if partner { 3.0 } else { 0.0 }
         }
-        Goods::Item { item } => {
-            let d = &ITEMS[item];
+        Choice::NewWeapon(d) => {
+            let partner = merge_of(d).is_some_and(|(o, _)| run.weapons.iter().any(|w| w.def == o));
+            let new_type = !run.weapons.iter().any(|w| WEAPONS[w.def].kind == WEAPONS[d].kind);
+            let room = if run.weapons.len() < WEAPON_SLOTS - 1 { 3.0 } else { 0.0 };
+            8.0 + room + if partner { 4.0 } else { 0.0 } + if new_type { 1.5 } else { 0.0 }
+        }
+        Choice::ItemLevel(i) | Choice::NewItem(i) => {
+            let d = &ITEMS[i];
             let base = match d.kind {
-                ItemKind::Active => 5.0,
-                ItemKind::Healthy => 4.5,
-                ItemKind::Hustle if run.wave <= 8 => 5.0,
-                ItemKind::Hustle => 1.0,
-                ItemKind::Risky => 3.0,
+                ItemKind::Active => 6.0,
+                ItemKind::Healthy => 6.5,
+                ItemKind::Hustle => 3.5,
+                ItemKind::Risky => 5.0,
             };
             base + d.tier as f32
         }
+        Choice::Stat(up) => stat_value(up.stat, run) * (1.0 + up.tier as f32),
+        Choice::Heal => 2.0,
+        Choice::Clout(_) => 1.0,
     }
 }
 
-/// Makes one decision outside a wave. Returns false when there is nothing to decide.
+fn best(run: &Run, choices: &[Choice]) -> usize {
+    (0..choices.len()).max_by(|&a, &b| value(run, choices[a]).total_cmp(&value(run, choices[b]))).unwrap_or(0)
+}
+
+/// Makes the decision the run is waiting for. Returns false when there is
+/// nothing to decide.
 pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
     match run.phase.clone() {
-        Phase::LevelUp(offers) => {
+        Phase::LevelUp(choices) => {
             let pick = match policy {
-                Policy::Random => rng.below(offers.len() as u32) as usize,
-                Policy::Heuristic => (0..offers.len())
-                    .max_by(|&a, &b| {
-                        let v = |k: usize| stat_value(offers[k].stat, run) * offers[k].tier as f32;
-                        v(a).total_cmp(&v(b))
-                    })
-                    .unwrap_or(0),
-            };
-            run.choose_level(pick).is_ok()
-        }
-        Phase::Shop => {
-            match policy {
-                Policy::Random => {
-                    for i in 0..run.shop.offers.len() {
-                        if rng.chance(0.5) {
-                            let _ = run.buy(i);
-                        }
-                    }
-                }
+                Policy::Random => rng.below(choices.len() as u32) as usize,
                 Policy::Heuristic => {
-                    let mut rerolled = 0;
-                    loop {
-                        let best = (0..run.shop.offers.len())
-                            .filter(|&i| !run.shop.offers[i].sold && run.shop.offers[i].price <= run.clout)
-                            .map(|i| (i, offer_value(run, i)))
-                            .filter(|(_, v)| *v >= 6.0)
-                            .max_by(|a, b| a.1.total_cmp(&b.1));
-                        match best {
-                            Some((i, _)) => {
-                                let _ = run.buy(i);
-                            }
-                            None if rerolled < 4 && run.clout >= run.reroll_cost() * 4 + 16 => {
-                                let _ = run.reroll();
-                                rerolled += 1;
-                            }
-                            None => break,
-                        }
+                    let i = best(run, &choices);
+                    // Nothing worth it: one reroll if it is free.
+                    if value(run, choices[i]) < 6.0 && run.reroll_cost() == 0 && run.reroll().is_ok() {
+                        return true;
                     }
+                    i
                 }
-            }
-            run.next_wave().is_ok()
+            };
+            run.choose(pick).is_ok()
         }
-        Phase::Wave | Phase::Over { .. } => false,
+        Phase::Vending { offers, .. } => {
+            let affordable: Vec<usize> = (0..offers.len()).filter(|&i| offers[i].1 <= run.clout).collect();
+            let pick = match policy {
+                Policy::Random => affordable.first().copied(),
+                Policy::Heuristic => affordable.into_iter().max_by(|&a, &b| value(run, offers[a].0).total_cmp(&value(run, offers[b].0))),
+            };
+            match pick {
+                Some(i) => run.buy(i).is_ok(),
+                None => run.close().is_ok(),
+            }
+        }
+        Phase::Shrine { offers, .. } => {
+            let i = rng.below(offers.len() as u32) as usize;
+            run.bless(i).is_ok()
+        }
+        Phase::Chest(_) => run.close().is_ok(),
+        Phase::Playing | Phase::Over { .. } => false,
     }
 }
 
-/// Plays a whole run with the movement bot and `policy`.
-pub fn play(seed: u64, hero: Hero, policy: Policy) -> Summary {
+/// Plays a whole run with the movement bot and `policy`, up to `limit`
+/// minutes.
+pub fn play(seed: u64, hero: Hero, policy: Policy, limit: f32) -> Summary {
     let mut run = Run::new(seed, hero);
     let mut rng = Rng::new(seed, 11);
     loop {
         match run.phase {
             Phase::Over { .. } => break,
-            Phase::Wave => {
-                let input = slop_sim::bot::steer(run.world.as_ref().expect("a wave is running"));
+            Phase::Playing => {
+                if run.minutes() >= limit {
+                    break;
+                }
+                let input = slop_sim::bot::steer(run.world.as_ref().expect("the Feed runs"));
                 run.step(input);
             }
             _ => {
@@ -147,9 +136,11 @@ pub fn play(seed: u64, hero: Hero, policy: Policy) -> Summary {
         }
     }
     Summary {
-        victory: matches!(run.phase, Phase::Over { victory: true }),
-        wave: run.reports.last().map_or(1, |r| r.wave),
+        victory: run.model_beaten,
+        minutes: run.minutes(),
+        bosses: run.bosses_beaten,
         level: run.level,
-        weapons: run.weapons.iter().map(|w| (WEAPONS[w.def].name.to_string(), w.tier)).collect(),
+        kills: run.kills(),
+        weapons: run.weapons.iter().map(|w| (WEAPONS[w.def].name.to_string(), w.level)).collect(),
     }
 }

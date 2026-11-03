@@ -10,6 +10,7 @@ use bevy::prelude::*;
 use bevy::ui::UiGlobalTransform;
 use bevy::window::PrimaryWindow;
 
+use crate::controls::Controls;
 use crate::play::Simulation;
 use crate::state::{Game, UiAction};
 use crate::theme;
@@ -154,7 +155,7 @@ fn pick(from: (Vec2, Vec2), dir: Vec2, all: &[(u32, Vec2, Vec2)]) -> Option<u32>
 }
 
 fn navigate(
-    keyboard: Res<ButtonInput<KeyCode>>,
+    controls: Res<Controls>,
     game: Res<Game>,
     mut nav: ResMut<Nav>,
     items: Query<(&Focusable, &ComputedNode, &UiGlobalTransform, Option<&DefaultFocus>)>,
@@ -178,19 +179,8 @@ fn navigate(
         return;
     };
     nav.at = Some(c);
-    let pressed = |a: KeyCode, b: KeyCode| keyboard.just_pressed(a) || keyboard.just_pressed(b);
-    let dir = if pressed(KeyCode::ArrowLeft, KeyCode::KeyA) {
-        Vec2::NEG_X
-    } else if pressed(KeyCode::ArrowRight, KeyCode::KeyD) {
-        Vec2::X
-    } else if pressed(KeyCode::ArrowUp, KeyCode::KeyW) {
-        // UI y grows downwards.
-        Vec2::NEG_Y
-    } else if pressed(KeyCode::ArrowDown, KeyCode::KeyS) {
-        Vec2::Y
-    } else {
-        return;
-    };
+    // UI y grows downwards; `Controls` already speaks that way.
+    let Some(dir) = controls.nav else { return };
     if let Some(k) = pick((c, s), dir, &all) {
         nav.key = Some(k);
         nav.moved = true;
@@ -198,7 +188,7 @@ fn navigate(
 }
 
 fn activate(
-    keyboard: Res<ButtonInput<KeyCode>>,
+    controls: Res<Controls>,
     mut game: ResMut<Game>,
     nav: Res<Nav>,
     items: Query<(&Focusable, &Act)>,
@@ -207,17 +197,17 @@ fn activate(
     mut exit: MessageWriter<AppExit>,
 ) {
     // Alt+Enter toggles fullscreen and presses nothing.
-    if game.bot || keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]) {
+    if game.bot || controls.alt_key {
         return;
     }
-    if keyboard.just_pressed(KeyCode::KeyL) || keyboard.just_pressed(KeyCode::KeyX) {
+    if controls.alt {
         if let Some((_, alt)) = nav.key.and_then(|k| alts.iter().find(|(f, _)| f.0 == k)) {
             game.act(alt.0);
         }
         return;
     }
-    let enter = keyboard.just_pressed(KeyCode::Enter) || keyboard.just_pressed(KeyCode::NumpadEnter) || keyboard.just_pressed(KeyCode::KeyE);
-    let space = keyboard.just_pressed(KeyCode::Space);
+    let enter = controls.confirm;
+    let space = controls.cont;
     if !enter && !space {
         return;
     }

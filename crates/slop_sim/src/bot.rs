@@ -4,17 +4,17 @@
 //! the seed of the AI-controlled hero planned for later.
 
 use crate::vec::V2;
-use crate::world::{Input, World, ZoneKind, ARENA};
+use crate::world::{Input, PickupKind, World, ZoneKind};
 
 /// Slop closer than this pushes the bot away.
 const FEAR: f32 = 340.0;
 /// Bubbles closer than this are dodged.
 const DODGE: f32 = 220.0;
 /// Distance from a wall where it starts to push back.
-const WALL: f32 = 260.0;
+const WALL: f32 = 90.0;
 /// Likes are collected only when no slop is this close.
-const SAFE: f32 = 200.0;
-const GREED: f32 = 500.0;
+const SAFE: f32 = 150.0;
+const GREED: f32 = 650.0;
 /// Even a melee build keeps this much room.
 const MIN_FEAR: f32 = 110.0;
 
@@ -48,22 +48,25 @@ pub fn steer(world: &World) -> Input {
             force += side * (sign * 2.0 * (DODGE - d) / DODGE);
         }
     }
-    let edge = |v: f32| -> f32 {
-        if v < WALL {
-            (WALL - v) / WALL
-        } else if v > ARENA - WALL {
-            -(v - (ARENA - WALL)) / WALL
-        } else {
-            0.0
+    // Walls and fences push back.
+    for w in world.map.walls_near(me, WALL + 60.0) {
+        let c = V2::new(me.x.clamp(w.min.x, w.max.x), me.y.clamp(w.min.y, w.max.y));
+        let away = me - c;
+        let d = away.length();
+        if d < WALL {
+            force += away.normalized() * (2.0 * (WALL - d) / WALL);
         }
-    };
-    force += V2::new(edge(me.x), edge(me.y)) * 2.5;
-    force += (V2::new(ARENA / 2.0, ARENA / 2.0) - me) * 0.0003;
+    }
+    for f in world.map.fences.iter() {
+        let c = V2::new(me.x.clamp(f.min.x, f.max.x), me.y.clamp(f.min.y, f.max.y));
+        if (me - c).length() < WALL * 1.5 {
+            force += (me - c).normalized() * 1.5;
+        }
+    }
     // Get out of bomb spots and downvote zones.
     for z in world.zones.iter().filter(|z| matches!(z.kind, ZoneKind::Bomb | ZoneKind::Downvote)) {
         let away = me - z.pos;
-        let d = away.length();
-        if d < z.radius + 40.0 {
+        if z.contains(me, 40.0) {
             force += away.normalized() * 2.5;
         }
     }
@@ -86,6 +89,18 @@ pub fn steer(world: &World) -> Input {
         if let Some((at, _)) = like {
             force += (at - me).normalized() * 0.8;
         }
+    }
+    // Food when hurt, and every other pickup when safe.
+    let hurt = world.player.mental_health < world.player.stats.max_mental_health * 0.6;
+    let pick = world
+        .pickups
+        .iter()
+        .filter(|k| k.kind != PickupKind::Food || hurt)
+        .map(|k| (k.pos, k.pos.distance_sq(me)))
+        .filter(|(_, d)| *d < GREED * GREED * 1.4)
+        .min_by(|a, b| a.1.total_cmp(&b.1));
+    if let Some((at, _)) = pick.filter(|_| closest > SAFE * 0.8) {
+        force += (at - me).normalized() * 1.0;
     }
     if force.length() < 0.05 {
         // Nothing to do: drift in a slow circle so weapons keep facing new slop.

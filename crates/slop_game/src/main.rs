@@ -17,8 +17,10 @@
 mod art;
 mod audio;
 mod autoplay;
+mod controls;
 mod display;
 mod draw;
+mod feed_art;
 mod fx;
 mod hud;
 mod icons;
@@ -88,7 +90,7 @@ fn main() {
     }))
     .insert_resource(ClearColor(theme::VOID))
     .insert_resource(game)
-    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin, display::DisplayPlugin));
+    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin, display::DisplayPlugin, controls::ControlsPlugin));
 
     if args.autoplay {
         if let Some(dir) = &args.screenshots {

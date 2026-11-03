@@ -2,7 +2,7 @@
 
 use bevy::prelude::*;
 use slop_rules::run::RuleError;
-use slop_rules::{Hero, Run};
+use slop_rules::{Hero, Phase, Run};
 use slop_sim::world::World;
 use slop_sim::Event;
 
@@ -10,9 +10,7 @@ use slop_sim::Event;
 pub enum Screen {
     Title,
     Heroes,
-    /// Once per run, before wave 1: the platform, its slop and its boss.
-    Briefing,
-    /// A run: waves and everything between them.
+    /// A run: the Feed, with level-ups, chests and machines over it.
     Run,
 }
 
@@ -24,15 +22,15 @@ pub enum UiAction {
     /// Pick hero `i` and start a run with it.
     StartAs(usize),
     StartRun,
-    /// Leave the briefing and play wave 1.
-    BeginRun,
-    LevelPick(usize),
-    Buy(usize),
-    Lock(usize),
+    /// Level-up pick `i`.
+    Choose(usize),
     Reroll,
-    /// Sell weapon slot `i` if asked twice in a row.
-    SellAsk(usize),
-    NextWave,
+    /// Close a chest, or walk away from a machine.
+    Close,
+    /// Buy vending machine offer `i`.
+    Buy(usize),
+    /// Take shrine blessing `i`.
+    Bless(usize),
     Resume,
     NewRun,
     Quit,
@@ -47,6 +45,7 @@ pub enum Cue {
     Error,
     Go,
     Tick,
+    Chest,
 }
 
 #[derive(Resource)]
@@ -57,10 +56,13 @@ pub struct Game {
     /// Hero highlighted on the hero screen.
     pub hero: usize,
     pub paused: bool,
-    /// Autoplay holds the wave still for a screenshot, without the pause screen.
+    /// Autoplay holds the run still for a screenshot, without the pause screen.
     pub frozen: bool,
     /// Simulation time owed to the fixed tick.
     pub accumulator: f32,
+    /// How far between the last tick and the next the screen is, 0 to 1:
+    /// positions are drawn in between, so motion is smooth (FEEL-04).
+    pub alpha: f32,
     /// Events of the ticks run this frame, read by effects and sound.
     pub events: Vec<Event>,
     /// The bots play instead of you (autoplay).
@@ -71,14 +73,16 @@ pub struct Game {
     pub dirty: bool,
     /// A message for a few seconds, such as "Not enough Clout."
     pub message: Option<(String, f32)>,
-    /// Seconds since the last wave ended, so overlays wait for the effects.
+    /// Seconds since the run ended, so the end screen waits for the effects.
     pub since_end: f32,
+    /// Seconds since a choice opened, so a held key does not pick at once.
+    pub since_choice: f32,
     /// A big centred banner: title, line, seconds left.
     pub banner: Option<(String, String, f32)>,
-    /// A weapon slot waiting for a second press to be sold, and seconds left.
-    pub confirm_sell: Option<(usize, f32)>,
-    /// Levels earned so far in this wave, and whether one was earned this frame.
-    pub wave_levels: u32,
+    /// News from the run (patch notes, the next platform), with seconds left.
+    pub toasts: Vec<(String, f32)>,
+    /// The level the HUD last showed, to flash "LEVEL UP".
+    pub shown_level: u32,
     pub level_flash: bool,
     pub cues: Vec<Cue>,
     /// The run the bots play behind the title and hero screens.
@@ -95,15 +99,17 @@ impl Game {
             paused: false,
             frozen: false,
             accumulator: 0.0,
+            alpha: 0.0,
             events: Vec::new(),
             bot: false,
             speed: 1,
             dirty: true,
             message: None,
             since_end: 0.0,
+            since_choice: 0.0,
             banner: None,
-            confirm_sell: None,
-            wave_levels: 0,
+            toasts: Vec::new(),
+            shown_level: 1,
             level_flash: false,
             cues: Vec::new(),
             demo: None,
@@ -114,7 +120,7 @@ impl Game {
     pub fn shown_run(&self) -> Option<&Run> {
         match self.screen {
             Screen::Title | Screen::Heroes => self.demo.as_ref(),
-            Screen::Briefing | Screen::Run => self.run.as_ref(),
+            Screen::Run => self.run.as_ref(),
         }
     }
 
@@ -122,48 +128,22 @@ impl Game {
         self.shown_run().and_then(|r| r.world.as_ref())
     }
 
-    /// Levels the Likes of the running wave are worth so far, and progress
-    /// towards the next one (0 to 1).
-    pub fn levels_in_wave(&self) -> (u32, f32) {
-        let Some(run) = self.run.as_ref() else { return (0, 0.0) };
-        let in_wave = matches!(run.phase, slop_rules::Phase::Wave);
-        let mut xp = run.xp + if in_wave { self.world().map_or(0, |w| w.clout) } else { 0 };
-        let mut level = run.level;
-        let mut gained = 0;
-        while xp >= slop_rules::levels::xp_for(level + 1) {
-            xp -= slop_rules::levels::xp_for(level + 1);
-            level += 1;
-            gained += 1;
-        }
-        (gained, xp as f32 / slop_rules::levels::xp_for(level + 1) as f32)
-    }
-
     pub fn start_run(&mut self) {
         let hero = Hero::ALL[self.hero.min(4)];
         let run = Run::new(self.seed, hero);
         self.seed += 1;
         self.demo = None;
+        let platform = run.platform;
+        self.banner = Some((format!("TODAY ON {}", platform.name().to_uppercase()), format!("{} Its boss comes in 4:30.", platform.hazard()), 4.0));
         self.run = Some(run);
-        self.screen = Screen::Briefing;
+        self.screen = Screen::Run;
         self.paused = false;
         self.accumulator = 0.0;
         self.since_end = 0.0;
+        self.shown_level = 1;
+        self.toasts.clear();
+        self.cues.push(Cue::Go);
         self.dirty = true;
-    }
-
-    /// The banner shown as a wave starts.
-    pub fn wave_banner(&mut self, run: &Run) {
-        let platform = run.platform;
-        let line = if run.wave == 1 {
-            format!("{}: {} {}", platform.name(), platform.hazard(), platform.house_rule())
-        } else if slop_rules::waves::is_viral(run.wave) {
-            "Viral wave: twice the slop, half the HP.".to_string()
-        } else if slop_rules::waves::is_boss(run.wave) {
-            "Boss wave: it ends when the boss is deleted.".to_string()
-        } else {
-            format!("Survive {} seconds.", slop_rules::waves::seconds(run.wave) as u32)
-        };
-        self.banner = Some((format!("WAVE {}", run.wave), line, 3.0));
     }
 
     pub fn say(&mut self, words: impl Into<String>) {
@@ -182,8 +162,18 @@ impl Game {
         self.dirty = true;
     }
 
-    /// Does what a button or key asked (UI-08).
+    /// Whether a choice may be taken: overlays ignore input for a moment so
+    /// a key held while playing does not pick something by accident.
+    pub fn choice_ready(&self) -> bool {
+        self.bot || self.since_choice > 0.35
+    }
+
+    /// Does what a button or key asked (UI-08). Returns false to quit.
     pub fn act(&mut self, action: UiAction) -> bool {
+        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Close | UiAction::Reroll);
+        if choosing && !self.choice_ready() {
+            return true;
+        }
         match action {
             UiAction::ToHeroes => {
                 self.screen = Screen::Heroes;
@@ -198,16 +188,6 @@ impl Game {
                 self.hero = i.min(4);
                 self.start_run();
             }
-            UiAction::BeginRun => {
-                self.cues.push(Cue::Go);
-                if let Some(run) = self.run.take() {
-                    self.wave_banner(&run);
-                    self.run = Some(run);
-                }
-                self.screen = Screen::Run;
-                self.accumulator = 0.0;
-                self.dirty = true;
-            }
             UiAction::Resume => {
                 self.paused = false;
                 self.dirty = true;
@@ -217,72 +197,48 @@ impl Game {
                 self.screen = Screen::Heroes;
                 self.dirty = true;
             }
-            UiAction::SellAsk(i) => {
-                let Some(run) = self.run.as_mut() else { return true };
-                if self.confirm_sell.is_some_and(|(s, _)| s == i) {
-                    self.confirm_sell = None;
-                    let result = run.sell(i);
-                    self.rule(result, Cue::Buy);
-                } else if i < run.weapons.len() {
-                    let words = format!("Sell {} for {} Clout? Press again.", slop_sim::content::WEAPONS[run.weapons[i].def].name, run.sell_value(i));
-                    self.confirm_sell = Some((i, 3.0));
-                    self.say(words);
-                }
-            }
             UiAction::Quit => return false,
-            other => {
+            _ => {
                 let Some(run) = self.run.as_mut() else { return true };
-                let cue = match other {
-                    UiAction::Buy(_) => Cue::Buy,
-                    UiAction::Reroll => Cue::Reroll,
-                    UiAction::LevelPick(_) => Cue::Level,
-                    UiAction::NextWave => Cue::Go,
-                    _ => Cue::Tick,
-                };
-                let result = match other {
-                    UiAction::LevelPick(i) => run.choose_level(i),
-                    UiAction::Buy(i) => run.buy(i),
-                    UiAction::Lock(i) => run.toggle_lock(i),
-                    UiAction::Reroll => run.reroll(),
-                    UiAction::NextWave => {
-                        let r = run.next_wave();
-                        if r.is_ok() {
-                            let run = self.run.take().expect("still here");
-                            self.wave_banner(&run);
-                            self.run = Some(run);
-                            self.accumulator = 0.0;
-                        }
-                        r
-                    }
-                    _ => Ok(()),
+                let (result, cue) = match action {
+                    UiAction::Choose(i) => (run.choose(i), Cue::Level),
+                    UiAction::Reroll => (run.reroll(), Cue::Reroll),
+                    UiAction::Close => (run.close(), Cue::Tick),
+                    UiAction::Buy(i) => (run.buy(i), Cue::Buy),
+                    UiAction::Bless(i) => (run.bless(i), Cue::Level),
+                    _ => (Ok(()), Cue::Tick),
                 };
                 self.rule(result, cue);
+                self.since_choice = 0.0;
             }
         }
         true
+    }
+
+    /// The run is waiting for a choice (an overlay is up).
+    pub fn choosing(&self) -> bool {
+        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. }))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use slop_rules::Phase;
 
     // REQ: UI-08
     #[test]
-    fn actions_walk_from_title_to_a_run_and_report_rule_errors() {
+    fn actions_walk_from_title_into_the_feed_and_report_rule_errors() {
         let mut g = Game::new(1);
         g.act(UiAction::ToHeroes);
         assert_eq!(g.screen, Screen::Heroes);
         g.act(UiAction::PickHero(2));
         g.act(UiAction::StartRun);
-        assert_eq!(g.screen, Screen::Briefing, "a run opens with its briefing");
-        g.act(UiAction::BeginRun);
-        assert_eq!(g.screen, Screen::Run);
+        assert_eq!(g.screen, Screen::Run, "straight into the Feed");
         assert_eq!(g.run.as_ref().unwrap().hero, Hero::Teacher);
-        assert!(matches!(g.run.as_ref().unwrap().phase, Phase::Wave) && g.banner.is_some());
+        assert!(g.banner.is_some());
+        g.since_choice = 1.0;
         g.act(UiAction::Reroll);
-        assert!(g.message.is_some(), "rerolling during a wave is refused with a message");
+        assert!(g.message.is_some(), "rerolling while playing is refused with a message");
         assert!(!g.act(UiAction::Quit));
     }
 }

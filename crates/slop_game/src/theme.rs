@@ -5,7 +5,6 @@ use slop_sim::DamageType;
 
 /// Beyond the arena walls.
 pub const VOID: Color = Color::srgb(0.07, 0.07, 0.1);
-pub const WALL: Color = Color::srgb(0.11, 0.11, 0.15);
 pub const INK: Color = Color::srgb(0.13, 0.12, 0.17);
 pub const PAPER: Color = Color::srgb(0.97, 0.96, 0.93);
 pub const PANEL: Color = Color::srgba(0.13, 0.12, 0.17, 0.92);
@@ -40,4 +39,17 @@ pub fn mental_health_color(share: f32) -> Color {
 /// Type colours lightened for text over the dark floors.
 pub fn type_text(t: DamageType) -> Color {
     type_color(t).mix(&Color::WHITE, 0.35)
+}
+
+/// Each platform's accent, for the feed scraps on its floor.
+pub fn platform_tint(p: slop_sim::Platform) -> Color {
+    use slop_sim::Platform::*;
+    match p {
+        FaceSlop => Color::srgb(0.6, 0.72, 1.0),
+        LinkedOut => Color::srgb(0.55, 0.8, 1.0),
+        MeTube => Color::srgb(1.0, 0.6, 0.6),
+        Thredd => Color::srgb(1.0, 0.72, 0.5),
+        InstaSlop => Color::srgb(1.0, 0.7, 0.92),
+        ClockTok => Color::srgb(0.6, 1.0, 1.0),
+    }
 }

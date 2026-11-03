@@ -402,7 +402,50 @@ fn spawn_fx(
             }
             Event::ActiveUsed { active } => say(&mut commands, active_words(active), me + Vec2::new(0.0, 60.0), 20.0, theme::type_text(DamageType::Grass), 1.0),
             Event::Friend { from, to } => line(&mut commands, &art, v(from), v(to), 14.0, Color::srgba(0.4, 0.9, 0.5, 0.8), 0.35),
-            Event::LootBox { at } => say(&mut commands, "Loot Box! Opens in the next shop.", v(at) + Vec2::Y * 40.0, 16.0, Color::srgb(1.0, 0.8, 0.2), 1.6),
+            Event::LootBox { at } => say(&mut commands, "Elite down: CHEST!", v(at) + Vec2::Y * 40.0, 18.0, Color::srgb(1.0, 0.8, 0.2), 1.6),
+            Event::PickedUp { kind, at } => {
+                use slop_sim::world::PickupKind as K;
+                let (words, color) = match kind {
+                    K::Food => ("Touched grass!", theme::AGREE),
+                    K::Magnet => ("Algorithm boost!", Color::srgb(0.5, 0.8, 1.0)),
+                    K::Freeze => ("SERVER OUTAGE", Color::srgb(0.6, 0.85, 1.0)),
+                    K::Chest => ("Chest!", Color::srgb(1.0, 0.8, 0.2)),
+                    K::Bomb | K::Clout => ("", theme::PAPER),
+                };
+                if !words.is_empty() {
+                    say(&mut commands, words, v(at) + Vec2::Y * 40.0, 20.0, color, 1.2);
+                }
+                if kind == K::Freeze {
+                    shake.trauma = shake.trauma.max(0.3);
+                }
+            }
+            Event::MassReport { at } => {
+                shake.trauma = 1.0;
+                ring(&mut commands, &art, v(at), 900.0, Color::srgba(1.0, 0.3, 0.3, 0.7), 0.5);
+                say(&mut commands, "MASS REPORT!", v(at) + Vec2::Y * 90.0, 34.0, theme::DANGER, 1.5);
+            }
+            Event::Broke { at, kind } => {
+                let words = match kind {
+                    slop_sim::map::PropKind::PopupAd => "[x] closed",
+                    slop_sim::map::PropKind::CryptoMiner => "rug pulled",
+                    slop_sim::map::PropKind::LostPhone => "finders keepers",
+                    _ => "[ad blocked]",
+                };
+                say(&mut commands, words, v(at) + Vec2::Y * 30.0, 15.0, theme::PAPER, 0.9);
+                ring(&mut commands, &art, v(at), 60.0, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.25);
+            }
+            Event::PropUsed { at, kind } => say(&mut commands, kind.name(), v(at) + Vec2::Y * 110.0, 18.0, Color::srgb(1.0, 0.9, 0.5), 1.0),
+            Event::PropDone { at, kind } => {
+                let words = if kind == slop_sim::map::PropKind::DataCenter { "UPLOAD COMPLETE: chest!" } else { "Comments locked: chest!" };
+                say(&mut commands, words, v(at) + Vec2::Y * 110.0, 22.0, Color::srgb(1.0, 0.8, 0.2), 2.0);
+                ring(&mut commands, &art, v(at), 220.0, Color::srgba(1.0, 0.8, 0.2, 0.8), 0.4);
+            }
+            Event::BossDefeated { at, .. } => {
+                shake.trauma = 1.0;
+                ring(&mut commands, &art, v(at), 500.0, Color::srgba(1.0, 0.8, 0.2, 0.9), 0.6);
+            }
+            Event::Confused { at } => say(&mut commands, "?", v(at) + Vec2::Y * 34.0, 22.0, Color::srgb(1.0, 0.6, 0.9), 0.7),
+            Event::Maintenance { at, .. } => say(&mut commands, "Scheduled maintenance!", v(at), 20.0, theme::DANGER, 1.5),
             Event::Hustle { level } => say(&mut commands, &format!("Rise and grind! Speed x{level:.2}"), me + Vec2::new(0.0, 80.0), 20.0, theme::PLAYER_RED, 1.5),
             Event::WaveCleared => {
                 for (k, s) in world.slop.iter().enumerate() {

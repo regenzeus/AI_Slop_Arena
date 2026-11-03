@@ -9,14 +9,11 @@ use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use slop_rules::Phase;
 
 use crate::play::END_PAUSE;
-use crate::screens::key;
 use crate::state::{Game, Screen, UiAction};
 use crate::ui::Nav;
 
-/// (wave, tick) moments worth a screenshot during waves.
-const WAVE_SHOTS: [(u32, u32); 9] = [(1, 900), (3, 1500), (5, 1800), (8, 2400), (10, 900), (10, 2400), (13, 2400), (17, 3000), (20, 1500)];
-/// Shops worth a screenshot, by the wave they sell for.
-const SHOP_SHOTS: [u32; 3] = [2, 7, 14];
+/// Minutes into the Feed worth a screenshot, latest first.
+const FEED_SHOTS: [f32; 7] = [27.0, 20.0, 14.0, 9.0, 5.0, 2.0, 0.5];
 
 #[derive(Resource)]
 pub struct Autoplay {
@@ -32,11 +29,13 @@ pub struct Autoplay {
     holding: Option<String>,
     /// The held screen was shot; let go once the capture has rendered.
     release: bool,
+    /// Minutes after which autoplay stops.
+    pub limit: f32,
 }
 
 impl Autoplay {
     pub fn new(shots: Option<PathBuf>, exit_on_end: bool, speed: u32) -> Autoplay {
-        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None, release: false }
+        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None, release: false, limit: 30.0 }
     }
 
     fn shoot(&mut self, commands: &mut Commands, name: &str) {
@@ -63,10 +62,6 @@ impl Plugin for AutoplayPlugin {
 
 fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autoplay>, mut nav: ResMut<Nav>, mut exit: MessageWriter<AppExit>) {
     auto.frames += 1;
-    // Held shops show the details of their first offer, as for a player.
-    if auto.holding.as_ref().is_some_and(|n| n.starts_with("shop")) {
-        nav.key = Some(key::OFFER);
-    }
     if auto.wait > 0 {
         auto.wait -= 1;
         return;
@@ -113,20 +108,12 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 game.act(UiAction::StartRun);
             }
         }
-        Screen::Briefing => {
-            if auto.wants("briefing") {
-                auto.holding = Some("briefing".into());
-                auto.wait = 12;
-            } else {
-                game.act(UiAction::BeginRun);
-            }
-        }
         Screen::Run => {
             let Some(run) = game.run.as_ref() else { return };
-            let wave = run.wave;
+            let minutes = run.minutes();
             let settled = game.since_end > END_PAUSE + 0.1;
             let name = match &run.phase {
-                Phase::Wave if wave == 4 && run.world.as_ref().is_some_and(|w| w.tick >= 900) && auto.wants("pause") => {
+                Phase::Playing if minutes >= 3.0 && auto.wants("pause") => {
                     // The pause screen, with the build so far.
                     game.paused = true;
                     game.dirty = true;
@@ -134,17 +121,17 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                     auto.wait = 12;
                     return;
                 }
-                Phase::Wave => {
-                    let tick = run.world.as_ref().map_or(0, |w| w.tick);
-                    WAVE_SHOTS.iter().find(|&&(w, t)| w == wave && tick >= t).map(|(w, t)| format!("wave{w:02}_{:02}s", t / 60))
-                }
-                Phase::LevelUp(_) if settled => Some("levelup".into()),
-                Phase::Shop => SHOP_SHOTS.contains(&wave).then(|| format!("shop_w{wave:02}")),
+                Phase::Playing => FEED_SHOTS.iter().find(|&&m| minutes >= m).map(|m| format!("feed_{m:04.1}min")),
+                Phase::LevelUp(_) => Some("levelup".into()),
+                Phase::Chest(r) if r.merged.is_some() => Some("merge".into()),
+                Phase::Chest(_) => Some("chest".into()),
+                Phase::Vending { .. } => Some("vending".into()),
+                Phase::Shrine { .. } => Some("shrine".into()),
                 Phase::Over { .. } if settled => Some("over".into()),
-                _ => None,
+                Phase::Over { .. } => None,
             };
             let over = run.is_over();
-            if let Some(name) = name.filter(|n| auto.wants(n)) {
+            if let Some(name) = name.filter(|n| auto.wants(n) && !auto.taken.iter().any(|t| t.starts_with("feed_") && n.starts_with("feed_") && t >= n)) {
                 // Hold the screen still while it is captured.
                 game.frozen = true;
                 game.dirty = true;
@@ -152,7 +139,7 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 auto.wait = 12;
                 return;
             }
-            if over && settled && auto.exit_on_end {
+            if (over && settled || minutes >= auto.limit) && auto.exit_on_end {
                 exit.write(AppExit::Success);
             }
         }

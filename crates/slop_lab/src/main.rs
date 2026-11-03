@@ -1,10 +1,10 @@
 //! Headless tools for AI Slop Arena.
 //!
 //! ```text
-//! slop_lab bench                  time a crowded arena (SIM-04)
-//! slop_lab determinism            replay a whole run twice and compare (SIM-01)
-//! slop_lab balance [runs]         bots play whole runs; win rates by policy, hero and platform (BAL-02)
-//! slop_lab economy [runs]         Clout, levels and purchases per wave for the heuristic bot
+//! slop_lab bench                  time a crowded Feed (SIM-04)
+//! slop_lab determinism            replay a run twice and compare (SIM-01)
+//! slop_lab balance [runs] [min]   bots play whole runs; minutes survived, bosses (BAL-02)
+//! slop_lab progress [runs]        level, kills, slop and weapons minute by minute
 //! ```
 
 use std::collections::BTreeMap;
@@ -12,9 +12,12 @@ use std::time::Instant;
 
 use slop_rules::bot::{self, Policy};
 use slop_rules::{Hero, Phase, Run};
-use slop_sim::content::{Archetype, Platform, WEAPONS};
-use slop_sim::world::{Loadout, Projectile, WaveSetup, World, BUBBLE_RADIUS};
+use slop_sim::content::{Archetype, WEAPONS};
+use slop_sim::world::{Loadout, Projectile, WaveSetup, World, BUBBLE_RADIUS, MAX_LEVEL};
 use slop_sim::{DamageType, Input, Look, V2};
+
+/// Level, kills, slop out, health share and Clout at one minute of one run.
+type Sample = (u32, u32, usize, f32, u32);
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -22,16 +25,16 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("bench") => bench(),
         Some("determinism") => determinism(),
-        Some("balance") => balance(n(1, 60)),
-        Some("economy") => economy(n(1, 30)),
-        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs]|economy [runs]>"),
+        Some("balance") => balance(n(1, 30), n(2, 45) as f32),
+        Some("progress") => progress(n(1, 8)),
+        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes]|progress [runs]>"),
     }
 }
 
-/// 400 slop, 300 bubbles and six tier IV weapons firing fast around you.
+/// 400 slop, 300 bubbles and six max-level weapons firing fast around you.
 fn bench() {
     let picks = ["Rock", "Stapler", "Library Book", "Eye-Roll", "Slow Clap", "Seed Bomb"];
-    let weapons: Vec<(usize, u8)> = picks.iter().map(|p| (slop_sim::content::weapon_index(p).unwrap(), 4)).collect();
+    let weapons: Vec<(usize, u8)> = picks.iter().map(|p| (slop_sim::content::weapon_index(p).unwrap(), MAX_LEVEL)).collect();
     let mut loadout = Loadout { weapons, stats: Default::default(), perks: Default::default() };
     loadout.stats.focus = 3.0;
     loadout.stats.max_mental_health = 1e9;
@@ -73,9 +76,9 @@ fn fingerprint(seed: u64) -> (u64, u32) {
     let mut rng = slop_sim::rng::Rng::new(seed, 11);
     let mut hash = 0u64;
     let mut ticks = 0u32;
-    while !run.is_over() && run.wave <= 6 {
+    while !run.is_over() && run.minutes() < 6.0 {
         match run.phase {
-            Phase::Wave => {
+            Phase::Playing => {
                 let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
                 run.step(input);
                 ticks += 1;
@@ -93,126 +96,90 @@ fn fingerprint(seed: u64) -> (u64, u32) {
 
 fn determinism() {
     let (a, b) = (fingerprint(42), fingerprint(42));
-    println!("seed 42 twice, six waves: {:016x} vs {:016x} over {} ticks -> {}", a.0, b.0, a.1, if a == b { "identical" } else { "DIFFERENT" });
+    println!("seed 42 twice, six minutes: {:016x} vs {:016x} over {} ticks -> {}", a.0, b.0, a.1, if a == b { "identical" } else { "DIFFERENT" });
     if a != b {
         std::process::exit(1);
     }
 }
 
-fn balance(runs: u64) {
+fn balance(runs: u64, limit: f32) {
     let start = Instant::now();
     for policy in [Policy::Heuristic, Policy::Random] {
-        let mut wins = 0;
-        let mut deaths: BTreeMap<u32, u32> = BTreeMap::new();
-        let mut by_hero: BTreeMap<&str, (u32, u32)> = BTreeMap::new();
-        let mut by_platform: BTreeMap<&str, (u32, u32)> = BTreeMap::new();
-        let mut weapon_use: BTreeMap<&str, u32> = BTreeMap::new();
-        let mut boss_deaths: BTreeMap<&str, u32> = BTreeMap::new();
+        let mut minutes = Vec::new();
+        let mut bosses: BTreeMap<u32, u32> = BTreeMap::new();
+        let mut by_hero: BTreeMap<&str, Vec<f32>> = BTreeMap::new();
+        let mut model = 0;
+        let mut weapon_use: BTreeMap<String, u32> = BTreeMap::new();
         for seed in 1..=runs {
             let hero = Hero::ALL[(seed % 5) as usize];
-            let run = Run::new(seed, hero);
-            let platform = run.platform;
-            drop(run);
-            let s = bot::play(seed, hero, policy);
+            let s = bot::play(seed, hero, policy, limit);
+            minutes.push(s.minutes);
+            *bosses.entry(s.bosses).or_default() += 1;
+            by_hero.entry(hero.def().name).or_default().push(s.minutes);
             if s.victory {
-                wins += 1;
-            } else {
-                *deaths.entry(s.wave).or_default() += 1;
-                if s.wave == 10 {
-                    *boss_deaths.entry(platform.boss().name()).or_default() += 1;
-                }
+                model += 1;
             }
-            let h = by_hero.entry(hero.def().name).or_default();
-            h.0 += s.victory as u32;
-            h.1 += 1;
-            let p = by_platform.entry(platform.name()).or_default();
-            p.0 += s.victory as u32;
-            p.1 += 1;
-            for (name, _) in &s.weapons {
-                let name = WEAPONS.iter().find(|w| w.name == name).map_or("?", |w| w.name);
+            for (name, _) in s.weapons {
                 *weapon_use.entry(name).or_default() += 1;
             }
         }
-        println!("{policy:?}: {} of {runs} won ({:.0}%)", wins, 100.0 * wins as f64 / runs as f64);
-        let d: Vec<String> = deaths.iter().map(|(w, n)| format!("w{w}:{n}")).collect();
-        println!("  burnouts by wave  {}", d.join(" "));
-        let h: Vec<String> = by_hero.iter().map(|(k, (w, n))| format!("{k} {w}/{n}")).collect();
-        let b: Vec<String> = boss_deaths.iter().map(|(k, n)| format!("{k} {n}")).collect();
-        println!("  lost to boss      {}", b.join(", "));
-        println!("  by hero           {}", h.join(", "));
-        let p: Vec<String> = by_platform.iter().map(|(k, (w, n))| format!("{k} {w}/{n}")).collect();
-        println!("  by platform       {}", p.join(", "));
-        if policy == Policy::Heuristic {
-            let mut u: Vec<_> = weapon_use.into_iter().collect();
-            u.sort_by(|a, b| b.1.cmp(&a.1));
-            let u: Vec<String> = u.iter().take(8).map(|(k, n)| format!("{k} {n}")).collect();
-            println!("  weapons at the end {}", u.join(", "));
+        minutes.sort_by(|a, b| a.total_cmp(b));
+        let median = minutes[minutes.len() / 2];
+        let mean = minutes.iter().sum::<f32>() / minutes.len() as f32;
+        println!("\n{policy:?} bot, {runs} runs (stopped at {limit} min):");
+        println!("  minutes survived: median {median:.1}, mean {mean:.1}, shortest {:.1}, longest {:.1}", minutes[0], minutes[minutes.len() - 1]);
+        println!("  The Model beaten: {model}/{runs}");
+        println!("  bosses beaten: {}", bosses.iter().map(|(b, n)| format!("{b}: {n}")).collect::<Vec<_>>().join(", "));
+        for (h, m) in &by_hero {
+            println!("  {h}: mean {:.1} min", m.iter().sum::<f32>() / m.len() as f32);
         }
+        let mut uses: Vec<_> = weapon_use.into_iter().collect();
+        uses.sort_by(|a, b| b.1.cmp(&a.1));
+        println!("  weapons at the end: {}", uses.iter().take(12).map(|(n, c)| format!("{n} {c}")).collect::<Vec<_>>().join(", "));
     }
-    let _ = Platform::ALL;
-    println!("({:.0} s)", start.elapsed().as_secs_f64());
+    println!("\n{:.0} s", start.elapsed().as_secs_f32());
 }
 
-/// Per wave, averaged over the runs that reached its shop: Clout earned in
-/// the wave, Clout held when the shop opens, levels, and tiers bought.
-fn economy(runs: u64) {
-    #[derive(Default, Clone, Copy)]
-    struct Row {
-        runs: u32,
-        earned: u32,
-        held: u32,
-        levels: u32,
-        level: u32,
-        bought: u32,
-        rerolls: u32,
-    }
-    let mut rows = [Row::default(); 21];
+/// Level, kills, slop on the field and the build, minute by minute.
+fn progress(runs: u64) {
+    let mut rows: BTreeMap<u32, Vec<Sample>> = BTreeMap::new();
     for seed in 1..=runs {
         let hero = Hero::ALL[(seed % 5) as usize];
         let mut run = Run::new(seed, hero);
         let mut rng = slop_sim::rng::Rng::new(seed, 11);
-        loop {
+        let mut next = 1.0;
+        while !run.is_over() && run.minutes() < 45.0 {
             match run.phase {
-                Phase::Over { .. } => break,
-                Phase::Wave => {
+                Phase::Playing => {
                     let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
                     run.step(input);
-                }
-                Phase::Shop => {
-                    let owned = |run: &Run| run.items.iter().map(|(_, n)| *n).sum::<u32>() + run.weapons.iter().map(|w| w.tier as u32).sum::<u32>();
-                    let before = owned(&run);
-                    let r = run.reports.last().unwrap();
-                    let row = &mut rows[r.wave as usize];
-                    row.runs += 1;
-                    row.earned += r.likes;
-                    row.held += run.clout;
-                    row.levels += r.levels;
-                    row.level += run.level;
-                    // The bot buys, rerolls and starts the next wave in one decision.
-                    let rerolls_before = run.shop.rerolls;
-                    bot::decide(&mut run, Policy::Heuristic, &mut rng);
-                    row.bought += owned(&run).saturating_sub(before);
-                    row.rerolls += run.shop.rerolls.saturating_sub(rerolls_before);
+                    if run.minutes() >= next {
+                        let w = run.world.as_ref().unwrap();
+                        let health = w.player.mental_health / w.player.stats.max_mental_health;
+                        rows.entry(next as u32).or_default().push((run.level, run.kills(), w.slop.len(), health, run.clout));
+                        next += 1.0;
+                    }
                 }
                 _ => {
                     bot::decide(&mut run, Policy::Heuristic, &mut rng);
                 }
             }
         }
+        let names: Vec<String> = run.weapons.iter().map(|w| format!("{} {}", WEAPONS[w.def].name, w.level)).collect();
+        println!("run {seed} ({}): {:.1} min, level {}, {} bosses; {}", hero.def().name, run.minutes(), run.level, run.bosses_beaten, names.join(", "));
     }
-    println!("wave  runs  earned  held@shop  levels  level  bought  rerolls");
-    for (w, r) in rows.iter().enumerate().filter(|(_, r)| r.runs > 0) {
-        let n = r.runs as f32;
+    println!("\nminute | runs alive | level | kills | slop out | health | Clout");
+    for (m, v) in rows {
+        let k = v.len() as f32;
+        let avg = |f: &dyn Fn(&Sample) -> f32| v.iter().map(f).sum::<f32>() / k;
         println!(
-            "{:>4}  {:>4}  {:>6.1}  {:>9.1}  {:>6.2}  {:>5.1}  {:>6.2}  {:>7.2}",
-            w,
-            r.runs,
-            r.earned as f32 / n,
-            r.held as f32 / n,
-            r.levels as f32 / n,
-            r.level as f32 / n,
-            r.bought as f32 / n,
-            r.rerolls as f32 / n
+            "{m:>6} | {:>10} | {:>5.1} | {:>5.0} | {:>8.0} | {:>5.0}% | {:>5.0}",
+            v.len(),
+            avg(&|r| r.0 as f32),
+            avg(&|r| r.1 as f32),
+            avg(&|r| r.2 as f32),
+            avg(&|r| r.3) * 100.0,
+            avg(&|r| r.4 as f32)
         );
     }
 }

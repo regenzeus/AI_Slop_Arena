@@ -14,11 +14,13 @@ use slop_rules::Hero;
 use slop_sim::content::{Archetype, BossKind, Look, Pattern, Platform, BUBBLE_LINES, POST_LINES, WEAPONS};
 use slop_sim::Event;
 use slop_sim::spec::{SlopLook, SlopSpec, Traits};
-use slop_sim::world::{Outcome, Slop, World, ZoneKind, ARENA, FLASH_TICKS, NO_LINE, PLAYER_SPEED};
+use slop_sim::map::{chunk_seed, PropKind, PropState, WallKind, CHUNK};
+use slop_sim::spec::Traits as T;
+use slop_sim::world::{Outcome, Shape, Slop, World, ZoneKind, FLASH_TICKS, NO_LINE, PLAYER_SPEED};
 
 use crate::art::{Art, Pair, BUBBLE_BORDER, FACES, HUMAN_SIZE, SLOP_SCALE};
 use crate::play::Simulation;
-use crate::state::{Game, Screen};
+use crate::state::Game;
 use crate::theme;
 
 /// Draw order, back to front.
@@ -31,13 +33,15 @@ const Z_BUBBLE: f32 = 6.0;
 pub const Z_FX: f32 = 8.0;
 pub const Z_TEXT: f32 = 9.0;
 
-/// The smallest part of the arena any window shows.
+/// The smallest part of the Feed any window shows.
 pub const VIEW: Vec2 = Vec2::new(1440.0, 810.0);
-/// The camera may show this much wall beyond the arena.
-const WALL_SHOWN: f32 = 160.0;
-/// How fast the camera catches up with you. It never looks ahead, so turning
-/// around does not swing the view.
-const CAMERA_FOLLOW: f32 = 14.0;
+/// Side of the floor sprite; it is moved in whole tiles to follow the camera.
+const FLOOR: f32 = 256.0 * 16.0;
+const TILE: f32 = 256.0;
+/// Map things farther than this from you are not drawn.
+const DRAW_RANGE: f32 = 1400.0;
+/// Feed scraps on the floor per chunk.
+const DECOR_PER_CHUNK: u64 = 14;
 /// Distance of carried weapons from your centre.
 const HOLD: f32 = 38.0;
 const WEAPON_SIZE: f32 = 34.0;
@@ -48,7 +52,7 @@ pub struct ViewsPlugin;
 
 impl Plugin for ViewsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Shake>().add_systems(Startup, setup).add_systems(Update, (sync, follow_camera).chain().after(Simulation));
+        app.init_resource::<Shake>().add_systems(Startup, setup).add_systems(Update, (sync, map_views, follow_camera).chain().after(Simulation));
     }
 }
 
@@ -135,6 +139,24 @@ struct Views {
     /// A Dog Walk's dog and its leash, by weapon slot.
     dogs: HashMap<usize, (Entity, Entity)>,
     weapons: Vec<WeaponView>,
+    /// The map (ART-06): walls and fences, props with their rings, pickups,
+    /// and the feed scraps of each chunk.
+    walls: HashMap<u32, Entity>,
+    fences: HashMap<u32, (Entity, Entity)>,
+    props: HashMap<u32, PropView>,
+    pickups: HashMap<u32, Entity>,
+    decor: HashMap<(i32, i32), Vec<Entity>>,
+    /// The platform the scraps are tinted for.
+    decor_platform: Option<Platform>,
+}
+
+struct PropView {
+    root: Entity,
+    body: Entity,
+    ring: Option<Entity>,
+    /// "Hold to use" progress, or what is left.
+    meter: Option<(Entity, Entity)>,
+    tag: Entity,
 }
 
 #[derive(Component)]
@@ -146,39 +168,23 @@ struct Root;
 
 fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
     let art = Art::build(&mut images);
-    let centre = Vec2::splat(ARENA / 2.0);
-    // Any window shows at least 1600 x 900 of the arena (UI-07).
+    let centre = Vec2::ZERO;
+    // Any window shows at least 1440 x 810 of the Feed (UI-07).
     let projection = OrthographicProjection { scaling_mode: ScalingMode::AutoMin { min_width: VIEW.x, min_height: VIEW.y }, ..OrthographicProjection::default_2d() };
     commands.spawn((Camera2d, MainCamera, Projection::from(projection), Transform::from_xyz(centre.x, centre.y, 100.0)));
+    // The endless floor: one big tiled sprite that follows the camera in
+    // whole tiles, so the pattern never slides (MAP-01).
     let floor = commands
         .spawn((
             Sprite {
                 image: art.floors[&Platform::FaceSlop].clone(),
-                custom_size: Some(Vec2::splat(ARENA)),
+                custom_size: Some(Vec2::splat(FLOOR)),
                 image_mode: SpriteImageMode::Tiled { tile_x: true, tile_y: true, stretch_value: 1.0 },
                 ..default()
             },
             Transform::from_xyz(centre.x, centre.y, Z_FLOOR),
         ))
         .id();
-    let thick = 900.0;
-    for (x, y, w, h) in [
-        (-thick / 2.0, centre.y, thick, ARENA + 2.0 * thick),
-        (ARENA + thick / 2.0, centre.y, thick, ARENA + 2.0 * thick),
-        (centre.x, -thick / 2.0, ARENA, thick),
-        (centre.x, ARENA + thick / 2.0, ARENA, thick),
-    ] {
-        commands.spawn((Sprite::from_color(theme::WALL, Vec2::new(w, h)), Transform::from_xyz(x, y, Z_FLOOR + 0.1)));
-    }
-    let rim = 8.0;
-    for (x, y, w, h) in [
-        (-rim / 2.0, centre.y, rim, ARENA + 2.0 * rim),
-        (ARENA + rim / 2.0, centre.y, rim, ARENA + 2.0 * rim),
-        (centre.x, -rim / 2.0, ARENA, rim),
-        (centre.x, ARENA + rim / 2.0, ARENA, rim),
-    ] {
-        commands.spawn((Sprite::from_color(theme::INK, Vec2::new(w, h)), Transform::from_xyz(x, y, Z_FLOOR + 0.2)));
-    }
 
     let player_root = commands.spawn((Root, Transform::from_xyz(centre.x, centre.y, Z_ACTOR), Visibility::Hidden)).id();
     commands.spawn((
@@ -210,13 +216,36 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         zones: HashMap::new(),
         dogs: HashMap::new(),
         weapons: Vec::new(),
+        walls: HashMap::new(),
+        fences: HashMap::new(),
+        props: HashMap::new(),
+        pickups: HashMap::new(),
+        decor: HashMap::new(),
+        decor_platform: None,
     });
     commands.insert_resource(art);
 }
 
-/// Depth by height on screen, so lower actors overlap higher ones.
+/// Depth by height on screen, so lower actors overlap higher ones. The map
+/// is endless, so heights count from the camera's.
 fn depth(y: f32) -> f32 {
-    (ARENA - y) / ARENA * 0.9
+    (0.45 - (y - DEPTH_REF.with(|r| r.get())) / 4000.0).clamp(0.0, 0.9)
+}
+
+thread_local! {
+    /// The height `depth` counts from: where you are this frame.
+    static DEPTH_REF: std::cell::Cell<f32> = const { std::cell::Cell::new(0.0) };
+}
+
+/// Where something is drawn: between its last two ticks (FEEL-04).
+fn lerp(prev: slop_sim::V2, pos: slop_sim::V2, alpha: f32) -> Vec2 {
+    let (a, b) = (Vec2::new(prev.x, prev.y), Vec2::new(pos.x, pos.y));
+    // A jump (moved back in front of you) is not smoothed.
+    if a.distance_squared(b) > 200.0 * 200.0 {
+        b
+    } else {
+        a.lerp(b, alpha)
+    }
 }
 
 fn text(commands: &mut Commands, words: impl Into<String>, size: f32, color: Color, at: Vec3, parent: Entity) -> Entity {
@@ -287,7 +316,10 @@ fn spawn_slop(commands: &mut Commands, art: &Art, world: &World, s: &Slop) -> Sl
     }
     let bar_y = size * 0.55 + 6.0;
     if spec.elite {
-        text(commands, "TRENDING", 12.0, theme::PLAYER_RED, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
+        // The affix, the first word of an elite's name (ELITE-01).
+        let affix = spec.name.split_whitespace().next().unwrap_or("ELITE").to_uppercase();
+        let color = if spec.traits.has(T::VERIFIED) { theme::type_color(slop_sim::DamageType::Fact) } else if spec.traits.has(T::SPONSORED) { Color::srgb(1.0, 0.8, 0.2) } else { theme::PLAYER_RED };
+        text(commands, affix, 13.0, color, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
     }
     if s.reposted {
         text(commands, "[repost]", 12.0, theme::QUIET, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
@@ -345,6 +377,9 @@ fn spawn_shot(commands: &mut Commands, art: &Art, look: Look, line: u16, hostile
         Look::Toast => Vec2::splat(22.0),
         Look::Arrow => Vec2::new(34.0, 20.0),
         Look::Letter => Vec2::new(36.0, 27.0),
+        Look::Duck => Vec2::new(26.0, 24.0),
+        Look::Plane => Vec2::new(30.0, 19.0),
+        Look::Note => Vec2::splat(16.0),
         Look::Bubble | Look::Post => unreachable!(),
     };
     let root = commands.spawn((Root, Sprite { image: art.shots[&look].clone(), custom_size: Some(size), ..default() }, Transform::default())).id();
@@ -356,14 +391,39 @@ fn spawn_shot(commands: &mut Commands, art: &Art, look: Look, line: u16, hostile
     root
 }
 
-fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32) -> Entity {
+/// A zone in its shape (ZONE-02): circles use their picture; rectangles and
+/// rings are drawn as tinted areas with a word on them.
+fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, shape: Shape) -> Entity {
+    let tint = match kind {
+        ZoneKind::Downvote => Color::srgba(1.0, 0.35, 0.1, 0.26),
+        ZoneKind::Filter => Color::srgba(1.0, 0.55, 0.85, 0.22),
+        _ => Color::srgba(1.0, 1.0, 1.0, 0.2),
+    };
+    let word = match kind {
+        ZoneKind::Downvote => "DOWNVOTED",
+        ZoneKind::Filter => "#nofilter",
+        _ => "",
+    };
+    match (kind, shape) {
+        (ZoneKind::Banner, _) | (_, Shape::Circle) => {}
+        (_, Shape::Rect(h)) => {
+            let root = commands.spawn((Root, Sprite::from_color(tint, Vec2::new(h.x * 2.0, h.y * 2.0)), Transform::default())).id();
+            text(commands, word, 16.0, tint.with_alpha(0.9), Vec3::new(0.0, 0.0, 0.05), root);
+            return root;
+        }
+        (_, Shape::Ring(_)) => {
+            let root = commands.spawn((Root, Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), color: tint.with_alpha(0.75), ..default() }, Transform::default())).id();
+            text(commands, word, 16.0, tint.with_alpha(0.9), Vec3::new(0.0, radius - 20.0, 0.05), root);
+            return root;
+        }
+    }
     let (image, size) = match kind {
         ZoneKind::Seed { .. } => (art.seed.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Bomb => (art.bomb.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Downvote => (art.downvote.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Filter => (art.filter.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Banner => {
-            let root = commands.spawn((Root, Sprite::from_color(Color::srgba(0.25, 0.65, 0.35, 0.35), Vec2::new(ARENA, radius * 2.0)), Transform::default())).id();
+            let root = commands.spawn((Root, Sprite::from_color(Color::srgba(0.25, 0.65, 0.35, 0.35), Vec2::new(6000.0, radius * 2.0)), Transform::default())).id();
             for x in [-800.0, -400.0, 0.0, 400.0, 800.0] {
                 text(commands, "#OPENTOWORK", 22.0, Color::srgba(0.1, 0.4, 0.2, 0.9), Vec3::new(x, 0.0, 0.05), root);
             }
@@ -424,10 +484,13 @@ fn sync(
     }
     let Some(world) = world.filter(|_| showing) else { return };
 
-    // You.
+    // You, drawn between ticks (FEEL-04).
     let p = &world.player;
+    let alpha = game.alpha;
+    let me = lerp(p.prev, p.pos, alpha);
+    DEPTH_REF.with(|r| r.set(me.y));
     if let Ok((mut tf, _)) = roots.get_mut(views.player_root) {
-        tf.translation = Vec3::new(p.pos.x, p.pos.y, Z_ACTOR + depth(p.pos.y));
+        tf.translation = Vec3::new(me.x, me.y, Z_ACTOR + depth(me.y));
     }
     if let Ok((mut tf, mut sprite, mut vis)) = parts.get_mut(views.player_body) {
         let share = (p.mental_health / p.stats.max_mental_health).clamp(0.0, 1.0);
@@ -536,7 +599,8 @@ fn sync(
         seen.insert(s.id);
         let v = views.slop.entry(s.id).or_insert_with(|| spawn_slop(&mut commands, &art, world, s));
         if let Ok((mut tf, _)) = roots.get_mut(v.root) {
-            tf.translation = Vec3::new(s.pos.x, s.pos.y, Z_ACTOR + depth(s.pos.y));
+            let at = lerp(s.prev, s.pos, alpha);
+            tf.translation = Vec3::new(at.x, at.y, Z_ACTOR + depth(at.y));
         }
         let spec = world.spec(s);
         let phase = t * 9.0 + s.id as f32;
@@ -559,7 +623,19 @@ fn sync(
                 if sprite.image != *image {
                     sprite.image = image.clone();
                 }
-                let tint = if s.agreed > 0 { Color::srgb(0.8, 1.0, 0.8) } else if s.stunned > 0 { Color::srgb(0.75, 0.85, 1.0) } else { sprite.color.with_alpha(1.0) };
+                let tint = if world.freeze > 0 {
+                    Color::srgb(0.6, 0.85, 1.0)
+                } else if s.rooted > 0 {
+                    Color::srgb(0.7, 1.0, 0.65)
+                } else if s.confused > 0 {
+                    Color::srgb(1.0, 0.75, 0.95)
+                } else if s.agreed > 0 {
+                    Color::srgb(0.8, 1.0, 0.8)
+                } else if s.stunned > 0 {
+                    Color::srgb(0.75, 0.85, 1.0)
+                } else {
+                    Color::WHITE
+                };
                 if !spec.traits.has(Traits::CLONE) {
                     sprite.color = tint;
                 }
@@ -577,7 +653,7 @@ fn sync(
             tf.translation.x = -(full - w) / 2.0;
         }
         if let Ok((_, _, mut vis)) = parts.get_mut(v.stun) {
-            *vis = if s.stunned > 0 { Visibility::Inherited } else { Visibility::Hidden };
+            *vis = if s.stunned > 0 || s.confused > 0 { Visibility::Inherited } else { Visibility::Hidden };
         }
         if let Ok(mut vis) = tags.get_mut(v.tag) {
             *vis = if s.marked > 0 { Visibility::Inherited } else { Visibility::Hidden };
@@ -614,11 +690,12 @@ fn sync(
             } else {
                 0.0
             };
-            tf.translation = Vec3::new(pr.pos.x, pr.pos.y + arc * LOB_HEIGHT, z + (pr.id % 100) as f32 * 0.001);
+            let at = lerp(pr.prev, pr.pos, alpha);
+            tf.translation = Vec3::new(at.x, at.y + arc * LOB_HEIGHT, z + (pr.id % 100) as f32 * 0.001);
             tf.scale = Vec3::splat(1.0 + 0.6 * arc);
             tf.rotation = match pr.look {
                 Look::Bubble | Look::Post | Look::Letter => Quat::IDENTITY,
-                Look::Rock | Look::EyeRoll | Look::Frisbee | Look::Toast | Look::Brick | Look::Book => Quat::from_rotation_z(t * if lob { 7.0 } else { 9.0 } + pr.id as f32),
+                Look::Rock | Look::EyeRoll | Look::Frisbee | Look::Toast | Look::Brick | Look::Book | Look::Duck | Look::Note => Quat::from_rotation_z(t * if lob { 7.0 } else { 9.0 } + pr.id as f32),
                 _ => Quat::from_rotation_z(pr.vel.angle()),
             };
         }
@@ -631,12 +708,12 @@ fn sync(
         keep
     });
 
-    // Clout coins; fake ones from the Hallucinator glitch.
+    // Likes: experience. Fake ones from the Hallucinator glitch.
     let mut seen = HashSet::new();
     for l in &world.likes {
         seen.insert(l.id);
         let e = *views.likes.entry(l.id).or_insert_with(|| {
-            commands.spawn((Root, Sprite { image: art.coin.clone(), custom_size: Some(Vec2::splat(20.0)), ..default() }, Transform::default())).id()
+            commands.spawn((Root, Sprite { image: art.like.clone(), custom_size: Some(Vec2::splat(18.0)), ..default() }, Transform::default())).id()
         });
         if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(e) {
             let pulse = 1.0 + 0.12 * (t * 6.0 + l.id as f32).sin();
@@ -654,13 +731,14 @@ fn sync(
     let mut seen = HashSet::new();
     for z in &world.zones {
         seen.insert(z.id);
-        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius));
+        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius, z.shape));
         if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(e) {
-            tf.translation = Vec3::new(if z.kind == ZoneKind::Banner { ARENA / 2.0 } else { z.pos.x }, z.pos.y, Z_ZONE + (z.id % 50) as f32 * 0.001);
+            tf.translation = Vec3::new(z.pos.x, z.pos.y, Z_ZONE + (z.id % 50) as f32 * 0.001);
             let left = z.ticks as f32 / z.max_ticks.max(1) as f32;
             match z.kind {
                 ZoneKind::Bomb => sprite.color = Color::WHITE.with_alpha(0.5 + 0.5 * (t * (24.0 - 18.0 * left)).sin().abs()),
-                ZoneKind::Seed { .. } | ZoneKind::Downvote | ZoneKind::Filter => sprite.color = Color::WHITE.with_alpha((left * 4.0).min(1.0)),
+                ZoneKind::Seed { .. } | ZoneKind::Downvote | ZoneKind::Filter if z.shape == Shape::Circle => sprite.color = Color::WHITE.with_alpha((left * 4.0).min(1.0)),
+                ZoneKind::Seed { .. } | ZoneKind::Downvote | ZoneKind::Filter => sprite.color = sprite.color.with_alpha((left * 4.0).min(1.0) * 0.26),
                 ZoneKind::Banner => {}
             }
         }
@@ -677,15 +755,15 @@ fn sync(
                 let leash = commands.spawn((Root, Sprite::from_color(Color::srgb(0.85, 0.2, 0.2), Vec2::new(1.0, 2.5)), Transform::default())).id();
                 (dog, leash)
             });
-            let at = p.pos + slop_sim::V2::from_angle(w.phase) * radius;
+            let at = slop_sim::V2::new(me.x, me.y) + slop_sim::V2::from_angle(w.phase) * radius;
             if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(dog) {
                 tf.translation = Vec3::new(at.x, at.y + 3.0 * (t * 16.0).sin().abs(), Z_ACTOR + depth(at.y));
                 sprite.flip_x = (w.phase + std::f32::consts::FRAC_PI_2).cos() < 0.0;
             }
             if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(leash) {
-                let (a, b) = (Vec2::new(p.pos.x, p.pos.y), Vec2::new(at.x, at.y));
+                let (a, b) = (me, Vec2::new(at.x, at.y));
                 let mid = (a + b) / 2.0;
-                tf.translation = Vec3::new(mid.x, mid.y, Z_ACTOR + depth(p.pos.y) - 0.01);
+                tf.translation = Vec3::new(mid.x, mid.y, Z_ACTOR + depth(me.y) - 0.01);
                 tf.rotation = Quat::from_rotation_z((b - a).to_angle());
                 sprite.custom_size = Some(Vec2::new((b - a).length(), 2.5));
             }
@@ -711,40 +789,311 @@ fn retain(commands: &mut Commands, map: &mut HashMap<u32, Entity>, seen: &HashSe
     });
 }
 
+/// The map near you (ART-06): walls, maintenance fences, props with their
+/// rings and meters, pickups, and the feed scraps that make every chunk of
+/// floor different.
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
+fn map_views(
+    mut commands: Commands,
+    game: Res<Game>,
+    art: Res<Art>,
+    time: Res<Time>,
+    mut views: ResMut<Views>,
+    mut sprites: Query<(&mut Transform, &mut Sprite, &mut Visibility), Without<MainCamera>>,
+    mut words: Query<(&mut Text2d, &mut TextColor)>,
+) {
+    let views = &mut *views;
+    let t = time.elapsed_secs();
+    let Some(world) = game.world().filter(|w| w.outcome != Outcome::Cleared) else {
+        for e in views.walls.drain().map(|(_, e)| e).chain(views.pickups.drain().map(|(_, e)| e)) {
+            commands.entity(e).despawn();
+        }
+        for (_, (a, b)) in views.fences.drain() {
+            commands.entity(a).despawn();
+            commands.entity(b).despawn();
+        }
+        for (_, v) in views.props.drain() {
+            commands.entity(v.root).despawn();
+        }
+        for (_, list) in views.decor.drain() {
+            for e in list {
+                commands.entity(e).despawn();
+            }
+        }
+        return;
+    };
+    let me = lerp(world.player.prev, world.player.pos, game.alpha);
+    let near = |x: f32, y: f32, r: f32| (Vec2::new(x, y) - me).length() < DRAW_RANGE + r;
+
+    // Walls.
+    let mut seen = HashSet::new();
+    for w in world.map.walls_near(world.player.pos, DRAW_RANGE).filter(|w| w.kind != WallKind::Fence) {
+        let c = w.centre();
+        let size = w.size();
+        if !near(c.x, c.y, size.x.max(size.y)) {
+            continue;
+        }
+        seen.insert(w.id);
+        views.walls.entry(w.id).or_insert_with(|| {
+            let slicer = TextureSlicer { border: BorderRect::all(10.0), center_scale_mode: SliceScaleMode::Tile { stretch_value: 1.0 }, sides_scale_mode: SliceScaleMode::Stretch, max_corner_scale: 1.0 };
+            commands
+                .spawn((
+                    Sprite { image: art.walls[&w.kind].clone(), custom_size: Some(Vec2::new(size.x, size.y)), image_mode: SpriteImageMode::Sliced(slicer), ..default() },
+                    Transform::from_xyz(c.x, c.y, Z_ACTOR + depth(w.max.y) - 0.02),
+                ))
+                .id()
+        });
+    }
+    retain(&mut commands, &mut views.walls, &seen);
+    for (id, e) in &views.walls {
+        if let Some(w) = world.map.walls.iter().find(|w| w.id == *id) {
+            if let Ok((mut tf, _, _)) = sprites.get_mut(*e) {
+                tf.translation.z = Z_ACTOR + depth(w.max.y) - 0.02;
+            }
+        }
+    }
+
+    // Maintenance fences: striped while warning, solid with a countdown when closed.
+    let mut seen_f = HashSet::new();
+    for f in &world.map.fences {
+        seen_f.insert(f.id);
+        let c = f.centre();
+        let size = f.size();
+        let (body, label) = *views.fences.entry(f.id).or_insert_with(|| {
+            let body = commands
+                .spawn((
+                    Sprite { image: art.walls[&WallKind::Fence].clone(), custom_size: Some(Vec2::new(size.x, size.y)), image_mode: SpriteImageMode::Tiled { tile_x: true, tile_y: true, stretch_value: 0.5 }, ..default() },
+                    Transform::from_xyz(c.x, c.y, Z_ZONE + 0.2),
+                ))
+                .id();
+            let label = commands.spawn((Text2d::new(""), TextFont { font_size: 20.0, ..default() }, TextColor(theme::PAPER), Transform::from_xyz(c.x, c.y, Z_TEXT))).id();
+            (body, label)
+        });
+        let solid = f.solid();
+        if let Ok((mut tf, mut sprite, _)) = sprites.get_mut(body) {
+            let blink = if solid { 1.0 } else { 0.25 + 0.25 * (t * 10.0).sin().abs() };
+            sprite.color = Color::WHITE.with_alpha(blink);
+            tf.translation.z = if solid { Z_ACTOR + depth(f.max.y) - 0.02 } else { Z_ZONE + 0.2 };
+        }
+        if let Ok((mut text, mut color)) = words.get_mut(label) {
+            let left = if solid { f.ticks } else { f.warning } as f32 / 60.0;
+            text.0 = if solid { format!("UNDER MAINTENANCE\nback in {left:.0} s") } else { format!("MAINTENANCE IN {left:.1}") };
+            color.0 = if solid { theme::PAPER } else { theme::DANGER };
+        }
+    }
+    views.fences.retain(|id, (a, b)| {
+        let keep = seen_f.contains(id);
+        if !keep {
+            commands.entity(*a).despawn();
+            commands.entity(*b).despawn();
+        }
+        keep
+    });
+
+    // Props.
+    let mut seen_p = HashSet::new();
+    for p in world.map.props.iter().filter(|p| near(p.pos.x, p.pos.y, p.kind.radius())) {
+        seen_p.insert(p.id);
+        let v = views.props.entry(p.id).or_insert_with(|| spawn_prop(&mut commands, &art, p.kind, Vec2::new(p.pos.x, p.pos.y)));
+        let done = p.state == PropState::Done;
+        if let Ok((mut tf, mut sprite, _)) = sprites.get_mut(v.body) {
+            tf.translation.z = Z_ACTOR + depth(p.pos.y);
+            let bob = if done { 0.0 } else { 2.0 * (t * 2.0 + p.id as f32).sin() };
+            tf.translation.y = p.pos.y + bob + if p.kind.breakable() { 0.0 } else { 18.0 };
+            sprite.color = if done { Color::srgba(0.5, 0.5, 0.55, 0.5) } else { Color::WHITE };
+            if done && p.kind.breakable() {
+                sprite.color = Color::NONE;
+            }
+        }
+        if let Some(ring) = v.ring {
+            if let Ok((_, mut sprite, mut vis)) = sprites.get_mut(ring) {
+                *vis = if done { Visibility::Hidden } else { Visibility::Inherited };
+                let pulse = 0.35 + 0.2 * (t * 3.0).sin().abs();
+                sprite.color = prop_color(p.kind).with_alpha(if p.state == PropState::Active { 0.85 } else { pulse });
+            }
+        }
+        if let Some((back, fill)) = v.meter {
+            let share = match p.kind {
+                PropKind::Hotspot => p.left as f32 / (60.0 * 25.0),
+                PropKind::DataCenter if p.state == PropState::Active => 1.0 - p.left as f32 / (60.0 * 20.0),
+                _ => p.charge as f32 / p.kind.charge().max(1) as f32,
+            };
+            let show = !done && (share > 0.0 && share < 1.0 || p.state == PropState::Active);
+            for e in [back, fill] {
+                if let Ok((_, _, mut vis)) = sprites.get_mut(e) {
+                    *vis = if show { Visibility::Inherited } else { Visibility::Hidden };
+                }
+            }
+            if let Ok((mut tf, mut sprite, _)) = sprites.get_mut(fill) {
+                let w = 90.0 * share.clamp(0.0, 1.0);
+                sprite.custom_size = Some(Vec2::new(w, 8.0));
+                tf.translation.x = p.pos.x - (90.0 - w) / 2.0;
+            }
+        }
+        if let Ok((mut text, mut color)) = words.get_mut(v.tag) {
+            let wanted = prop_label(p, world, game.shown_run());
+            if text.0 != wanted {
+                text.0 = wanted;
+            }
+            color.0 = if done { theme::QUIET } else { prop_color(p.kind) };
+        }
+    }
+    views.props.retain(|id, v| {
+        let keep = seen_p.contains(id);
+        if !keep {
+            commands.entity(v.root).despawn();
+        }
+        keep
+    });
+
+    // Pickups.
+    let mut seen_k = HashSet::new();
+    for k in world.pickups.iter().filter(|k| near(k.pos.x, k.pos.y, 0.0)) {
+        seen_k.insert(k.id);
+        let e = *views.pickups.entry(k.id).or_insert_with(|| {
+            let size = if k.kind == slop_sim::world::PickupKind::Chest { 54.0 } else if k.kind == slop_sim::world::PickupKind::Clout { 22.0 } else { 40.0 };
+            commands.spawn((Sprite { image: art.pickups[&k.kind].clone(), custom_size: Some(Vec2::splat(size)), ..default() }, Transform::default())).id()
+        });
+        if let Ok((mut tf, _, _)) = sprites.get_mut(e) {
+            let bob = 3.0 * (t * 4.0 + k.id as f32).sin();
+            tf.translation = Vec3::new(k.pos.x, k.pos.y + bob, Z_LIKE + 0.1);
+            let glow = if k.kind == slop_sim::world::PickupKind::Chest { 1.0 + 0.08 * (t * 6.0).sin() } else { 1.0 };
+            tf.scale = Vec3::splat(glow);
+        }
+    }
+    retain(&mut commands, &mut views.pickups, &seen_k);
+
+    // Feed scraps on the floor, chosen per chunk from the run's seed: no two
+    // screens look alike.
+    let (cx, cy) = slop_sim::map::chunk_of(slop_sim::V2::new(me.x, me.y));
+    let mut wanted = HashSet::new();
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            wanted.insert((cx + dx, cy + dy));
+        }
+    }
+    let seed = world.seed;
+    let platform = game.shown_run().map_or(Platform::FaceSlop, |r| r.platform);
+    for c in &wanted {
+        views.decor.entry(*c).or_insert_with(|| {
+            let mut rng = slop_sim::rng::Rng::new(chunk_seed(seed, *c), 23);
+            let origin = Vec2::new(c.0 as f32 * CHUNK, c.1 as f32 * CHUNK);
+            (0..DECOR_PER_CHUNK)
+                .map(|_| {
+                    let at = origin + Vec2::new(rng.range(0.0, CHUNK), rng.range(0.0, CHUNK));
+                    let i = rng.below(crate::feed_art::DECOR as u32) as usize;
+                    let size = rng.range(90.0, 200.0);
+                    let tint = theme::platform_tint(platform);
+                    commands
+                        .spawn((
+                            Sprite { image: art.decor[i].clone(), custom_size: Some(Vec2::splat(size)), color: tint, ..default() },
+                            Transform::from_xyz(at.x, at.y, Z_FLOOR + 0.05).with_rotation(Quat::from_rotation_z(rng.range(-0.25, 0.25))),
+                        ))
+                        .id()
+                })
+                .collect()
+        });
+    }
+    views.decor.retain(|c, list| {
+        let keep = wanted.contains(c);
+        if !keep {
+            for e in list.drain(..) {
+                commands.entity(e).despawn();
+            }
+        }
+        keep
+    });
+    // A new platform tints the scraps.
+    if views.decor_platform != Some(platform) {
+        views.decor_platform = Some(platform);
+        for list in views.decor.values() {
+            for e in list {
+                if let Ok((_, mut sprite, _)) = sprites.get_mut(*e) {
+                    sprite.color = theme::platform_tint(platform);
+                }
+            }
+        }
+    }
+}
+
+fn prop_color(kind: PropKind) -> Color {
+    match kind {
+        PropKind::Hotspot => Color::srgb(0.55, 0.85, 1.0),
+        PropKind::Vending | PropKind::Gacha => Color::srgb(1.0, 0.8, 0.25),
+        PropKind::Shrine => Color::srgb(1.0, 0.9, 0.5),
+        PropKind::DataCenter => Color::srgb(0.45, 0.95, 0.6),
+        PropKind::CommentSection => theme::DANGER,
+        _ => theme::PAPER,
+    }
+}
+
+/// The words over a prop: its name, and its price or state.
+fn prop_label(p: &slop_sim::map::Prop, world: &World, run: Option<&slop_rules::Run>) -> String {
+    let name = p.kind.name();
+    if p.state == PropState::Done {
+        return match p.kind {
+            PropKind::DataCenter => "Uploaded".into(),
+            PropKind::CommentSection => "Locked".into(),
+            PropKind::Hotspot => "No signal".into(),
+            _ if p.kind.breakable() => String::new(),
+            _ => format!("{name}\n(used)"),
+        };
+    }
+    let near = p.pos.distance(world.player.pos) < 420.0;
+    match p.kind {
+        PropKind::Gacha => format!("{name}\n{} Clout", run.map_or(0, |r| r.gacha_price(p.id))),
+        PropKind::DataCenter if p.state == PropState::Active => format!("UPLOADING {:.0}%", 100.0 - p.left as f32 / (60.0 * 20.0) * 100.0),
+        PropKind::CommentSection if p.state == PropState::Active => "SURVIVE THE REPLIES".into(),
+        _ if p.kind.breakable() => String::new(),
+        _ if near => format!("{name}\n{}", p.kind.blurb()),
+        _ => name.to_string(),
+    }
+}
+
+fn spawn_prop(commands: &mut Commands, art: &Art, kind: PropKind, at: Vec2) -> PropView {
+    let root = commands.spawn((Root, Transform::default(), Visibility::Visible)).id();
+    let r = kind.radius();
+    let ring = (!kind.breakable()).then(|| {
+        commands
+            .spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(r * 2.0)), color: prop_color(kind).with_alpha(0.4), ..default() }, Transform::from_xyz(at.x, at.y, Z_ZONE + 0.1), ChildOf(root)))
+            .id()
+    });
+    let size = if kind.breakable() { r * 2.4 } else { 96.0 };
+    let body = commands.spawn((Sprite { image: art.props[&kind].clone(), custom_size: Some(Vec2::splat(size)), ..default() }, Transform::from_xyz(at.x, at.y, Z_ACTOR), ChildOf(root))).id();
+    let meter = (!kind.breakable()).then(|| {
+        let y = at.y - 70.0;
+        let back = commands.spawn((Sprite::from_color(theme::INK, Vec2::new(94.0, 12.0)), Transform::from_xyz(at.x, y, Z_TEXT - 0.1), Visibility::Hidden, ChildOf(root))).id();
+        let fill = commands.spawn((Sprite::from_color(prop_color(kind), Vec2::new(0.0, 8.0)), Transform::from_xyz(at.x, y, Z_TEXT), Visibility::Hidden, ChildOf(root))).id();
+        (back, fill)
+    });
+    let tag = commands
+        .spawn((Text2d::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER), TextLayout::new_with_justify(Justify::Center), Transform::from_xyz(at.x, at.y + 84.0, Z_TEXT), ChildOf(root)))
+        .id();
+    PropView { root, body, ring, meter, tag }
+}
+
+/// The camera stays on you, drawn between ticks: no lead, no lag (FEEL-04).
 fn follow_camera(
     time: Res<Time>,
     game: Res<Game>,
     mut shake: ResMut<Shake>,
-    mut camera: Query<(&mut Transform, &Projection), With<MainCamera>>,
-    mut focus: Local<Option<Vec2>>,
-    mut last_seed: Local<u64>,
+    views: Res<Views>,
+    mut camera: Query<&mut Transform, With<MainCamera>>,
+    mut floor: Query<&mut Transform, (Without<MainCamera>, With<Sprite>)>,
 ) {
-    let Ok((mut tf, projection)) = camera.single_mut() else { return };
-    let half = match projection {
-        Projection::Orthographic(o) => o.area.half_size(),
-        _ => VIEW / 2.0,
-    };
+    let Ok(mut tf) = camera.single_mut() else { return };
     let dt = time.delta_secs();
-    let target = match game.world().filter(|_| game.screen == Screen::Run) {
-        Some(w) => Vec2::new(w.player.pos.x, w.player.pos.y),
-        None => Vec2::splat(ARENA / 2.0) + Vec2::new((time.elapsed_secs() * 0.1).sin() * 300.0, 0.0),
+    let at = match game.world() {
+        Some(w) => lerp(w.player.prev, w.player.pos, game.alpha),
+        None => Vec2::new(tf.translation.x, tf.translation.y),
     };
-    let seed = game.world().map_or(0, |w| w.seed);
-    if *last_seed != seed {
-        *last_seed = seed;
-        *focus = Some(target);
-    }
-    let f = focus.get_or_insert(target);
-    *f += (target - *f) * (1.0 - (-CAMERA_FOLLOW * dt).exp());
-    let lo = half - Vec2::splat(WALL_SHOWN);
-    let hi = Vec2::splat(ARENA) - half + Vec2::splat(WALL_SHOWN);
-    let at = Vec2::new(
-        if lo.x < hi.x { f.x.clamp(lo.x, hi.x) } else { ARENA / 2.0 },
-        if lo.y < hi.y { f.y.clamp(lo.y, hi.y) } else { ARENA / 2.0 },
-    );
     shake.trauma = (shake.trauma - dt * 1.8).max(0.0);
     let k = shake.trauma * shake.trauma * 14.0;
     let wobble = Vec2::new((time.elapsed_secs() * 61.0).sin(), (time.elapsed_secs() * 47.0).cos()) * k;
     tf.translation.x = at.x + wobble.x;
     tf.translation.y = at.y + wobble.y;
+    if let Ok(mut f) = floor.get_mut(views.floor) {
+        f.translation.x = (at.x / TILE).round() * TILE;
+        f.translation.y = (at.y / TILE).round() * TILE;
+    }
 }

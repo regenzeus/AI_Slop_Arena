@@ -678,6 +678,22 @@ pub fn shot(look: Look) -> Canvas {
             c.shape(|x, y| rbox(x, y, 24.0, 18.0, 20.0, 14.0, 3.0), WHITE, DANGER, 3.0);
             c.fill(|x, y| capsule(x, y, 8.0, 8.0, 24.0, 20.0, 1.2).min(capsule(x, y, 24.0, 20.0, 40.0, 8.0, 1.2)), INK);
         }
+        Look::Duck => {
+            c = Canvas::new(44, 40);
+            c.shape(|x, y| ellipse(x, y, 24.0, 26.0, 17.0, 11.0).min(circle(x, y, 14.0, 14.0, 9.0)), hex(GOLD), INK, 2.5);
+            c.fill(|x, y| triangle(x, y, (4.0, 13.0), (8.0, 18.0), (6.0, 11.0)), hex(0xF28C38));
+            c.fill(|x, y| circle(x, y, 12.0, 12.0, 2.0), INK);
+        }
+        Look::Plane => {
+            c = Canvas::new(44, 28);
+            c.shape(|x, y| triangle(x, y, (4.0, 4.0), (40.0, 14.0), (4.0, 24.0)), WHITE, INK, 2.0);
+            c.fill(|x, y| capsule(x, y, 6.0, 14.0, 36.0, 14.0, 0.8), alpha(INK, 0.5));
+        }
+        Look::Note => {
+            c = Canvas::new(28, 28);
+            c.shape(|x, y| rbox(x, y, 14.0, 14.0, 11.0, 11.0, 1.5), hex(0xF2E66B), INK, 2.0);
+            c.fill(|x, y| rbox(x, y, 14.0, 12.0, 6.0, 1.0, 0.5), alpha(INK, 0.5));
+        }
         Look::Bubble | Look::Post => c = bubble(),
     }
     c

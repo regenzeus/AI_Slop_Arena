@@ -24,8 +24,8 @@ impl World {
         let Movement::Boss(kind) = self.setup.specs[spec].movement else { return };
         let me = self.player.pos;
         let at = match kind {
-            BossKind::ContentFarm => V2::new(ARENA / 2.0, ARENA / 2.0 + 600.0),
-            _ => clamp_to_arena(me + V2::new(0.0, 520.0), 100.0),
+            BossKind::ContentFarm => self.map.resolve(me + V2::new(0.0, 600.0), 80.0),
+            _ => self.map.resolve(me + V2::new(0.0, 520.0), 80.0),
         };
         if kind == BossKind::Influencer {
             self.setup.specs[spec].traits.0 |= Traits::FRONT_SHIELD;
@@ -160,7 +160,7 @@ impl World {
                 if b.timer <= 0 {
                     b.timer = if b.phase == 1 { 160 } else { 240 };
                     let off = V2::from_angle(self.rng_ai.range(0.0, std::f32::consts::TAU)) * self.rng_ai.range(120.0, 380.0);
-                    self.pending.push((b.minion, clamp_to_arena(pos + off, 40.0), 0.0, 0, 1));
+                    self.pending.push((b.minion, pos + off, 0.0, 0, 1));
                 }
                 if b.timer2 <= 0 {
                     b.timer2 = 1500;
@@ -194,7 +194,7 @@ impl World {
                     let spin = self.rng_ai.range(0.0, std::f32::consts::TAU);
                     let real = self.rng_ai.below(count + 1);
                     for k in 0..=count {
-                        let spot = clamp_to_arena(me + V2::from_angle(spin + k as f32 * std::f32::consts::TAU / (count + 1) as f32) * 380.0, 60.0);
+                        let spot = me + V2::from_angle(spin + k as f32 * std::f32::consts::TAU / (count + 1) as f32) * 380.0;
                         if k == real {
                             self.slop[i].pos = spot;
                         } else {
@@ -219,7 +219,7 @@ impl World {
                                 self.hostile_shot(pos + d * 50.0, d * 300.0, 8.0, Look::Toast, NO_LINE, spec);
                             }
                         }
-                        1 => self.drop_bomb(clamp_to_arena(me + self.player.vel * 0.5, 30.0), 14.0, spec),
+                        1 => self.drop_bomb(me + self.player.vel * 0.5, 14.0, spec),
                         2 => {
                             for k in 0..3 {
                                 self.pending.push((b.minion, pos + V2::from_angle(k as f32 * 2.1) * 60.0, 0.0, 0, 1));
@@ -262,7 +262,7 @@ impl World {
                 }
                 if self.tick % 900 == 0 {
                     for k in 0..3 {
-                        self.pending.push((b.minion, clamp_to_arena(pos + V2::from_angle(k as f32 * 2.1) * 120.0, 40.0), 0.0, 0, 1));
+                        self.pending.push((b.minion, pos + V2::from_angle(k as f32 * 2.1) * 120.0, 0.0, 0, 1));
                     }
                 }
             }
@@ -270,14 +270,24 @@ impl World {
         let s = &mut self.slop[i];
         s.armor = armor;
         s.moving = want;
-        s.pos = clamp_to_arena(s.pos + want * DT, s.radius);
+        s.pos += want * DT;
         self.boss = Some(b);
     }
 
     /// The boss is down: the wave is won and the rest of the slop is deleted.
-    pub(crate) fn boss_defeated(&mut self) {
-        self.boss = None;
-        if self.outcome == Outcome::Running {
+    /// The boss is gone: a big chest drops, and the rules move the Feed on.
+    pub(crate) fn boss_defeated(&mut self, at: V2) {
+        if let Some(b) = self.boss.take() {
+            self.events.push(Event::BossDefeated { kind: b.kind, at });
+        }
+        self.drop_pickup(PickupKind::Chest, at, 2);
+        self.hustle = 1.0;
+        // Its helpers leave with it.
+        let specs = &self.setup.specs;
+        for s in self.slop.iter_mut().filter(|s| specs[s.spec as usize].traits.has(Traits::HEAL_BOSS) || specs[s.spec as usize].traits.has(Traits::CLONE)) {
+            s.hp = 0.0;
+        }
+        if self.setup.seconds > 0.0 && self.outcome == Outcome::Running {
             self.clear();
         }
     }

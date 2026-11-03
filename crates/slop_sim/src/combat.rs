@@ -1,7 +1,7 @@
 //! Your weapons, every projectile, damage to slop, and zones on the floor
 //! (WPN-01 to WPN-08, DMG-01, BUB-01).
 
-use crate::content::{Look, Pattern, TIER_DAMAGE, WEAPONS};
+use crate::content::{level_extra, Look, Pattern, LEVEL_DAMAGE, WEAPONS};
 use crate::events::{Event, StatusKind};
 use crate::spec::{Movement, Traits};
 use crate::stats::DamageType;
@@ -23,6 +23,14 @@ const SHIELD_OFF_TICKS: u16 = 180;
 /// A Repost Hydra splits off a repost when one hit takes this share of its HP.
 const HYDRA_SPLIT: f32 = 0.05;
 const MAX_REPOSTS: usize = 20;
+/// Damage-type effects (DMG-02): ticks of Analog stagger, Sarcasm confusion
+/// and Grass roots, and the chance of confusion.
+const STAGGER_TICKS: u16 = 10;
+const CONFUSE_TICKS: u16 = 120;
+const CONFUSE_CHANCE: f32 = 0.12;
+const ROOT_TICKS: u16 = 75;
+/// Verified elites take this share of non-Fact damage.
+const VERIFIED: f32 = 0.5;
 
 impl World {
     /// Applies a hit to one slop (DMG-01): Conviction, the type bonus, a
@@ -31,7 +39,10 @@ impl World {
         let stats = self.player.stats;
         let ratio = self.player.status.ratio > 0;
         let perks = &self.player.perks;
-        let filtered = self.zones.iter().any(|z| z.kind == ZoneKind::Filter && z.pos.distance_sq(self.slop[j].pos) < z.radius * z.radius);
+        let fact = kind == DamageType::Fact;
+        // Fact cuts through filters and shields.
+        let filtered = !fact && self.zones.iter().any(|z| z.kind == ZoneKind::Filter && z.contains(self.slop[j].pos, 0.0));
+        let sets = perks.type_count;
         let s = &mut self.slop[j];
         if s.hp <= 0.0 {
             return;
@@ -59,7 +70,10 @@ impl World {
         if filtered {
             mult *= FILTERED;
         }
-        if sp.traits.has(Traits::FRONT_SHIELD) && s.shield_off == 0 {
+        if sp.traits.has(Traits::VERIFIED) && !fact {
+            mult *= VERIFIED;
+        }
+        if sp.traits.has(Traits::FRONT_SHIELD) && s.shield_off == 0 && !fact {
             let facing = if s.moving.length_sq() > 1.0 { s.moving.normalized() } else { (self.player.pos - s.pos).normalized() };
             if facing.dot((from - s.pos).normalized()) > 0.5 {
                 mult *= SHIELDED;
@@ -70,8 +84,31 @@ impl World {
         s.flash = FLASH_TICKS;
         s.last_hit = Some(self.tick);
         s.last_type = k as u8;
-        if s.grab.is_none() && !sp.traits.has(Traits::NO_KNOCKBACK) {
-            s.push += push;
+        let steady = sp.traits.has(Traits::NO_KNOCKBACK);
+        // What each damage type does besides damage (DMG-02); four weapons of
+        // a type make its effect stronger (DMG-03).
+        let strong = sets[k] >= 4;
+        match kind {
+            DamageType::Analog if !steady => s.staggered = s.staggered.max(if strong { STAGGER_TICKS * 2 } else { STAGGER_TICKS }),
+            DamageType::Sarcasm => {
+                let chance = if strong { CONFUSE_CHANCE * 2.0 } else { CONFUSE_CHANCE };
+                if s.confused == 0 && !steady && self.rng_combat.chance(chance) {
+                    s.confused = CONFUSE_TICKS;
+                    self.events.push(Event::Confused { at: s.pos });
+                }
+            }
+            DamageType::Grass => s.rooted = s.rooted.max(if strong { ROOT_TICKS * 2 } else { ROOT_TICKS }),
+            DamageType::Fact => s.shield_off = s.shield_off.max(if strong { SHIELD_OFF_TICKS } else { 30 }),
+            _ => {}
+        }
+        let s = &mut self.slop[j];
+        if s.grab.is_none() && !steady {
+            let shove = match (kind, strong) {
+                (DamageType::Analog, true) => 1.8,
+                (DamageType::Analog, false) => 1.4,
+                _ => 1.0,
+            };
+            s.push += push * shove;
         }
         self.tally.damage_dealt[k] += amount;
         if let Some(w) = weapon.and_then(|w| self.tally.weapon_damage.get_mut(w)) {
@@ -149,17 +186,18 @@ impl World {
         let stats = self.player.stats;
         let at = self.player.pos;
         for wi in 0..self.player.weapons.len() {
-            let (def_index, tier, enabled) = {
+            let (def_index, level, enabled) = {
                 let w = &self.player.weapons[wi];
-                (w.def, w.tier, w.enabled)
+                (w.def, w.level, w.enabled)
             };
             if !enabled {
                 continue;
             }
             let def = &WEAPONS[def_index];
-            let range = def.range * (1.0 + stats.reach);
-            let damage = def.damage * TIER_DAMAGE[tier as usize - 1];
-            let mut rate = 1.0 + stats.focus;
+            let (_, area, haste) = level_extra(level);
+            let range = def.range * (1.0 + stats.reach) * area;
+            let damage = def.damage * LEVEL_DAMAGE[level as usize - 1];
+            let mut rate = (1.0 + stats.focus) / haste;
             if matches!(def.pattern, Pattern::Aura) {
                 let crowd = self.around(at, range).len().min(10);
                 rate *= 1.0 + 0.1 * crowd as f32;
@@ -171,7 +209,7 @@ impl World {
             if self.player.weapons[wi].cooldown > 0.0 {
                 continue;
             }
-            let fired = self.attack(wi, def_index, damage, range);
+            let fired = self.attack(wi, def_index, damage, range, level);
             if let Some(to) = fired {
                 self.events.push(Event::Attacked { weapon: wi as u8, to });
             }
@@ -187,8 +225,10 @@ impl World {
 
     /// One attack of weapon slot `wi`, returning where it was aimed; None when
     /// there was nothing to attack.
-    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32) -> Option<V2> {
+    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32, level: u8) -> Option<V2> {
         let def = &WEAPONS[def_index];
+        // Merged weapons are built big already: no extra copies.
+        let extra = if def.evolved { 0 } else { level_extra(level).0 };
         let at = self.player.pos;
         let slot = Some(wi);
         match def.pattern {
@@ -329,7 +369,10 @@ impl World {
             Pattern::Zone { radius, seconds, heal } => {
                 let id = self.id();
                 let ticks = (seconds * TICK_RATE as f32) as u16;
-                self.zones.push(Zone { id, kind: ZoneKind::Seed { heal }, pos: goal, radius, ticks, max_ticks: ticks, vel: V2::ZERO, damage, spec: wi as u16 });
+                let mut z = Zone::new(id, ZoneKind::Seed { heal }, goal, radius, ticks);
+                z.damage = damage;
+                z.spec = wi as u16;
+                self.zones.push(z);
                 return Some(goal);
             }
             Pattern::Slam { radius, execute } => {
@@ -350,6 +393,19 @@ impl World {
                 return Some(goal);
             }
             Pattern::Orbit { .. } | Pattern::Ring | Pattern::Aura | Pattern::Reflect => unreachable!("handled above"),
+        }
+        // Higher levels throw more of the same, fanned out (WPN-10).
+        if extra > 0 && !shots.is_empty() {
+            let base = shots.clone();
+            for n in 1..=extra {
+                let off = if n % 2 == 1 { 0.22 } else { -0.22 } * n.div_ceil(2) as f32;
+                for p in &base {
+                    let mut q = p.clone();
+                    q.vel = p.vel.rotated(off);
+                    q.pos = at + (q.pos - at).rotated(off);
+                    shots.push(q);
+                }
+            }
         }
         for mut p in shots {
             p.id = self.id();
@@ -384,8 +440,13 @@ impl World {
             }
             p.pos += p.vel * DT;
             p.life = p.life.saturating_sub(1);
-            if p.pos.x < -50.0 || p.pos.y < -50.0 || p.pos.x > ARENA + 50.0 || p.pos.y > ARENA + 50.0 {
+            if p.pos.distance_sq(player) > SHOT_RANGE_MAX * SHOT_RANGE_MAX {
                 p.life = 0;
+            }
+            // Walls stop shots; lobbed ones fly over (MAP-02).
+            if p.splash == 0.0 && p.life > 0 && self.map.walls_near(p.pos, p.radius).any(|w| w.contains(p.pos)) {
+                p.life = 0;
+                continue;
             }
             if p.splash > 0.0 {
                 if p.life == 0 {
@@ -518,7 +579,7 @@ impl World {
             match z.kind {
                 ZoneKind::Bomb if z.ticks == 0 => bombs.push((z.pos, z.radius, z.damage, z.spec)),
                 ZoneKind::Seed { heal } if z.ticks % 30 == 0 => seeds.push((z.pos, z.radius, z.damage, heal, z.spec)),
-                ZoneKind::Banner if z.pos.x < -200.0 || z.pos.y < -200.0 || z.pos.x > ARENA + 200.0 || z.pos.y > ARENA + 200.0 => z.ticks = 0,
+                ZoneKind::Banner if z.pos.distance_sq(me) > 2000.0 * 2000.0 => z.ticks = 0,
                 _ => {}
             }
         }

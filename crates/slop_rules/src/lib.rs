@@ -1,15 +1,15 @@
-//! The run of AI Slop Arena: everything between waves.
+//! The rules of AI Slop Arena around the simulation.
 //!
-//! A [`run::Run`] owns the 20 waves, your weapons and items, levels, the
-//! shop, and the [`training::Training`] that makes the slop evolve against
-//! you. It builds each wave for `slop_sim` and books its results.
+//! A [`run::Run`] owns one endless trip through the Feed: the world, your
+//! weapons, items and levels, chests and merges, the map's machines, and the
+//! [`training::Training`] that makes the slop evolve against you. The
+//! director in [`waves`] decides who spawns as time goes by.
 
 pub mod bot;
 pub mod heroes;
 pub mod items;
 pub mod levels;
 pub mod run;
-pub mod shop;
 pub mod training;
 pub mod waves;
 

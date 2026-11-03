@@ -1,6 +1,7 @@
-//! The HUD over a wave (UI-05): Mental Health with your statuses, the wave
-//! timer as a video progress bar (or the boss's health), Clout and level,
-//! your weapons, the wave banner, MeTube's ad breaks, pop-ups, and pause.
+//! The HUD over the Feed (UI-05): Mental Health with your statuses, the run
+//! clock with the platform and its boss (a video progress bar counting down
+//! to it, then the boss's health), Clout, level and experience, news
+//! toasts, banners, MeTube's ad breaks and pop-ups.
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -70,6 +71,8 @@ struct Banner;
 struct BannerTitle;
 #[derive(Component)]
 struct BannerLine;
+#[derive(Component)]
+struct Toasts;
 
 fn label(p: &mut ChildSpawnerCommands, words: impl Into<String>, size: f32, color: Color) {
     p.spawn((Text::new(words), TextFont { font_size: size, ..default() }, TextColor(color)));
@@ -167,12 +170,15 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                         label(r, "Clout", 14.0, theme::QUIET);
                     });
                     p.spawn((LevelText, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::QUIET)));
-                    p.spawn((Node { width: Val::Px(160.0), height: Val::Px(5.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.25, 0.3))))
-                        .with_children(|b| {
-                            b.spawn((XpFill, Node { width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.95, 0.76, 0.19))));
-                        });
                 });
             });
+            // Experience: a bar across the whole top edge.
+            root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(0.0), left: Val::Px(0.0), width: Val::Percent(100.0), height: Val::Px(8.0), ..default() }, BackgroundColor(Color::srgba(0.1, 0.1, 0.14, 0.9))))
+                .with_children(|b| {
+                    b.spawn((XpFill, Node { width: Val::Percent(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(Color::srgb(0.38, 0.75, 1.0))));
+                });
+            // News: patch notes, the next platform.
+            root.spawn((Toasts, Text::new(""), TextFont { font_size: 17.0, ..default() }, TextColor(theme::PAPER), TextLayout::new_with_justify(Justify::Center), Node { position_type: PositionType::Absolute, top: Val::Px(118.0), width: Val::Percent(100.0), ..default() }));
             // The way to your build: pause shows everything.
             root.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(20.0), bottom: Val::Px(14.0), ..default() }, BackgroundColor(Color::NONE)))
                 .with_children(|h| label(h, "P  pause: your build and stats", 14.0, Color::srgba(1.0, 1.0, 1.0, 0.45)));
@@ -213,7 +219,8 @@ fn update(
         Query<&mut Text, With<LevelText>>,
         Query<&mut Text, With<BannerTitle>>,
     )>,
-    mut banner_line: Query<&mut Text, (With<BannerLine>, Without<BannerTitle>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>)>,
+    mut banner_line: Query<&mut Text, (With<BannerLine>, Without<BannerTitle>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>, Without<Toasts>)>,
+    mut toasts: Query<&mut Text, (With<Toasts>, Without<BannerLine>, Without<BannerTitle>, Without<MhText>, Without<Statuses>, Without<WaveText>, Without<TimeText>, Without<CloutText>, Without<LevelText>)>,
     mut shown: ParamSet<(
         Query<&mut Visibility, With<Hud>>,
         Query<&mut Visibility, With<Ad>>,
@@ -223,7 +230,7 @@ fn update(
 ) {
     let vis = |on: bool| if on { Visibility::Inherited } else { Visibility::Hidden };
     let run_screen = game.screen == Screen::Run;
-    let between = game.since_end > crate::play::END_PAUSE && game.run.as_ref().is_some_and(|r| !matches!(r.phase, Phase::Wave));
+    let between = game.run.as_ref().is_some_and(|r| r.is_over() && game.since_end > crate::play::END_PAUSE);
     let Some(run) = game.run.as_ref().filter(|_| run_screen) else {
         if let Ok(mut v) = shown.p0().single_mut() {
             *v = Visibility::Hidden;
@@ -233,7 +240,7 @@ fn update(
     let Some(world) = run.world.as_ref() else { return };
     let p = &world.player;
     let share = (p.mental_health / p.stats.max_mental_health).clamp(0.0, 1.0);
-    let in_wave = matches!(run.phase, Phase::Wave);
+    let in_wave = matches!(run.phase, Phase::Playing);
 
     if let Ok((mut node, mut bg)) = nodes.p0().single_mut() {
         node.width = Val::Px(BAR_W * share);
@@ -241,11 +248,12 @@ fn update(
     }
     let boss = world.boss.as_ref().and_then(|b| world.boss_health().map(|h| (b.kind, h)));
     if let Ok(mut node) = nodes.p1().single_mut() {
-        node.width = Val::Px(PROGRESS_W * boss.map_or(world.progress(), |(_, h)| h));
+        let to_boss = run.boss_in().map_or(1.0, |s| 1.0 - s / slop_rules::waves::BOSS_AFTER);
+        node.width = Val::Px(PROGRESS_W * boss.map_or(to_boss.clamp(0.0, 1.0), |(_, h)| h));
     }
-    let (gained, progress) = game.levels_in_wave();
+    let progress = run.xp as f32 / slop_rules::levels::xp_for(run.level + 1) as f32;
     if let Ok(mut node) = nodes.p2().single_mut() {
-        node.width = Val::Px(160.0 * progress.min(1.0));
+        node.width = Val::Percent(100.0 * progress.min(1.0));
     }
     if game.events.iter().any(|e| matches!(e, Event::PlayerHurt { .. })) {
         *vignette = 0.28;
@@ -283,23 +291,25 @@ fn update(
         **t = list.join("  ");
     }
     if let Ok(mut t) = texts.p2().single_mut() {
-        **t = match boss {
-            Some((kind, _)) => kind.name().to_uppercase(),
-            None => format!("WAVE {}  -  {}", world.setup.number, run.platform.name()),
-        };
+        **t = format!("{}   {}", clock(run.seconds()), run.platform.name().to_uppercase());
     }
     if let Ok(mut t) = texts.p3().single_mut() {
         **t = match boss {
             Some((BossKind::TheModel, h)) => format!("Model Collapse {:.0}%    {:.0}% left", world.setup.model.collapse * 100.0, h * 100.0),
             Some((_, h)) => format!("{:.0}% left", h * 100.0),
-            None => format!("{} / {}", clock(world.elapsed()), clock(world.setup.seconds)),
+            None => format!("{} in {}", run.next_boss().name(), clock(run.boss_in().unwrap_or(0.0))),
         };
     }
     if let Ok(mut t) = texts.p4().single_mut() {
-        **t = (run.clout + if in_wave { world.clout } else { 0 }).to_string();
+        **t = run.clout.to_string();
     }
     if let Ok(mut t) = texts.p5().single_mut() {
-        **t = if gained > 0 { format!("Level {}  +{} LEVEL UP", run.level + gained, gained) } else { format!("Level {}", run.level) };
+        **t = format!("Level {}  -  {} deleted", run.level, run.kills());
+    }
+    if let Ok(mut t) = toasts.single_mut() {
+        let words: Vec<&str> = game.toasts.iter().rev().take(3).map(|(w, _)| w.as_str()).collect();
+        **t = words.join("
+");
     }
     let banner = game.banner.as_ref().filter(|_| !between);
     if let (Some((title, line, _)), Ok(mut t)) = (banner, texts.p6().single_mut()) {

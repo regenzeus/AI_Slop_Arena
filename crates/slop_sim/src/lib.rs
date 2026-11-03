@@ -13,6 +13,7 @@ mod combat;
 pub mod content;
 pub mod events;
 pub mod hazards;
+pub mod map;
 pub mod math;
 mod player;
 pub mod rng;

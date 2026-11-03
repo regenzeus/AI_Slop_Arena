@@ -121,7 +121,7 @@ impl World {
             let s = &mut self.slop[i];
             if s.stunned > 0 {
                 s.moving = V2::ZERO;
-                s.pos = clamp_to_arena(s.pos + s.push * DT, b.radius);
+                s.pos += s.push * DT;
                 s.push *= KNOCKBACK_DECAY;
                 continue;
             }
@@ -243,7 +243,20 @@ impl World {
             if b.traits.has(Traits::SPIN_AURA) && dist < b.radius + PLAYER_RADIUS + SPIN_REACH && self.tick % 30 == 0 {
                 spin_hits.push((b.contact * 0.6, s.spec));
             }
-            if let Some(attack) = b.attack {
+            // Damage-type effects (DMG-02).
+            if s.staggered > 0 {
+                want = V2::ZERO;
+            }
+            if s.rooted > 0 {
+                want *= 0.35;
+            }
+            if s.confused > 0 {
+                want = -want;
+            }
+            if b.traits.has(Traits::TOXIC) && (self.tick + s.id) % 80 == 0 {
+                queued.push(Queued::Toxic { at: s.pos });
+            }
+            if let Some(attack) = b.attack.filter(|_| s.confused == 0) {
                 s.attack_timer -= 1;
                 if s.attack_timer <= 0 && dist < SHOOT_RANGE {
                     s.attack_timer = attack.interval() + self.rng_ai.below(40) as i32;
@@ -268,7 +281,7 @@ impl World {
                             }
                         }
                         Attack::Bomb => {
-                            let at = clamp_to_arena(player + self.player.vel * 0.5, 30.0);
+                            let at = player + self.player.vel * 0.5;
                             self.events.push(Event::BombWarning { at, radius: 60.0 });
                             queued.push(Queued::Bomb { at, damage: b.contact * 1.6 * k, spec: spec as u16 });
                         }
@@ -280,7 +293,7 @@ impl World {
                 s.push = V2::ZERO;
             }
             if b.movement != Movement::Stand {
-                s.pos = clamp_to_arena(s.pos + (want + s.push) * DT, s.radius);
+                s.pos += (want + s.push) * DT;
             }
             s.push *= KNOCKBACK_DECAY;
         }
@@ -310,6 +323,10 @@ impl World {
                     self.pending.push((drone, at, 0.0, pack, number));
                 }
                 Queued::Bomb { at, damage, spec } => self.drop_bomb(at, damage, spec),
+                Queued::Toxic { at } => {
+                    let id = self.id();
+                    self.zones.push(Zone::new(id, ZoneKind::Downvote, at, 46.0, 300));
+                }
             }
         }
         for at in fakes {
@@ -382,7 +399,7 @@ impl World {
         }
         for (s, push) in self.slop.iter_mut().zip(shove) {
             if push.length_sq() > 0.0 {
-                s.pos = clamp_to_arena(s.pos + push.clamp_length(6.0), s.radius);
+                s.pos += push.clamp_length(6.0);
             }
         }
     }
@@ -395,7 +412,7 @@ impl World {
         let mut grab_hits = 0;
         for (i, s) in self.slop.iter_mut().enumerate() {
             let sp = &self.setup.specs[s.spec as usize];
-            if s.stunned > 0 {
+            if s.stunned > 0 || s.confused > 0 {
                 continue;
             }
             let reach = s.radius + PLAYER_RADIUS + if sp.traits.has(Traits::LONG_REACH) { 22.0 } else { 0.0 };
@@ -444,7 +461,10 @@ impl World {
     pub(crate) fn drop_bomb(&mut self, at: V2, damage: f32, spec: u16) {
         let id = self.id();
         self.events.push(Event::BombWarning { at, radius: 60.0 });
-        self.zones.push(Zone { id, kind: ZoneKind::Bomb, pos: at, radius: 60.0, ticks: BOMB_WARNING, max_ticks: BOMB_WARNING, vel: V2::ZERO, damage, spec });
+        let mut z = Zone::new(id, ZoneKind::Bomb, at, 60.0, BOMB_WARNING);
+        z.damage = damage;
+        z.spec = spec;
+        self.zones.push(z);
     }
 }
 
@@ -457,4 +477,6 @@ enum Queued {
     /// A Surprise Egg hatches a drone.
     Hatch { at: V2, pack: u32, number: u8 },
     Bomb { at: V2, damage: f32, spec: u16 },
+    /// A Toxic elite leaves a slowing puddle.
+    Toxic { at: V2 },
 }

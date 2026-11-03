@@ -17,7 +17,9 @@ use slop_rules::Hero;
 use slop_sim::content::WEAPONS;
 use slop_sim::DamageType;
 
-use crate::{draw, icons};
+use crate::{draw, feed_art, icons};
+use slop_sim::map::{PropKind, WallKind};
+use slop_sim::world::PickupKind;
 
 /// Canvas pixels per world unit.
 pub const DENSITY: f32 = 2.0;
@@ -186,6 +188,26 @@ impl Canvas {
         self.px.iter().fold(0xcbf2_9ce4_8422_2325u64, |h, p| p.iter().fold(h, |h, v| (h ^ (v * 255.0) as u64).wrapping_mul(0x100_0000_01b3)))
     }
 
+    /// Paints `src` over this canvas, scaled by `scale`, its top-left corner at
+    /// (`ox`, `oy`) in this canvas's pixels (nearest-neighbour sampling).
+    pub fn stamp(&mut self, src: &Canvas, ox: f32, oy: f32, scale: f32) {
+        let (w, h) = ((src.w as f32 * scale) as usize, (src.h as f32 * scale) as usize);
+        for y in 0..h {
+            for x in 0..w {
+                let (tx, ty) = (ox as i64 + x as i64, oy as i64 + y as i64);
+                if tx < 0 || ty < 0 || tx >= self.w as i64 || ty >= self.h as i64 {
+                    continue;
+                }
+                let sx = ((x as f32 + 0.5) / scale) as usize;
+                let sy = ((y as f32 + 0.5) / scale) as usize;
+                let c = src.px[sy.min(src.h - 1) * src.w + sx.min(src.w - 1)];
+                if c[3] > 0.0 {
+                    self.over(tx as usize, ty as usize, c);
+                }
+            }
+        }
+    }
+
     /// The same silhouette in solid white, for hit flashes.
     pub fn whitened(&self) -> Canvas {
         let px = self.px.iter().map(|p| [1.0, 1.0, 1.0, p[3]]).collect();
@@ -308,7 +330,6 @@ pub struct Art {
     /// In `DamageType::ALL` order.
     pub type_icons: Vec<Handle<Image>>,
     pub reroll: Handle<Image>,
-    pub lock: Handle<Image>,
     pub star: Handle<Image>,
     pub archetypes: HashMap<Archetype, Pair>,
     pub bodies: HashMap<Body, Pair>,
@@ -337,6 +358,13 @@ pub struct Art {
     pub bomb: Handle<Image>,
     pub downvote: Handle<Image>,
     pub filter: Handle<Image>,
+    /// The Feed (ART-06).
+    pub pickups: HashMap<PickupKind, Handle<Image>>,
+    pub props: HashMap<PropKind, Handle<Image>>,
+    pub walls: HashMap<WallKind, Handle<Image>>,
+    pub decor: Vec<Handle<Image>>,
+    pub blessings: Vec<Handle<Image>>,
+    pub like: Handle<Image>,
 }
 
 impl Art {
@@ -365,7 +393,6 @@ impl Art {
             stat_icons: StatKind::ALL.iter().map(|&k| (k, add(icons::stat(k)))).collect(),
             type_icons: DamageType::ALL.iter().map(|&t| add(icons::damage_type(t))).collect(),
             reroll: add(icons::reroll()),
-            lock: add(icons::lock()),
             star: add(icons::star()),
             archetypes,
             bodies,
@@ -393,6 +420,12 @@ impl Art {
             bomb: add(draw::bomb_marker()),
             downvote: add(draw::downvote()),
             filter: add(draw::filter()),
+            pickups: [PickupKind::Food, PickupKind::Magnet, PickupKind::Bomb, PickupKind::Freeze, PickupKind::Clout, PickupKind::Chest].iter().map(|&k| (k, add(feed_art::pickup(k)))).collect(),
+            props: PropKind::ALL.iter().map(|&k| (k, add(feed_art::prop(k)))).collect(),
+            walls: [WallKind::ServerRack, WallKind::Billboard, WallKind::Desk, WallKind::Fence].iter().map(|&k| (k, add(feed_art::wall(k)))).collect(),
+            decor: (0..feed_art::DECOR).map(|i| add(feed_art::decor(i))).collect(),
+            blessings: (0..slop_rules::items::BLESSINGS.len()).map(|i| add(feed_art::blessing(i))).collect(),
+            like: add(feed_art::like()),
         }
     }
 }

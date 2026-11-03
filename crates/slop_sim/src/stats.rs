@@ -62,7 +62,7 @@ impl Default for Stats {
             reach: 0.0,
             speed: 1.0,
             scepticism: 0.0,
-            curiosity: 100.0,
+            curiosity: 140.0,
             luck: 0.0,
         }
     }
