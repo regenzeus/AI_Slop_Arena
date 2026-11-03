@@ -16,7 +16,7 @@ const WALL: f32 = 90.0;
 const SAFE: f32 = 150.0;
 const GREED: f32 = 650.0;
 /// Even a melee build keeps this much room.
-const MIN_FEAR: f32 = 110.0;
+const MIN_FEAR: f32 = 70.0;
 
 pub fn steer(world: &World) -> Input {
     let me = world.player.pos;

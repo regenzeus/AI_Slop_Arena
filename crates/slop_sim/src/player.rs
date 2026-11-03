@@ -25,6 +25,8 @@ const ANXIETY_DAMAGE: f32 = 2.0;
 const COFFEE_TICKS: u16 = 1200;
 const LETTER_TICKS: u16 = 600;
 const LETTER_DAMAGE: f32 = 8.0;
+/// Mental Health per second Doomscrolling costs while slop is on screen.
+const DOOMSCROLL_DRAIN: f32 = 0.5;
 const DOG_BLOCK_TICKS: u16 = 600;
 
 impl World {
@@ -101,7 +103,9 @@ impl World {
         if perks.doomscrolling > 0 {
             let me = self.player.pos;
             if self.slop.iter().any(|s| s.pos.distance_sq(me) < SHOOT_RANGE * SHOOT_RANGE) {
-                self.player.mental_health -= perks.doomscrolling as f32 * DT;
+                let drain = DOOMSCROLL_DRAIN * perks.doomscrolling as f32 * DT;
+                self.player.mental_health -= drain;
+                self.tally.damage_taken += drain;
             }
         }
     }

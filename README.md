@@ -1,38 +1,46 @@
 # AI Slop Arena
 
-A roguelike bullet heaven about one ordinary human against twenty waves of AI slop that
-trains on how you play. You move; your weapons fire on their own. Mental Health is your HP.
+A survivor-like about one ordinary human against an endless feed of AI slop that trains on
+how you play. You move; your weapons fire on their own. Mental Health is your HP.
 
-The design and the implementation plan live in the
-[design document](https://claude.ai/artifact/HArLkFquUixzNAmQXpZDuZ).
+Version 3 turned the 20-wave game with a shop into one endless run: see the
+[version 3 design](docs/design-v3.md). The original design document is
+[here](https://claude.ai/artifact/HArLkFquUixzNAmQXpZDuZ).
 
-![A wave in progress](docs/img/wave.png)
+![The Feed at 27 minutes](docs/img/feed.png)
 
-![The shop: offers, your build, details of the highlighted card, and your stats](docs/img/shop.png)
+![A merge: Eye-Roll and Uno Reverse became Infinite Uno](docs/img/merge.png)
 
 ## The game
 
-- **20 waves, about 40 minutes.** A briefing before wave 1 shows your platform, its slop and
-  both bosses. After every wave you level up (about once a wave) and shop; bought offers leave
-  the shop, and a details panel explains whatever is highlighted. Waves 10 and 20 are boss
-  waves. One Burnout ends the run.
-- **Five heroes** with their own starting weapon, item and quirk: Boomer, Zoomer, Teacher,
-  Programmer, Artist. Everything is unlocked; there is no meta progression.
-- **22 weapons** in four damage types: Analog, Fact, Sarcasm and Grass. Buying a weapon you
-  own upgrades it, up to tier IV; you have six slots. You carry them around you: they aim,
-  kick, swing and throw, and each has its own effect.
-- **32 items**: healthy habits, risky habits with drawbacks, side hustles that pay Clout, and
-  actives that fire on their own.
-- **The slop:** parody chatbots (ChadGPT, Clawed, Yes-Bot, Hallucinator, Listicle Drones),
-  platform slop, and generated brainrot built from a body, an object and an accessory, with a
-  fake-Italian name.
-- **Six platforms**, one per run, each with its own floor, slop, hazard and wave-10 boss:
-  FaceSlop, LinkedOut, MeTube, Thredd, InstaSlop, ClockTok. Wave 20 is always The Model.
-- **Training runs.** After every wave the slop resists the damage types you kill with, and
-  the brainrot that hurt you breeds. Resistances are zero-sum, so countering you always opens
-  a weakness. A varied build makes The Model collapse.
-- **Every weapon, item and stat has an icon and a tooltip**; a stat's tooltip works out what
-  it does for you right now. Pause shows your whole build.
+- **One endless run on an endless map.** You scroll through the Feed: all six parody
+  platforms in a shuffled order (FaceSlop, LinkedOut, MeTube, Thredd, InstaSlop,
+  ClockTok), each with its floor, hazard and local slop. About 4:30 into a platform its
+  boss arrives; delete it and the Feed moves on. After the sixth boss comes The Model.
+  After The Model the Feed keeps going, and so does the slop, until you burn out.
+- **Level up, pick one of three.** Likes are experience. Every choice on offer is valid:
+  new weapons (six slots), weapon levels 1 to 8, items with levels (six slots), stat-ups.
+- **Merges.** Two weapons that belong together, both at level 8, merge into one stronger
+  weapon when you open a chest: Rock + Slingshot = Meteor Shower, Eye-Roll + Uno Reverse =
+  Infinite Uno, Frisbee + Dog Walk = Dog Park, and ten more. The merge frees a slot.
+- **29 weapons and 13 merged ones** in four damage types that each do something: Analog
+  staggers, Fact cuts through shields, Sarcasm confuses, Grass roots. Carry two of a type
+  for a set bonus, four for a stronger effect.
+- **Elites** with affixes (Verified, Viral, Sponsored, Trending, Toxic) drop chests.
+- **The map:**
+  - walls and maintenance fences
+  - downvote zones in every shape
+  - ads and crypto miners to smash
+  - Wi-Fi hotspots that heal
+  - vending and gacha machines that want your Clout
+  - shrines with blessings
+  - data centers to hold while they upload
+  - comment sections full of elites
+- **Pickups:** Touch Grass (heal), Algorithm Boost (magnet), Mass Report (clear the
+  screen), Server Outage (freeze), Clout, chests.
+- **The slop learns.** Every two minutes it retrains on what killed it (zero-sum
+  resistances) and the brainrot that hurt you breeds: ten bodies, ten objects, ten
+  accessories, each with an ability and a fake-Italian name.
 - Every sprite, icon and sound is generated in code; the game ships no asset files.
 
 ## Play
@@ -41,22 +49,20 @@ The design and the implementation plan live in the
 cargo run --release -p slop_game
 ```
 
-| Key | Action |
-| --- | --- |
-| WASD or arrows | Move; on screens, move the highlight |
-| Enter or E | Press the highlighted button or card (buy, pick, sell twice) |
-| Space | Continue: play, start the wave; on level-ups, pick the highlighted card |
-| P or Esc | Pause: your weapons, items and stats with tooltips |
-| 1-8 | Pick a hero, a level-up, or buy a shop offer |
-| R | Reroll the shop |
-| L or X | Lock the highlighted offer, or sell the highlighted weapon (twice) |
-| Q | Quit (from menus, the end screen or pause) |
-| Esc | On the briefing: back to the heroes |
-| Alt+Enter or F11 | Switch between fullscreen and a window |
-| F12 | Save a screenshot to `Pictures\AI Slop Arena` |
+| Keyboard | Gamepad (Xbox) | Action |
+| --- | --- | --- |
+| WASD or arrows | Left stick or d-pad | Move; on screens, move the highlight |
+| Enter or E | A | Press the highlighted card or button |
+| Space | A, Start | Continue |
+| P or Esc | Start | Pause: your build, blessings and stats |
+| Esc | B | Back; walk away from a machine |
+| R | Y | Reroll a level-up (one free, then Clout) |
+| 1-4 | | Pick a level-up card |
+| Alt+Enter or F11 | | Fullscreen or a window |
+| F12 | | Screenshot to `Pictures\AI Slop Arena` |
 
-Everything also works with the mouse: hover shows tooltips, right-click locks or sells. The game starts fullscreen; as a window it can be resized and scales with it.
-`--windowed` starts in a window, `--size 1280x1024` sets its size.
+Stand in a machine's ring to use it; walk into ads and miners to break them. Everything
+also works with the mouse. The game starts fullscreen.
 
 ## Tools
 
@@ -64,30 +70,32 @@ Everything also works with the mouse: hover shows tooltips, right-click locks or
 cargo run --release -p slop_game -- --autoplay --screenshots shots --exit-on-end
 cargo run --release -p slop_lab -- bench
 cargo run --release -p slop_lab -- determinism
-cargo run --release -p slop_lab -- balance 60
-cargo run --release -p slop_lab -- economy 30
+cargo run --release -p slop_lab -- balance 16 40
+cargo run --release -p slop_lab -- progress 6
 sh tools/check.sh
 ```
 
-- `--autoplay` lets the bots play a whole run and saves a screenshot of every kind of
-  screen; `--seed N` picks the run and `--speed N` the fast-forward.
-- `slop_lab balance` plays whole runs with a heuristic and a random bot and prints win
-  rates by hero, platform and boss.
-- `slop_lab economy` prints, per wave, the Clout the heuristic bot earns and holds, its
-  levels, and how much it buys.
+- `--autoplay` lets the bots play the Feed and saves a screenshot of every kind of screen;
+  `--seed N` picks the run, `--speed N` the fast-forward, `--windowed` and `--size WxH`
+  the window.
+- `slop_lab balance` plays whole runs with a heuristic and a random bot and prints minutes
+  survived, bosses beaten and the weapons they ended with.
+- `slop_lab progress` prints level, kills, slop on the field, health and Clout minute by
+  minute.
 - `tools/check.sh` runs clippy and every test, and regenerates the traceability table.
 
 ## Layout
 
 | Crate | What it is |
 | --- | --- |
-| `slop_sim` | The deterministic wave simulation. No engine code. |
-| `slop_rules` | The run: waves, shop, items, heroes, levels and training. |
+| `slop_sim` | The deterministic simulation and the endless map. No engine code. |
+| `slop_rules` | The run: the director, level-ups, chests and merges, items, machines, heroes and training. |
 | `slop_lab` | Headless tools: benchmark, determinism check, balance runs. |
-| `slop_game` | The Bevy client: rendering, input, HUD, screens, generated art and sound. |
+| `slop_game` | The Bevy client: rendering, input (keyboard and gamepad), HUD, screens, generated art and sound. |
 
 ## Docs
 
+- [Version 3 design](docs/design-v3.md)
 - [Requirements](docs/requirements.md)
 - [Architecture](docs/architecture.md)
 - [Verification](docs/verification.md)

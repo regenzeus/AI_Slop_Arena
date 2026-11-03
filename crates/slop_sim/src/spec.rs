@@ -169,7 +169,7 @@ impl SlopSpec {
         let mut traits = Traits::BRAINROT;
         let mut role = Role::Swarmer;
         let movement = match body {
-            Body::Frog => Movement::Hop,
+            Body::Frog | Body::Goose => Movement::Hop,
             _ => Movement::Rush,
         };
         match body {
@@ -181,6 +181,12 @@ impl SlopSpec {
             }
             Body::Cat => traits |= Traits::DODGE_FIRST,
             Body::Shrimp => contact *= 0.7,
+            Body::Capybara => {
+                role = Role::Tank;
+                traits |= Traits::NO_KNOCKBACK;
+            }
+            Body::Octopus => traits |= Traits::LONG_REACH,
+            Body::Goose => contact *= 1.2,
             _ => {}
         }
         let mut attack = None;
@@ -203,6 +209,18 @@ impl SlopSpec {
                 speed *= 0.8;
                 radius *= 1.1;
             }
+            Object::Smartphone => {
+                attack = Some(Attack::Fan);
+                role = Role::Shooter;
+            }
+            Object::Megaphone => {
+                attack = Some(Attack::Wall);
+                role = Role::Shooter;
+            }
+            Object::Dumbbell => {
+                hp *= 1.6;
+                contact *= 1.3;
+            }
         }
         let mut resist = resist;
         match accessory {
@@ -217,6 +235,9 @@ impl SlopSpec {
             Accessory::Headphones => traits |= Traits::NO_KNOCKBACK,
             Accessory::GoldChain => traits |= Traits::DOUBLE_LIKES,
             Accessory::PartyHat => traits |= Traits::EXPLODE,
+            Accessory::Halo => traits |= Traits::RESPAWN,
+            Accessory::ClownNose => traits |= Traits::SPLIT,
+            Accessory::Lanyard => traits |= Traits::VERIFIED,
         }
         SlopSpec {
             name,

@@ -1,64 +1,83 @@
-# Requirements: version 1
+# Requirements: version 3, "The Feed"
 
 Each requirement has an ID that tests reference with `// REQ: ID`. "Verified by" says how it
 is checked: **T** an automated test, **L** a lab measurement, **D** a demonstration in the
-client (autoplay screenshots or play), **I** inspection of the code.
+client (autoplay screenshots or play), **I** inspection of the code. The design behind
+version 3 is in [design-v3.md](design-v3.md).
 
 ## Simulation
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| SIM-01 | The arena is deterministic: the same seed and the same input every tick give the same wave and the same run, bit for bit. | T, L |
-| SIM-02 | You stay inside the square arena. | T |
-| SIM-03 | Movement eases in and out, and diagonal movement is not faster. | T |
-| SIM-04 | A crowded arena (400 slop, 300 bubbles, six tier IV weapons firing fast) steps in under 2 ms. | L |
+| SIM-01 | The Feed is deterministic: the same seed and the same input every tick give the same run, bit for bit. | T, L |
+| SIM-02 | There is no edge to the map. | T |
+| SIM-03 | Movement eases in quickly, and diagonal movement is not faster. | T |
+| SIM-04 | A crowded Feed (400 slop, 300 bubbles, six max-level weapons firing fast) steps in under 2 ms. | L |
+
+## The map
+
+| ID | Requirement | Verified by |
+| --- | --- | --- |
+| MAP-01 | The map is endless and generated in chunks from the run's seed alone, in any order; slop left far behind is moved back in front of you, and Likes are never lost. | T |
+| MAP-02 | Walls (server racks, billboards, desks) and closed fences stop you, the slop and shots; lobbed shots fly over. | T |
+| MAP-03 | Props: ads and miners break when you walk into them and drop loot; Wi-Fi heals while you stand in it; vending machines sell an item for Clout; gacha machines give a random upgrade for Clout, dearer each pull; shrines offer one of three blessings; data centers upload while you stand inside and draw slop in, then pay a chest; comment sections release elites and pay a chest when they are deleted. | T, D |
+| MAP-04 | About every 50 s a block of the map closes for maintenance after a warning, never on top of you, and opens again later. | T, D |
+| ZONE-02 | Zones come in shapes: circles, rectangles and rings. Downvotes on Thredd use all three. | T, D |
 
 ## You
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
 | STAT-01 | Ten stats exist. Composure multiplies damage taken by 15 / (15 + Composure); Scepticism dodges at most 60% of hits. | T |
-| STATUS-01 | The slop can give you Anxiety (damage over time), Doomscroll (dragged forward), Pop-up, Ratio'd (-20% damage) and Brainrot (reversed controls after a warning). Items and heroes can prevent them. | T |
+| STATUS-01 | The slop can give you Anxiety, Doomscroll, Pop-up, Ratio'd and Brainrot. Items and heroes can prevent them. | T |
 | ACT-01 | Actives fire on their own when their trigger is met: Log Off, Block Button, Digital Detox, Unsubscribe, Phone a Friend. | T |
 | HERO-01 | Five heroes, all unlocked, each with a starting weapon, a starting item, stat changes and a quirk. | T |
 
-## Weapons
+## Weapons and damage
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| WPN-01 | All 22 weapons of the design attack on their own and damage slop; at least four of each damage type. | T |
+| WPN-01 | Every weapon attacks on its own and damages slop; at least four of each damage type. | T |
 | WPN-02 | Melee swings hit only slop in front. | T |
 | WPN-03 | The Eye-Roll bounces and Air Quotes chain between slop. | T |
-| WPN-04 | Damage is the weapon's damage times its tier, Conviction, type bonuses, the slop's resistance and marks. | T |
+| WPN-04 | Damage is the weapon's damage times its level, Conviction, type bonuses, the slop's resistance and marks. | T |
 | WPN-05 | Bricks splash where they land; the Ban Hammer deletes small slop outright. | T |
 | WPN-06 | The Fact-Check Flashlight strips beauty filters. | T |
 | WPN-07 | The Frisbee comes back; the Uno Reverse Card turns bubbles around at the slop. | T |
 | WPN-08 | Seed Bombs heal you inside their patch; the Dog Walk's dog circles you. | T |
-| WPN-09 | Your weapons are drawn around you: they aim at what they attack, guns kick back, melee weapons sweep through their arc, thrown ones lunge, and every weapon has its own attack effect (muzzle flash, spray, flying keys, zigzag quotes, falling hammer, brick debris, trails). | D |
+| WPN-09 | Weapons are drawn around you and aim, kick, swing and throw, each with its own effect. | D |
+| WPN-10 | Weapons have levels 1 to 8: more damage every level, an extra projectile at 3 and 8, more area at 5, faster at 7. | T |
+| WPN-11 | 29 base weapons, including the Rubber Duck, Office Memo, Sticky Notes, Side-Eye, Ratio, Sunflower Patch and Leaf Blower. | T |
+| WPN-12 | 13 merges: two weapons that belong together, both at level 8, become one merged weapon when you open a chest; the merge frees a slot. Merged weapons are never offered on a level-up. | T, D |
+| DMG-01 | Four damage types: Analog, Fact, Sarcasm, Grass; the slop resists them as it learns. | T |
+| DMG-02 | Each damage type does something besides damage: Analog staggers and knocks back harder, Fact cuts through filters, shields and Verified, Sarcasm can confuse (the slop turns around and stops attacking), Grass roots. | T |
+| DMG-03 | Set bonuses: two weapons of a type give +10% damage of that type; four make its effect stronger. | T |
 
 ## Slop
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| SLOP-01 | Every enemy is a character: five parody chatbots (ChadGPT, Clawed, Yes-Bot, Hallucinator, Listicle Drones) and platform slop. ChadGPT fires fans of three bubbles; only the middle one talks. | T, D |
-| SLOP-02 | Six-Finger Hands grab you, slow you by 20% each and hurt you while holding on. | T |
+| SLOP-01 | Every enemy is a character: five parody chatbots and platform slop. ChadGPT fires fans of three bubbles; only the middle one talks. | T, D |
+| SLOP-02 | Six-Finger Hands grab you, slow you and hurt you while holding on. | T |
 | SLOP-03 | Listicle Drones come in numbered packs; killing number 1 first scatters the pack. | T |
 | SLOP-04 | Yes-Bots buff nearby slop; Grandma's Cake heals it. | T |
-| SLOP-05 | Traits work: Recruiter Bots split, Repost Bots come back once, cats dodge their first hit, party hats explode, beauty filters block frontal damage. | T |
-| SLOP-06 | Elites ("Trending") are bigger and tougher and drop a Loot Box that opens free in the next shop. | T |
-| BRAIN-01 | Brainrot is built from a body, an object and an accessory; each part sets its look and one ability. | T |
+| SLOP-05 | Traits work: splitting, reposting, dodging, exploding, beauty filters. | T |
+| SLOP-06 | Elites are bigger and tougher and drop a chest. | T |
+| ELITE-01 | An elite arrives about every 50 s with an affix: Verified, Viral, Sponsored, Trending or Toxic; its name and label say which. | T, D |
+| BRAIN-01 | Brainrot is built from a body, an object and an accessory (ten of each); each part sets its look and one ability. | T |
 | BRAIN-02 | Every brainrot gets a fake-Italian name from its parts and shouts it when it appears. | T, D |
 | BRAIN-03 | Brainrot is drawn from its three parts, so evolution changes what you see. | D |
 | BUB-01 | Your projectiles pop speech bubbles they pass through. | T |
-| LIKE-01 | Dead slop drops Clout coins; coins within Curiosity fly to you. Hallucinator fakes explode into Anxiety. | T |
+| LIKE-01 | Dead slop drops Likes (experience); Likes within Curiosity fly to you. Hallucinator fakes explode into Anxiety. | T |
+| LOOT-01 | Pickups: Touch Grass heals, Algorithm Boost pulls in every Like, Mass Report deletes the slop on screen, Server Outage freezes the slop, Clout coins pay for machines, chests open upgrades or a merge. | T |
 
 ## Bosses and platforms
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| BOSS-01 | Seven bosses each fight with their own puzzle and can be beaten: Crustacean Saviour, Hustle Guru, Content Farm, Repost Hydra, The Influencer Who Doesn't Exist, The Supreme Brainrot, The Model. | T |
-| BOSS-07 | The Model regenerates once unless your kills were spread evenly over damage types (Model Collapse). | T |
-| PLAT-01 | Each run takes place on one of six parody platforms, which sets the floor, the local slop and the wave-10 boss. | T, D |
+| BOSS-01 | Seven bosses each fight with their own puzzle and can be beaten; each drops a chest. | T |
+| BOSS-07 | The Model regenerates once unless your kills were spread evenly over damage types (Model Collapse); it copies your most-used weapons. | T |
+| PLAT-01 | The Feed visits all six parody platforms in a shuffled order; each sets the floor, the local slop and its boss. | T, D |
 | PLAT-02 | Every platform has its hazard: chain letters, Open-to-Work banners, mid-roll ads, downvote zones, filter zones, the beat. | T |
 
 ## Fairness
@@ -66,7 +85,7 @@ client (autoplay screenshots or play), **I** inspection of the code.
 | ID | Requirement | Verified by |
 | --- | --- | --- |
 | FAIR-01 | Slop only shoots when it is near you, roughly on screen. | T |
-| FAIR-02 | Spawns, em-dashes and bombs are telegraphed before they happen. | T, D |
+| FAIR-02 | Spawns, em-dashes, bombs and maintenance fences are telegraphed before they happen. | T, D |
 | FAIR-03 | After a hit you are invulnerable for half a second, and your sprite blinks. | T, D |
 | FAIR-04 | Everything that hurts you is outlined in hot pink, and nothing else uses that colour. | I, D |
 
@@ -74,54 +93,51 @@ client (autoplay screenshots or play), **I** inspection of the code.
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| RUN-01 | A run is 20 waves. After every wave: level-ups, then the shop; the first shop comes after wave 1. | T |
-| RUN-02 | Your hero, items and level-ups make up the loadout you take into a wave. | T |
-| RUN-03 | Clearing a wave pays its Likes, a Creator Fund payout (8 + 2 per wave), interest and side-hustle income; Likes and the payout are also XP. Burnout ends the run. | T |
-| WAVE-01 | A timed wave is cleared when its time runs out and credits half of the coins left on the floor. | T |
-| WAVE-02 | Spawns ramp up within a wave; elites appear from wave 6. | T |
-| WAVE-03 | Waves get longer and harder; waves 10 and 20 are boss waves that end when the boss dies. | T |
+| RUN-01 | A run is one endless trip through the Feed on one world: no waves, no shop. It ends only in Burnout. | T |
+| RUN-02 | Your hero, weapons, items, level-ups and blessings reach the world as soon as you pick them. | T |
+| RUN-10 | Difficulty is a function of time: slop HP, damage and the spawn rate keep climbing; early slop is fragile and comes in crowds. | T |
+| RUN-11 | About 4:30 into each platform its boss arrives; deleting it moves the Feed to the next platform. After the sixth comes The Model; after it, the Feed goes on. | T |
+| WAVE-02 | Spawns follow the director's rate; elites appear at random too. | T |
 | WAVE-04 | Platform house rules shape the spawn table (support, shooters, tanks, reposts, all brainrot). | T |
-| WAVE-05 | Wave 10 brings the platform's boss and wave 20 The Model, which copies your most-used weapons. | T |
-| LEVEL-01 | Each level offers four different stat upgrades; Luck makes better ones likelier. | T |
-| LEVEL-02 | XP per level is tuned so a wave is worth about one level: the heuristic lab bot is at level 18 to 24 after wave 19. | L |
-| ITEM-01 | More than thirty items in four kinds (healthy habits, risky habits, side hustles, actives); risky items carry a drawback. | T |
-| SHOP-01 | The shop has five offers, at least one in a damage type you use. Buying a weapon you own upgrades it; six weapon slots; selling refunds half. | T |
-| SHOP-02 | Offer tiers get better with waves and Luck. | T |
-| SHOP-03 | Prices rise 4% per wave. A reroll costs 2 + wave / 4 and gets dearer within a shop. | T |
-| SHOP-04 | Locked offers survive rerolls and carry into the next shop. | T |
-| SHOP-05 | The economy lets you buy: the heuristic lab bot buys one to two things per shop in waves 1 to 3 and three or more from wave 5. | L |
-| EVO-01 | After every wave the base model's resistances move towards your kill share, zero-sum and capped. | T |
+| LEVEL-01 | Likes are experience; the first levels take seconds, later ones about a minute. | T |
+| LEVEL-02 | A level-up offers three different choices (more with the right items); every one is valid: no new weapons with six weapons, no level for a weapon at level 8, no new items with six items, no level for a maxed item. If nothing is left, Touch Grass and Brand Deal fill in. One free reroll per level-up, then rerolls cost Clout. | T |
+| CHEST-01 | A chest merges two ready weapons; otherwise it gives one to three upgrades (three from a boss), and Clout. | T |
+| ITEM-01 | More than thirty items in four kinds; items have levels (up to five, or one for on-off effects); you carry six. | T |
+| ITEM-02 | Side hustles pay Clout every minute; so does the Creator Fund. | T |
+| EVO-01 | Every two minutes the base model's resistances move towards your kill share, zero-sum and capped. | T |
 | EVO-02 | Brainrot that hurt you and lived long breeds; children mutate their numbers and sometimes a part. | T |
-| EVO-03 | After each wave the slop says what it learned in patch-note lines; the shop shows them in the tooltip of each slop resistance, not as a screen or panel of their own. | T, D |
+| EVO-03 | After each retraining the slop says what it learned in a one-line toast; the resistance tooltips quote it. Nothing stops the game for it. | T, D |
 | EVO-04 | Model Collapse measures how evenly your kills spread over the four damage types. | T |
-| BAL-01 | Hard but manageable: the heuristic lab bot wins 20% to 40% of runs. | L |
-| BAL-02 | Random play rarely wins: the random lab bot wins under 10% of runs. | L |
+| BAL-01 | Hard but manageable: the heuristic lab bot's median run lasts 15 to 30 minutes, and it beats The Model in 10% to 40% of runs. | L |
+| BAL-02 | Random play dies early: the random lab bot's median run is under 10 minutes. | L |
 
 ## Client
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| UI-01 | The client runs waves at 60 ticks per second from keyboard input; P pauses. | D |
-| UI-02 | A camera follows you without looking ahead, so turning around does not swing the view, and never shows much beyond the walls. Floors are dark so characters and danger stand out. | D |
+| UI-01 | The client runs the Feed at 60 ticks per second; P, Esc or Start pauses. | D |
+| UI-02 | The camera stays on you; floors are dark so characters and danger stand out. | D |
 | UI-03 | Slop show a health bar for three seconds after being hit. | D |
 | UI-04 | Damage numbers appear in the colour of their damage type. | D |
-| UI-05 | The HUD shows Mental Health (a brain) with statuses, the wave timer or the boss's health, Clout (a coin with a thumbs-up, never a heart) and level, with level-ups earned so far in the wave. Weapons and items are not shown during a wave; pause shows them. | D |
-| UI-06 | Autoplay plays a whole run with the bots and screenshots every kind of screen. | D |
-| UI-07 | Resizing the window scales the arena view and the HUD. | D |
-| UI-08 | Title and hero select; every choice works by mouse and by keyboard. | T, D |
-| UI-09 | Level-up screen with four cards, each with the stat's icon and its value before and after. | D |
-| UI-10 | Once per run, before wave 1, a briefing shows the platform, every slop with what it does, both bosses and how the slop learns, without overlap at any window size. Esc goes back to the heroes. | D |
-| UI-11 | Full-screen shop: offer cards with icons, tier frames and upgrade ribbons, lock, reroll, your weapons and items, a details panel for whatever is highlighted, and the stats down the whole right side. Bought offers leave the row; number keys and focus follow the cards still shown. | T, D |
-| UI-12 | End screen for victory or Burnout with the run's summary. | D |
-| UI-13 | Pause shows your whole build: weapons, items and stats. Every stat, item, weapon and resistance has a tooltip; a stat's tooltip explains its mechanics with your current numbers. | T, D |
-| UI-14 | Every screen works by keyboard alone: arrows or WASD move the focus to the nearest element in that direction, Enter presses it, Space continues, L or X locks or sells; the mouse focuses what it hovers. | T, D |
-| UI-15 | Behind the title and hero screens the bots play a mid-run wave, silently. | D |
-| UI-16 | The game starts fullscreen; Alt+Enter or F11 switches between fullscreen and a window; F12 saves a screenshot to Pictures\AI Slop Arena. | D |
+| UI-05 | The HUD shows Mental Health with statuses, the run clock and platform, a countdown to the boss (then its health), Clout, level and kills, experience as a bar along the top edge, and news toasts. | D |
+| UI-06 | Autoplay plays a run with the bots and screenshots every kind of screen. | D |
+| UI-07 | Resizing the window scales the view and the HUD. | D |
+| UI-08 | Title and hero select; every choice works by mouse, keyboard and gamepad. | T, D |
+| UI-09 | Level-ups pause the Feed and show wide cards: icon, NEW or the level change, what it does, and a merge hint; your build is shown below. | D |
+| UI-11 | Chests, merges, vending machines and shrines each have their own overlay. | D |
+| UI-12 | End screen with time survived, level, kills, bosses, kills by damage type and your best weapons. | D |
+| UI-13 | Pause shows your whole build with levels, blessings and stats; details of what is highlighted appear in a fixed panel. | T, D |
+| UI-14 | Every screen works by arrows/WASD or stick/d-pad to move the focus, Enter or A to press, Space or Start to continue. | T, D |
+| UI-15 | Behind the title and hero screens the bots play the Feed, silently. | D |
+| UI-16 | The game starts fullscreen; Alt+Enter or F11 switches to a window and back; F12 saves a screenshot to Pictures\AI Slop Arena. | D |
+| UI-17 | Gamepads (such as the Xbox 360 controller) work everywhere: left stick or d-pad to move and choose, A to confirm, B to go back, X for the other action, Y to reroll, Start to pause. Hint bars name the gamepad's buttons when it was used last. | D |
 | ART-01 | Every sprite is drawn in code with outlines and anti-aliased edges; characters flash white when hit. | T, D |
 | ART-02 | Every character, brainrot part and boss has its own picture. | T, D |
 | ART-03 | Each platform has its own floor. | D |
-| ART-04 | Every weapon, item, stat and damage type has its own icon, drawn in code. | T, D |
-| ART-05 | Each hero has their own look, in the menus and in the arena. | D |
+| ART-04 | Every weapon, item, stat and damage type has its own icon; merged weapons show their two parents on a gold burst. | T, D |
+| ART-05 | Each hero has their own look. | D |
+| ART-06 | The Feed has pictures for every pickup, prop, wall and blessing, and faint scraps of feed (posts, thumbnails, comments, hearts, hashtags) tinted per platform, scattered differently in every chunk. | T, D |
 | FEEL-01 | Hits, deaths, pops, swings, beams, chains, splashes and statuses have visible effects and screen shake, capped so crowds stay readable. Kill streaks and level-ups are announced. | D |
-| FEEL-03 | The slop talks in character: ChadGPT in assistant clichés, Clawed while it aims, Yes-Bots agreeing, Thought Leaders posting; deleted slop leaves varied removal notices. | T, D |
 | FEEL-02 | Placeholder sounds are synthesised in code and rate-limited. | T, D |
+| FEEL-03 | The slop talks in character; deleted slop leaves varied removal notices. | T, D |
+| FEEL-04 | Everything moving is drawn between simulation ticks, so motion is smooth on any refresh rate, and the camera has no lag. | D |

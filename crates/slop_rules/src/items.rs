@@ -208,7 +208,7 @@ pub const ITEMS: &[ItemDef] = &[
     item("Self-Help Book", Healthy, 1, &[Mod::Stat(MentalHealth, 10.0), Mod::Stat(SelfCare, 1.0)], "+10 Mental Health, +1 Self-Care", "Chapter one: stop reading self-help books."),
     item("Coffee", Risky, 1, &[Mod::Stat(Focus, 15.0), Mod::Coffee], "+15% Focus. An Anxiety stack every 20 s", "Third cup. Totally fine."),
     item("Energy Drink", Risky, 2, &[Mod::Stat(Speed, 20.0), Mod::Stat(Focus, 10.0), Mod::Stat(MentalHealth, -15.0)], "+20% Speed, +10% Focus, -15 Mental Health", "Tastes like a deadline."),
-    item("Doomscrolling", Risky, 2, &[Mod::LikeBonus(0.5), Mod::Doomscrolling], "+50% Likes. -1 Mental Health per second while slop is on screen", "Just one more."),
+    item("Doomscrolling", Risky, 2, &[Mod::LikeBonus(0.5), Mod::Doomscrolling], "+50% Likes. -0.5 Mental Health per second while slop is on screen", "Just one more."),
     item("Hot Take", Risky, 2, &[Mod::TypeBonus(DamageType::Sarcasm, 0.25), Mod::HotTake], "+25% Sarcasm damage. Hits on you are 10% harder", "Ratio incoming."),
     item("Dumbphone", Risky, 1, &[Mod::Stat(Scepticism, 15.0), Mod::Dumbphone, Mod::Stat(Curiosity, -40.0)], "+15% Scepticism, immune to Doomscroll. -40 Curiosity", "Snake still slaps."),
     item("Burner Account", Risky, 2, &[Mod::FreeReroll, Mod::FreeReroll, Mod::LearnFaster(0.25)], "Two more free rerolls on level-ups. The slop learns 25% faster", "Nobody will ever know."),
@@ -252,6 +252,15 @@ pub const BLESSINGS: &[ItemDef] = &[
     item("Blessing of Haste", Healthy, 3, &[Mod::Stat(Focus, 18.0), Mod::Stat(Speed, 8.0)], "+18% Focus, +8% Speed", "Speedrun any%."),
     item("Blessing of Thick Skin", Healthy, 3, &[Mod::Stat(MentalHealth, 60.0), Mod::Stat(Scepticism, 8.0)], "+60 Mental Health, +8% Scepticism", "Comments don't reach you."),
 ];
+
+/// The bad half of a risky item: it counts once, whatever the item's level.
+pub fn is_drawback(m: &Mod) -> bool {
+    match m {
+        Mod::Stat(_, v) => *v < 0.0,
+        Mod::Coffee | Mod::Doomscrolling | Mod::HotTake | Mod::ShopPriceUp(_) | Mod::LearnFaster(_) => true,
+        _ => false,
+    }
+}
 
 pub fn item_index(name: &str) -> Option<usize> {
     ITEMS.iter().position(|i| i.name == name)

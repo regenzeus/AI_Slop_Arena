@@ -1,4 +1,4 @@
-# Verification: version 2.1
+# Verification: version 3, "The Feed"
 
 Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 
@@ -7,99 +7,70 @@ Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 | Check | Result |
 | --- | --- |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clean |
-| `cargo test --workspace` | 69 passed, 0 failed (39 simulation, 23 rules, 7 client), 1 ignored (the icon sheet) |
-| `slop_lab determinism` | Six waves of a run, played twice by the bots: identical checksums over 15,300 ticks |
-| `slop_lab bench` | 400 slop, up to 360 projectiles, six tier IV weapons: 0.43 ms per tick (budget 2 ms) |
-| `slop_lab balance 100` | Heuristic bot wins 38% (target 20% to 40%); random bot wins 4% (target under 10%) |
-| `slop_lab economy 30` | About one level per wave; one to two purchases per shop in waves 1 to 3, three or more from wave 5 |
-| Autoplay (seeds 4 and 7) | Title with the demo behind it, hero select, briefing, waves, level-up, pause, shops and the end screen render as intended |
-| Autoplay at 1366x768, 1280x1024 and 2560x1080 | Briefing and shop lay out without overlap at each size |
-| Normal start on the 2560x1440 monitor | The window is borderless fullscreen, 2560 x 1440 |
+| `cargo test --workspace` | 78 passed, 0 failed (47 simulation, 24 rules, 7 client), 1 ignored (the icon sheet) |
+| `slop_lab determinism` | Six minutes of a run, played twice by the bots: identical checksums over 21,600 ticks |
+| `slop_lab bench` | 400 slop, up to 383 projectiles, six max-level weapons: 0.82 ms per tick (budget 2 ms) |
+| `slop_lab balance 16 40` | Heuristic bot: median 20.9 minutes, The Model beaten in 6 of 16 runs. Random bot: median 8.0 minutes |
+| Autoplay (seeds 4, 6 and 11) | Title with the demo behind it, hero select, the Feed from 0:30 to 27:00, level-up, chest, merge, pause and the end screen render as intended |
 
 Requirement-to-test mapping: [traceability.md](traceability.md).
 
-## What changed in version 2.1, and why
+## What changed from version 2, and why
 
-From the second playtest:
-
-| Feedback | Change |
-| --- | --- |
-| The briefing's cards overlap | The slop sit in fixed rows of four wide cards, each with what it does, so nothing wraps under the bosses; no tooltips there. |
-| Patch notes have no place in the shop | The patch-notes panel is gone. The briefing explains once that the slop learns; each resistance's tooltip quotes what the slop said about it. |
-| Tooltips cover the cards and stats | The shop shows details of the highlighted thing in a fixed panel where the patch notes were. |
-| Sold offers stay and confuse the arrow keys | Bought offers leave the row. Number keys count the cards still shown, and focus stays where it was. |
-| The game should start fullscreen | It starts borderless fullscreen; Alt+Enter or F11 switches to a window and back. |
-| No way to take screenshots | F12 saves one to `Pictures\AI Slop Arena`. |
-
-Also fixed: the autoplay pause screenshot showed the wave without the pause screen, because
-autoplay let go of the pause in the same frame it took the picture.
-
-## What changed from version 1, and why
-
-From the first playtest:
+From the third playtest ("the waves and the shop break the flow; make it a straight
+survivor-like"):
 
 | Feedback | Change |
 | --- | --- |
-| Patch notes after every wave make no sense | No patch-notes screen. A briefing before wave 1 explains how the slop learns; each wave's patch notes sit in the shop. |
-| The screen warps when you change direction | The camera no longer looks ahead of your movement; it follows you tightly. |
-| The background has more contrast when paused | Floors are dark-mode versions of each platform, so bright characters and pink danger stand out while you play. |
-| The game must work by keyboard; the shop looks bad | Every screen works by arrows/WASD, Enter and Space, with a focus ring and tooltips. The shop was rebuilt around icon cards, with the stats down the whole right side. |
-| Icons for everything | Every weapon, item, stat, damage type and level-up has an icon, drawn in code. |
-| Stronger economy, cheaper rerolls | A Creator Fund payout after every wave, cheaper items, and rerolls from 2 Clout. |
-| About one level per wave | Likes and the payout are XP, on a new curve. |
-| No items at the bottom during waves | The weapon bar is gone; pause shows your weapons, items and stats. |
-| Every stat needs a tooltip | Each stat's tooltip explains its mechanics with your current numbers. |
-| Weapons need animation | Weapons are drawn around you and aim, kick, swing and throw; each weapon has its own effect. |
-| Better chat lines | New lines for ChadGPT, Clawed (while it aims), Yes-Bots and Thought Leaders, and varied removal notices. |
+| Waves and the shop break the flow | One endless run on one world. A director retunes the spawns as minutes pass; each platform ends with its boss, and the Feed moves on. |
+| Pick one of three, and every choice must be valid | Level-ups offer three different valid choices: no new weapons with six, no level for a weapon at 8, no new items with six, no level for a maxed item. |
+| Elites, bosses, loot drops | Elites with five affixes drop chests; bosses drop big chests; slop and breakables drop food, magnets, Mass Reports, Server Outages and Clout. |
+| Weapon merging like Vampire Survivors | 13 merges: two weapons at level 8 become one when you open a chest. |
+| More weapons | 7 new base weapons (29 in all) and 13 merged ones. |
+| The weapon classes do nothing | Analog staggers, Fact cuts through shields and Verified, Sarcasm confuses, Grass roots; two and four weapons of a type give set bonuses. |
+| More hazards like the downvote zone, not just circles | Zones in circles, rectangles and rings; maintenance fences close blocks of the map for a while. |
+| A more diverse, endless map | The map is endless, made per chunk from the seed: walls (server racks, billboards, desks), feed scraps tinted per platform, props. |
+| Objects that do things (Death Must Die) | Wi-Fi hotspots, vending and gacha machines, shrines with blessings, data centers, comment sections, ads, crypto miners, lost phones. |
+| More brainrot | Three new bodies, objects and accessories (ten of each), each with an ability. |
+| Controller support (Xbox 360) | One input layer for keyboard and gamepads; hint bars switch to the gamepad's buttons. |
+| The controls feel a bit off | Movement is drawn between simulation ticks, the camera is locked on you with no lag, and movement reaches full speed faster. |
 
-Beyond the list: heroes look different, the bots play behind the title screen, kill streaks
-and level-ups are announced, projectiles leave trails, bricks fly in an arc, and there are
-sounds for buying, rerolling, levelling up and moving the focus.
+Found while balancing, with the new `slop_lab deaths` command:
 
-## Balance: 100 runs per bot
+- Item drawbacks stacked with item levels (Energy Drink at level 5 took 75 Mental Health).
+  A drawback now counts once, and maximum Mental Health never drops below 30.
+- Six-Finger Hands could hold on four at a time forever; now three at most, for 3 s each.
+- Doomscrolling drained health whenever slop was on screen, which in a horde is always;
+  it now drains half as much.
+
+## Balance: 16 runs per bot, stopped at 40 minutes
 
 | Measure | Heuristic bot | Random bot |
 | --- | --- | --- |
-| Runs won | 38% | 4% |
-| Most common wave of Burnout | 10 (the platform boss) | 10 |
-| Runs won by platform | MeTube 10/17, FaceSlop 8/20, LinkedOut 6/13, Thredd 6/17, InstaSlop 5/15, ClockTok 3/18 | 1 in 13 or fewer everywhere |
+| Minutes survived | median 20.9, mean 21.1 | median 8.0, mean 16.5 |
+| The Model beaten | 6 of 16 | 2 of 16 |
+| Mean minutes by hero | Zoomer 32.5, Boomer 22.7, Artist 17.3, Programmer 15.5, Teacher 13.8 | Boomer 38.8, Zoomer 16.3, Artist 16.9, Teacher 7.8, Programmer 3.1 |
 
-The richer economy made the bots much stronger (81% wins at version 1's difficulty), so slop
-HP now grows as 1 + 0.22w + 0.04w² (was 1 + 0.13w + 0.009w²) and slop damage as 1 + 0.11w
-(was 0.07w), where w is the wave minus one. The platform spread is narrower than in
-version 1; ClockTok is still the hardest.
-
-## Economy: 30 runs of the heuristic bot
-
-| Wave | Likes earned | Clout at the shop | Level after the wave | Things bought |
-| --- | --- | --- | --- | --- |
-| 1 | 14 | 25 | 1.0 | 1.0 |
-| 3 | 20 | 44 | 3.5 | 1.8 |
-| 5 | 70 | 104 | 6.4 | 3.6 |
-| 10 | 44 | 110 | 11.6 | 2.4 |
-| 15 | 217 | 354 | 17.2 | 4.6 |
-| 19 | 180 | 390 | 21.5 | 4.7 |
+Runs are swingy, as survivor-likes are: a build that comes together survives a long time.
+The bots never use the map's machines, so a person has more tools than they do.
 
 ## Demonstrated in the client
 
-From autoplay screenshots (`slop_game --autoplay --seed 7 --screenshots shots --exit-on-end`):
+From autoplay screenshots (`slop_game --autoplay --seed 6 --screenshots shots --exit-on-end`):
 
 | Requirement | What the screenshots show |
 | --- | --- |
-| UI-02, ART-03 | Dark platform floors; characters, coins and bubbles stand out. |
-| UI-05 | Mental Health, the wave bar, Clout and level with "+1 LEVEL UP"; no weapon bar. |
-| UI-10 | The briefing: platform, eight slop cards with what each does, both bosses, how the slop learns, at four window sizes. |
-| UI-09, ART-04 | Level-up cards with stat icons and values before and after, and the stats panel. |
-| UI-11 | The shop: icon cards with tiers, upgrade ribbons and prices; weapons with sell values; items; the details panel with the first offer; stats and resistances down the right side. |
-| UI-13 | Pause: weapons with damage dealt, items with counts, the stats panel. |
-| UI-15 | The title with the bots' demo wave behind it. |
-| WPN-09 | Weapons around you, keyboard rings, brick debris, trails. |
-| ART-05 | Each hero's own look on the title, hero cards and in the arena. |
+| RUN-01, UI-05, ART-06 | The Feed at 0:30, 2, 5, 9, 14, 20 and 27 minutes: the clock, the platform, the boss countdown, the experience bar, toasts, feed scraps, walls, props and pickups. |
+| RUN-11 | A boss with its health bar at 5:00; the next platform after it. |
+| UI-09, LEVEL-02 | Level-up cards with icons, NEW or the level change, and merge hints; the build below. |
+| UI-11, WPN-12 | A chest with its upgrades; a merge (Eye-Roll + Uno Reverse into Infinite Uno). |
+| UI-13 | Pause with the build, levels, the next merge in reach, and stats. |
+| UI-15 | The title with the bots' run behind it. |
 
 ## Not yet verified by a person
 
-- Fullscreen toggling, F12 screenshots and the new shop focus behaviour with real key presses.
-- How the new economy and difficulty feel over a whole run.
-- Keyboard navigation and tooltips in a real session (autoplay does not press keys).
-- Whether the weapon animations read well at full speed, and the new sounds.
-- The platform spread: ClockTok remains the hardest for the bots.
+- Everything in version 3 has only been played by the bots.
+- Gamepad support: built on Bevy's gamepad input, which handles Xbox controllers on
+  Windows; no controller was connected while testing.
+- Whether the machines on the map feel worth the detour, and how the merges feel.
+- Whether level-ups come too often early on.

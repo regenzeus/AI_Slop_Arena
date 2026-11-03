@@ -350,6 +350,43 @@ pub fn body(b: Body) -> Canvas {
             p.line(80.0, 56.0, 98.0, 46.0, 1.2, INK);
             p.dot(76.0, 56.0, 3.0, INK);
         }
+        Body::Capybara => {
+            let c = hex(0xA5754A);
+            for x in [30.0, 62.0] {
+                p.rect(x, 86.0, 6.0, 7.0, 3.0, c);
+            }
+            p.ellipse(46.0, 64.0, 36.0, 24.0, c);
+            p.rect(78.0, 52.0, 16.0, 14.0, 8.0, c);
+            p.dot(88.0, 50.0, 4.0, hex(0x5A3A22));
+            p.dot(74.0, 46.0, 2.5, INK);
+            p.circle(66.0, 38.0, 5.0, c);
+            // Unbothered: the eyes are half closed.
+            p.line(70.0, 46.0, 78.0, 46.0, 1.2, INK);
+        }
+        Body::Octopus => {
+            let c = hex(0xC26BD6);
+            for k in 0..5 {
+                let x = 26.0 + k as f32 * 12.0;
+                p.stick(x, 66.0, x + if k % 2 == 0 { -6.0 } else { 6.0 }, 92.0, 4.0, c);
+            }
+            p.ellipse(50.0, 50.0, 28.0, 26.0, c);
+            p.circle(62.0, 46.0, 7.0, WHITE);
+            p.dot(64.0, 46.0, 3.5, INK);
+            p.circle(44.0, 46.0, 6.0, WHITE);
+            p.dot(46.0, 46.0, 3.0, INK);
+        }
+        Body::Goose => {
+            let c = WHITE;
+            p.line(42.0, 82.0, 40.0, 94.0, 2.0, hex(0xF28C38));
+            p.line(54.0, 82.0, 56.0, 94.0, 2.0, hex(0xF28C38));
+            p.ellipse(44.0, 66.0, 30.0, 18.0, c);
+            p.stick(64.0, 60.0, 74.0, 30.0, 7.0, c);
+            p.circle(76.0, 28.0, 10.0, c);
+            p.tri((84.0, 24.0), (84.0, 34.0), (98.0, 29.0), hex(0xF28C38));
+            p.dot(78.0, 25.0, 2.5, INK);
+            // Honk.
+            p.line(90.0, 16.0, 96.0, 10.0, 1.2, alpha(INK, 0.6));
+        }
     }
     p.c
 }
@@ -402,6 +439,22 @@ pub fn object(o: Object) -> Canvas {
             p.tri((60.0, 34.0), (84.0, 34.0), (72.0, 4.0), hex(0xFF7A1A));
             p.line(66.0, 22.0, 78.0, 22.0, 2.0, WHITE);
         }
+        Object::Smartphone => {
+            p.rect(72.0, 24.0, 9.0, 16.0, 3.0, hex(0x3A3D4D));
+            p.rect(72.0, 23.0, 7.0, 12.0, 1.5, hex(0x8CC8F2));
+            p.dot(78.0, 10.0, 3.5, hex(RED));
+        }
+        Object::Megaphone => {
+            p.tri((60.0, 28.0), (84.0, 14.0), (84.0, 42.0), hex(0xF2C230));
+            p.rect(58.0, 28.0, 5.0, 6.0, 2.0, hex(0x3A3D4D));
+            p.line(90.0, 20.0, 96.0, 16.0, 1.2, INK);
+            p.line(90.0, 36.0, 96.0, 40.0, 1.2, INK);
+        }
+        Object::Dumbbell => {
+            p.stick(30.0, 30.0, 62.0, 30.0, 3.0, hex(0x8E8E9E));
+            p.rect(28.0, 30.0, 6.0, 11.0, 2.0, hex(0x3A3D4D));
+            p.rect(64.0, 30.0, 6.0, 11.0, 2.0, hex(0x3A3D4D));
+        }
     }
     p.c
 }
@@ -449,6 +502,19 @@ pub fn accessory(a: Accessory) -> Canvas {
             p.tri((62.0, 32.0), (82.0, 32.0), (72.0, 4.0), hex(0xB36BFF));
             p.line(66.0, 24.0, 78.0, 24.0, 1.8, hex(0xFFE066));
             p.dot(72.0, 4.0, 4.0, hex(0xFF5FA2));
+        }
+        Accessory::Halo => {
+            p.ring(72.0, 16.0, 11.0, 3.0, hex(GOLD));
+        }
+        Accessory::ClownNose => {
+            p.circle(88.0, 50.0, 6.0, hex(RED));
+            p.dot(86.0, 48.0, 1.5, alpha(WHITE, 0.8));
+        }
+        Accessory::Lanyard => {
+            p.line(60.0, 50.0, 56.0, 70.0, 1.5, hex(0x3D7BE0));
+            p.line(74.0, 54.0, 60.0, 72.0, 1.5, hex(0x3D7BE0));
+            p.rect(58.0, 76.0, 7.0, 6.0, 1.5, WHITE);
+            p.dot(58.0, 76.0, 2.5, hex(0x3D7BE0));
         }
     }
     p.c

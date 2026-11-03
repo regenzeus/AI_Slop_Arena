@@ -173,7 +173,7 @@ pub const WEAPONS: &[WeaponDef] = &[
     weapon("Pistol", Analog, Pattern::Shot { speed: 900.0, radius: 5.0, pierce: 0, look: Look::Bullet }, 6.0, 0.55, 520.0, 60.0, "The classic."),
     weapon("Stapler", Analog, Pattern::Burst { speed: 800.0, radius: 5.0, count: 3, spread: 0.16, look: Look::Staple }, 4.0, 0.9, 400.0, 30.0, "Attaches enemies to consequences."),
     weapon("Mechanical Keyboard", Analog, Pattern::Ring, 5.0, 0.6, 95.0, 140.0, "Blue switches. Everyone hears it."),
-    weapon("Red Pen", Fact, Pattern::Mark { speed: 700.0, radius: 7.0, pierce: 1, bonus: 0.2, seconds: 4.0 }, 5.0, 1.2, 480.0, 0.0, "[citation needed]"),
+    weapon("Red Pen", Fact, Pattern::Mark { speed: 700.0, radius: 7.0, pierce: 1, bonus: 0.2, seconds: 4.0 }, 8.0, 1.0, 480.0, 0.0, "[citation needed]"),
     weapon("Library Book", Fact, Pattern::Shot { speed: 480.0, radius: 12.0, pierce: 99, look: Look::Book }, 13.0, 1.7, 500.0, 140.0, "Due back Tuesday."),
     weapon("Newspaper Roll", Fact, Pattern::Arc { half_angle: 0.8 }, 12.0, 1.0, 125.0, 200.0, "Read a real one."),
     weapon("Fact-Check Flashlight", Fact, Pattern::Beam { width: 16.0 }, 8.0, 1.1, 520.0, 0.0, "Shines light on things."),
@@ -378,6 +378,9 @@ pub enum Body {
     Elephant,
     Cat,
     Shrimp,
+    Capybara,
+    Octopus,
+    Goose,
 }
 
 /// Brainrot objects set how it attacks.
@@ -390,6 +393,9 @@ pub enum Object {
     WashingMachine,
     Baguette,
     TrafficCone,
+    Smartphone,
+    Megaphone,
+    Dumbbell,
 }
 
 /// Brainrot accessories add one modifier.
@@ -402,18 +408,21 @@ pub enum Accessory {
     Headphones,
     GoldChain,
     PartyHat,
+    Halo,
+    ClownNose,
+    Lanyard,
 }
 
 impl Body {
-    pub const ALL: [Body; 7] = [Body::Shark, Body::Crocodile, Body::Frog, Body::Pigeon, Body::Elephant, Body::Cat, Body::Shrimp];
+    pub const ALL: [Body; 10] = [Body::Shark, Body::Crocodile, Body::Frog, Body::Pigeon, Body::Elephant, Body::Cat, Body::Shrimp, Body::Capybara, Body::Octopus, Body::Goose];
 
     pub fn name(self) -> &'static str {
-        ["Shark", "Crocodile", "Frog", "Pigeon", "Elephant", "Cat", "Shrimp"][self as usize]
+        ["Shark", "Crocodile", "Frog", "Pigeon", "Elephant", "Cat", "Shrimp", "Capybara", "Octopus", "Goose"][self as usize]
     }
 
     /// Italian-sounding stem for names.
     pub fn stem(self) -> &'static str {
-        ["Squal", "Coccodrill", "Ranocchi", "Piccion", "Elefant", "Gatt", "Gamber"][self as usize]
+        ["Squal", "Coccodrill", "Ranocchi", "Piccion", "Elefant", "Gatt", "Gamber", "Capibar", "Polp", "Ocarell"][self as usize]
     }
 
     /// Hit points, speed and radius of this body before genes.
@@ -426,33 +435,46 @@ impl Body {
             Body::Elephant => (80.0, 60.0, 27.0),
             Body::Cat => (22.0, 140.0, 16.0),
             Body::Shrimp => (9.0, 150.0, 12.0),
+            Body::Capybara => (60.0, 70.0, 24.0),
+            Body::Octopus => (26.0, 115.0, 18.0),
+            Body::Goose => (18.0, 160.0, 16.0),
         }
     }
 
     pub fn ability(self) -> &'static str {
-        ["Fast", "Hard bite", "Hops in bursts", "Flies over crowds", "Tank, slow", "Dodges the first hit", "Comes in swarms"][self as usize]
+        ["Fast", "Hard bite", "Hops in bursts", "Flies over crowds", "Tank, slow", "Dodges the first hit", "Comes in swarms", "Unbothered: no knockback", "Eight arms: long reach", "Charges in honking bursts"][self as usize]
     }
 }
 
 impl Object {
-    pub const ALL: [Object; 7] =
-        [Object::Airplane, Object::Toaster, Object::Espresso, Object::Cactus, Object::WashingMachine, Object::Baguette, Object::TrafficCone];
+    pub const ALL: [Object; 10] = [
+        Object::Airplane,
+        Object::Toaster,
+        Object::Espresso,
+        Object::Cactus,
+        Object::WashingMachine,
+        Object::Baguette,
+        Object::TrafficCone,
+        Object::Smartphone,
+        Object::Megaphone,
+        Object::Dumbbell,
+    ];
 
     pub fn name(self) -> &'static str {
-        ["Airplane", "Toaster", "Espresso Cup", "Cactus", "Washing Machine", "Baguette", "Traffic Cone"][self as usize]
+        ["Airplane", "Toaster", "Espresso Cup", "Cactus", "Washing Machine", "Baguette", "Traffic Cone", "Smartphone", "Megaphone", "Dumbbell"][self as usize]
     }
 
     pub fn stem(self) -> &'static str {
-        ["Aeroplan", "Tostapan", "Espress", "Cactu", "Lavatric", "Baguett", "Birill"][self as usize]
+        ["Aeroplan", "Tostapan", "Espress", "Cactu", "Lavatric", "Baguett", "Birill", "Telefonin", "Megafon", "Manubri"][self as usize]
     }
 
     pub fn ability(self) -> &'static str {
-        ["Drops bombs", "Shoots toast", "Speeds up nearby brainrot", "Hurts on contact", "Spinning aura", "Long reach", "Blocks your way"][self as usize]
+        ["Drops bombs", "Shoots toast", "Speeds up nearby brainrot", "Hurts on contact", "Spinning aura", "Long reach", "Blocks your way", "Fires notification bubbles", "Posts that shove you", "Gym bro: tough, hits hard"][self as usize]
     }
 }
 
 impl Accessory {
-    pub const ALL: [Accessory; 7] = [
+    pub const ALL: [Accessory; 10] = [
         Accessory::Sunglasses,
         Accessory::Sneakers,
         Accessory::Crown,
@@ -460,14 +482,17 @@ impl Accessory {
         Accessory::Headphones,
         Accessory::GoldChain,
         Accessory::PartyHat,
+        Accessory::Halo,
+        Accessory::ClownNose,
+        Accessory::Lanyard,
     ];
 
     pub fn name(self) -> &'static str {
-        ["Sunglasses", "Sneakers", "Crown", "Chef Hat", "Headphones", "Gold Chain", "Party Hat"][self as usize]
+        ["Sunglasses", "Sneakers", "Crown", "Chef Hat", "Headphones", "Gold Chain", "Party Hat", "Halo", "Clown Nose", "Lanyard"][self as usize]
     }
 
     pub fn ability(self) -> &'static str {
-        ["Extra resistance", "+30% speed", "+50% HP", "Heals when it hits you", "Ignores knockback", "Drops double Likes", "Explodes on death"][self as usize]
+        ["Extra resistance", "+30% speed", "+50% HP", "Heals when it hits you", "Ignores knockback", "Drops double Likes", "Explodes on death", "Comes back once", "Splits when hit", "Verified: half damage but Fact"][self as usize]
     }
 }
 
@@ -705,7 +730,7 @@ pub const DELETED_LINES: &[&str] = &[
 mod tests {
     use super::*;
 
-    // REQ: FEEL-03
+    // REQ: FEEL-03, WPN-11, WPN-12
     #[test]
     fn content_is_sane() {
         assert_eq!(WEAPONS.iter().filter(|w| !w.evolved).count(), 29);

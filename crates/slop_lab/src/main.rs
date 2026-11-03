@@ -5,6 +5,7 @@
 //! slop_lab determinism            replay a run twice and compare (SIM-01)
 //! slop_lab balance [runs] [min]   bots play whole runs; minutes survived, bosses (BAL-02)
 //! slop_lab progress [runs]        level, kills, slop and weapons minute by minute
+//! slop_lab deaths [runs]          what hurt the heuristic bot most in its last 20 seconds
 //! ```
 
 use std::collections::BTreeMap;
@@ -27,6 +28,7 @@ fn main() {
         Some("determinism") => determinism(),
         Some("balance") => balance(n(1, 30), n(2, 45) as f32),
         Some("progress") => progress(n(1, 8)),
+        Some("deaths") => deaths(n(1, 8)),
         _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes]|progress [runs]>"),
     }
 }
@@ -180,6 +182,48 @@ fn progress(runs: u64) {
             avg(&|r| r.2 as f32),
             avg(&|r| r.3) * 100.0,
             avg(&|r| r.4 as f32)
+        );
+    }
+}
+
+/// What dealt the damage in the last 20 seconds of each run that ended in Burnout.
+fn deaths(runs: u64) {
+    for seed in 1..=runs {
+        let hero = Hero::ALL[(seed % 5) as usize];
+        let mut run = Run::new(seed, hero);
+        let mut rng = slop_sim::rng::Rng::new(seed, 11);
+        // Damage per spec, sampled every second, so the last 20 s can be told apart.
+        let mut history: Vec<Vec<f32>> = Vec::new();
+        let mut next = 0.0;
+        while !run.is_over() && run.minutes() < 45.0 {
+            match run.phase {
+                Phase::Playing => {
+                    let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
+                    run.step(input);
+                    if run.seconds() >= next {
+                        next += 1.0;
+                        history.push(run.world.as_ref().unwrap().spec_tally.iter().map(|t| t.damage).collect());
+                    }
+                }
+                _ => {
+                    bot::decide(&mut run, Policy::Heuristic, &mut rng);
+                }
+            }
+        }
+        let w = run.world.as_ref().unwrap();
+        let now: Vec<f32> = w.spec_tally.iter().map(|t| t.damage).collect();
+        let then = history.get(history.len().saturating_sub(20)).cloned().unwrap_or_default();
+        let mut blame: Vec<(String, f32)> = now.iter().enumerate().map(|(i, d)| (w.setup.specs[i].name.clone(), d - then.get(i).copied().unwrap_or(0.0))).filter(|b| b.1 > 0.5).collect();
+        blame.sort_by(|a, b| b.1.total_cmp(&a.1));
+        let unowned = w.tally.damage_taken - w.spec_tally.iter().map(|t| t.damage).sum::<f32>();
+        println!(
+            "run {seed} ({}) {:.1} min on {}, boss out: {:?}, Mental Health {:.0}: {} | not from slop over the run: {unowned:.0}",
+            hero.def().name,
+            run.minutes(),
+            run.platform.name(),
+            run.boss_out,
+            w.player.stats.max_mental_health,
+            blame.iter().take(5).map(|(n, d)| format!("{n} {d:.0}")).collect::<Vec<_>>().join(", ")
         );
     }
 }

@@ -136,7 +136,7 @@ fn eye_rolls_bounce_and_air_quotes_chain() {
     }
 }
 
-// REQ: WPN-04
+// REQ: WPN-04, DMG-01
 #[test]
 fn marks_resistance_and_type_bonus_scale_damage() {
     let pistol = weapon("Pistol");
@@ -563,4 +563,128 @@ fn every_platform_has_its_hazard() {
         }
         assert!(seen, "{platform:?}");
     }
+}
+
+/// A tough chatbot `d` units to your right, and its index.
+fn dummy(w: &mut World, d: f32) -> usize {
+    let at = w.player.pos + V2::new(d, 0.0);
+    let id = w.spawn_archetype(Archetype::ChadGpt, at);
+    let j = w.slop.iter().position(|s| s.id == id).unwrap();
+    w.slop[j].hp = 1e6;
+    w.slop[j].max_hp = 1e6;
+    j
+}
+
+// REQ: DMG-02, DMG-03
+#[test]
+fn damage_types_do_something_besides_damage() {
+    let mut w = armed(&[]);
+    let j = dummy(&mut w, 300.0);
+    let at = w.slop[j].pos;
+    w.damage_slop(j, 1.0, DamageType::Grass, V2::ZERO, at, None);
+    let rooted = w.slop[j].rooted;
+    assert!(rooted > 0, "Grass roots");
+    w.damage_slop(j, 1.0, DamageType::Analog, V2::new(10.0, 0.0), at, None);
+    assert!(w.slop[j].staggered > 0, "Analog staggers");
+    let confused = (0..300).any(|_| {
+        w.damage_slop(j, 0.0, DamageType::Sarcasm, V2::ZERO, at, None);
+        w.slop[j].confused > 0
+    });
+    assert!(confused, "Sarcasm confuses now and then");
+    // Four Grass weapons root for longer.
+    w.slop[j].rooted = 0;
+    w.player.perks.type_count[DamageType::Grass as usize] = 4;
+    w.damage_slop(j, 1.0, DamageType::Grass, V2::ZERO, at, None);
+    assert!(w.slop[j].rooted > rooted, "the four-weapon set makes the effect stronger");
+}
+
+// REQ: DMG-02, ELITE-01
+#[test]
+fn fact_cuts_through_verified() {
+    let mut w = armed(&[]);
+    let mut spec = SlopSpec::archetype(Archetype::ChadGpt);
+    spec.traits.0 |= Traits::VERIFIED;
+    spec.hp = 1000.0;
+    let i = w.add_spec(spec);
+    let id = w.place(i, w.player.pos + V2::new(300.0, 0.0), 0, 1);
+    let j = w.slop.iter().position(|s| s.id == id).unwrap();
+    let at = w.slop[j].pos;
+    w.damage_slop(j, 100.0, DamageType::Analog, V2::ZERO, at, None);
+    assert!((w.slop[j].hp - 950.0).abs() < 0.1, "half damage from Analog");
+    w.damage_slop(j, 100.0, DamageType::Fact, V2::ZERO, at, None);
+    assert!((w.slop[j].hp - 850.0).abs() < 0.1, "full damage from Fact");
+}
+
+// REQ: LOOT-01
+#[test]
+fn pickups_heal_pull_freeze_report_and_pay() {
+    let mut w = armed(&[]);
+    let me = w.player.pos;
+    w.player.mental_health = 10.0;
+    w.drop_pickup(PickupKind::Food, me, 0);
+    run(&mut w, 2);
+    assert!(w.player.mental_health > 30.0, "Touch Grass heals");
+    w.likes.push(Like { id: 77, pos: me + V2::new(900.0, 0.0), value: 4, pulled: false, fake: false });
+    w.drop_pickup(PickupKind::Magnet, me, 0);
+    run(&mut w, 120);
+    assert_eq!(w.xp, 4, "the magnet pulled a far Like in");
+    w.drop_pickup(PickupKind::Freeze, me, 0);
+    run(&mut w, 2);
+    assert!(w.freeze > 0);
+    let j = dummy(&mut w, 300.0);
+    w.slop[j].hp = 50.0;
+    w.drop_pickup(PickupKind::Bomb, me, 0);
+    run(&mut w, 2);
+    assert!(w.slop.iter().all(|s| s.id != 0 && s.pos.distance(me) > 1000.0) || w.slop.is_empty(), "Mass Report deleted the slop on screen");
+    w.drop_pickup(PickupKind::Clout, me, 5);
+    w.drop_pickup(PickupKind::Chest, me, 2);
+    run(&mut w, 2);
+    assert_eq!(w.clout, 5);
+    assert_eq!(w.chests, vec![2]);
+}
+
+// REQ: MAP-04, FAIR-02
+#[test]
+fn maintenance_closes_a_block_after_a_warning_never_on_you() {
+    let mut setup = WaveSetup::sandbox();
+    setup.seconds = 0.0;
+    setup.platform = Some(Platform::MeTube);
+    let mut w = World::new(4, setup, &Loadout::with_weapons(&[]));
+    let mut warned = false;
+    for _ in 0..(60 * 30) {
+        w.step(Input { x: 0.6, y: 0.2 });
+        warned |= w.drain_events().iter().any(|e| matches!(e, Event::Maintenance { .. }));
+        for f in w.map.fences.iter().filter(|f| f.solid()) {
+            assert!(!f.contains(w.player.pos), "a closed fence never holds you inside");
+        }
+    }
+    assert!(warned, "a maintenance warning within half a minute");
+}
+
+// REQ: ZONE-02
+#[test]
+fn zones_have_shapes() {
+    let mut z = Zone::new(1, ZoneKind::Downvote, V2::ZERO, 100.0, 60);
+    assert!(z.contains(V2::new(90.0, 0.0), 0.0));
+    z.shape = Shape::Rect(V2::new(200.0, 20.0));
+    assert!(z.contains(V2::new(190.0, 0.0), 0.0) && !z.contains(V2::new(0.0, 40.0), 0.0));
+    z.shape = Shape::Ring(60.0);
+    assert!(z.contains(V2::new(80.0, 0.0), 0.0) && !z.contains(V2::new(20.0, 0.0), 0.0));
+}
+
+// REQ: WPN-10
+#[test]
+fn higher_levels_hit_harder_and_throw_more() {
+    let rock = weapon("Rock");
+    let shots = |level: u8| {
+        let mut w = World::new(3, WaveSetup::sandbox(), &Loadout { weapons: vec![(rock, level)], stats: Default::default(), perks: Default::default() });
+        dummy(&mut w, 200.0);
+        run(&mut w, 1);
+        (w.projectiles.len(), w.projectiles.first().map_or(0.0, |p| p.damage))
+    };
+    let (n1, d1) = shots(1);
+    let (n3, _) = shots(3);
+    let (n8, d8) = shots(8);
+    assert_eq!((n1, n3, n8), (1, 2, 3));
+    assert!(d8 > d1 * 3.0);
 }

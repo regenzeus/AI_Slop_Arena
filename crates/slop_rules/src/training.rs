@@ -95,9 +95,9 @@ pub fn brainrot_name(body: Body, object: Object, rng: &mut Rng) -> String {
 }
 
 fn random_genome(rng: &mut Rng) -> Genome {
-    let body = Body::ALL[rng.below(7) as usize];
-    let object = Object::ALL[rng.below(7) as usize];
-    let accessory = Accessory::ALL[rng.below(7) as usize];
+    let body = Body::ALL[rng.below(Body::ALL.len() as u32) as usize];
+    let object = Object::ALL[rng.below(Object::ALL.len() as u32) as usize];
+    let accessory = Accessory::ALL[rng.below(Accessory::ALL.len() as u32) as usize];
     Genome {
         name: brainrot_name(body, object, rng),
         body,
@@ -230,9 +230,9 @@ impl Training {
                 balance(&mut child.resist);
                 if rng.chance(PART_MUTATION) {
                     match rng.below(3) {
-                        0 => child.body = Body::ALL[rng.below(7) as usize],
-                        1 => child.object = Object::ALL[rng.below(7) as usize],
-                        _ => child.accessory = Accessory::ALL[rng.below(7) as usize],
+                        0 => child.body = Body::ALL[rng.below(Body::ALL.len() as u32) as usize],
+                        1 => child.object = Object::ALL[rng.below(Object::ALL.len() as u32) as usize],
+                        _ => child.accessory = Accessory::ALL[rng.below(Accessory::ALL.len() as u32) as usize],
                     }
                     child.name = brainrot_name(child.body, child.object, rng);
                     renamed = Some(child.clone());

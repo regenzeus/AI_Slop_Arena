@@ -23,8 +23,8 @@ pub fn stage(minutes: f32) -> f32 {
 pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
     let w = (stage - 1.0).max(0.0);
     // Fragile at first, like a horde should be; steep later.
-    let hp = 0.3 + 0.12 * w + 0.035 * w * w;
-    let damage = 1.0 + 0.1 * w;
+    let hp = 0.3 + 0.12 * w + 0.05 * w * w;
+    let damage = 1.0 + 0.13 * w;
     let mut speed = 1.0 + 0.01 * w.min(30.0);
     if platform == Platform::LinkedOut {
         speed += 0.15;
@@ -35,7 +35,7 @@ pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
 /// Spawn credits per second at `stage`; a credit buys 20 base HP of slop.
 pub fn rate(stage: f32) -> f32 {
     let w = stage - 1.0;
-    2.6 + 0.55 * w + 0.015 * w * w
+    2.0 + 0.6 * w + 0.03 * w * w
 }
 
 /// What a weapon looks like when The Model copies it.

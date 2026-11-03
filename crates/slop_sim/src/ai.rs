@@ -26,8 +26,10 @@ const AGREE_MAX: u8 = 3;
 const HEAL_RANGE: f32 = 160.0;
 const HEAL_INTERVAL: i32 = 120;
 const BAIT_RANGE: f32 = 220.0;
-const MAX_GRABS: u8 = 4;
-const GRAB_DAMAGE: f32 = 2.0;
+const MAX_GRABS: u8 = 3;
+const GRAB_DAMAGE: f32 = 1.5;
+/// Ticks a hand holds on before it lets go and backs off.
+const GRAB_HOLD: u16 = 180;
 const GRAB_INTERVAL: i32 = 30;
 const SPIN_REACH: f32 = 55.0;
 const SPEED_AURA: f32 = 1.35;
@@ -424,9 +426,16 @@ impl World {
                         s.timer = GRAB_INTERVAL;
                         grab_hits += 1;
                     }
-                } else if touching && holding < MAX_GRABS && self.player.dash == 0 {
+                    s.charging = s.charging.saturating_sub(1);
+                    if s.charging == 0 {
+                        s.grab = None;
+                        s.fleeing = 90;
+                        holding = holding.saturating_sub(1);
+                    }
+                } else if touching && holding < MAX_GRABS && self.player.dash == 0 && s.fleeing == 0 {
                     s.grab = Some((s.pos - p).clamp_length(PLAYER_RADIUS + 6.0));
                     s.timer = GRAB_INTERVAL;
+                    s.charging = GRAB_HOLD;
                     holding += 1;
                     self.events.push(Event::Grabbed);
                 }

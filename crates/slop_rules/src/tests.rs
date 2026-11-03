@@ -31,7 +31,7 @@ fn play(run: &mut Run, seconds: f32) {
     }
 }
 
-// REQ: RUN-01, HERO-01
+// REQ: RUN-01, HERO-01, PLAT-01
 #[test]
 fn a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms() {
     let run = Run::new(1, Hero::Teacher);
@@ -185,4 +185,38 @@ fn the_same_seed_plays_the_same_run() {
     let b = bot::play(9, Hero::Zoomer, Policy::Heuristic, 1.5);
     assert_eq!((a.kills, a.level), (b.kills, b.level));
     assert!(a.kills > 20);
+}
+
+// REQ: ITEM-02
+#[test]
+fn side_hustles_and_the_creator_fund_pay_every_minute() {
+    let mut run = Run::new(10, Hero::Boomer);
+    immortal(&mut run);
+    run.items.push((item_index("Side Hustle").unwrap(), 2));
+    run.offset = 59.9;
+    run.step(Default::default());
+    assert_eq!(run.clout, 0, "nothing before the minute");
+    run.offset = 60.5;
+    // A minute after the start the hustles pay 2 x 6, the Fund pays 2.
+    let mut rng = slop_sim::rng::Rng::new(1, 1);
+    while run.seconds() < 61.0 {
+        if !matches!(run.phase, Phase::Playing) {
+            bot::decide(&mut run, Policy::Heuristic, &mut rng);
+        }
+        run.step(Default::default());
+    }
+    assert!(run.clout >= 12 + crate::run::payout(1), "{}", run.clout);
+}
+
+// REQ: ITEM-01
+#[test]
+fn an_items_drawback_counts_once() {
+    let mut run = Run::new(11, Hero::Zoomer);
+    let drink = item_index("Energy Drink").unwrap();
+    run.items = vec![(drink, 1)];
+    let one = run.stats();
+    run.items = vec![(drink, 5)];
+    let five = run.stats();
+    assert_eq!(one.max_mental_health, five.max_mental_health, "-15 Mental Health once, not five times");
+    assert!(five.speed > one.speed, "the upside grows");
 }

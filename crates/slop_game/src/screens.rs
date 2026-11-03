@@ -659,7 +659,8 @@ fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
                 label(c, format!("Merge in reach: {} + {} at level 8 -> {}", WEAPONS[a].name, WEAPONS[b].name, WEAPONS[into].name), 16.0, MERGE);
             }
             // Details of whatever is highlighted, instead of tooltips over the build.
-            c.spawn((TipDock, Node { flex_grow: 1.0, min_height: Val::Px(160.0), border: UiRect::all(Val::Px(2.0)), ..default() }, BorderColor::all(Color::srgb(0.22, 0.22, 0.28))));
+            c.spawn((TipDock, Node { flex_grow: 1.0, min_height: Val::Px(160.0), border: UiRect::all(Val::Px(2.0)), padding: UiRect::all(Val::Px(14.0)), ..default() }, BorderColor::all(Color::srgb(0.22, 0.22, 0.28)), BackgroundColor(Color::srgb(0.07, 0.07, 0.1))))
+                .with_children(|d| label(d, "Highlight a weapon, an item or a stat to read what it does.", 15.0, theme::QUIET));
         });
         stats_panel(page, run, art);
     });

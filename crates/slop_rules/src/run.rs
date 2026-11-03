@@ -30,6 +30,8 @@ const RETRAIN_EVERY: f32 = 120.0;
 const ELITE_EVERY: f32 = 50.0;
 const FREE_REROLLS: u32 = 1;
 const COMMENT_ELITES: u32 = 6;
+/// Drawbacks never take your maximum Mental Health below this.
+const MIN_MENTAL_HEALTH: f32 = 30.0;
 
 /// The Creator Fund pays for every minute survived, in Clout.
 pub fn payout(minute: u32) -> u32 {
@@ -258,11 +260,14 @@ impl Run {
     }
 
     /// Every modifier from the items (once per level) and blessings.
+    /// An item's drawback counts once; only its upside grows with its level
+    /// (ITEM-01).
     fn item_mods(&self) -> Vec<Mod> {
         let mut out: Vec<Mod> = Vec::new();
         for &(i, n) in &self.items {
-            for _ in 0..n {
-                out.extend_from_slice(ITEMS[i].mods);
+            out.extend_from_slice(ITEMS[i].mods);
+            for _ in 1..n {
+                out.extend(ITEMS[i].mods.iter().copied().filter(|m| !items::is_drawback(m)));
             }
         }
         for &b in &self.blessings {
@@ -310,6 +315,7 @@ impl Run {
                 l.perks.grass_heal += 1.0;
             }
         }
+        l.stats.max_mental_health = l.stats.max_mental_health.max(MIN_MENTAL_HEALTH);
         l
     }
 
