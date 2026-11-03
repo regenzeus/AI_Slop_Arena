@@ -53,6 +53,11 @@ fn keys(keyboard: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game>, mut nav: Re
                 game.dirty = true;
             }
         }
+        Screen::Briefing if keyboard.just_pressed(KeyCode::Escape) => {
+            game.run = None;
+            game.screen = Screen::Heroes;
+            game.dirty = true;
+        }
         Screen::Run => {
             let phase = game.run.as_ref().map(|r| r.phase.clone());
             let settled = game.since_end > END_PAUSE;
@@ -67,7 +72,9 @@ fn keys(keyboard: Res<ButtonInput<KeyCode>>, mut game: ResMut<Game>, mut nav: Re
                     }
                 }
                 Some(Phase::Shop) => {
-                    if let Some(i) = number {
+                    // Numbers count the cards on screen; bought ones are gone.
+                    let shown = game.run.as_ref().map(crate::screens::shown_offers).unwrap_or_default();
+                    if let Some(&i) = number.and_then(|n| shown.get(n)) {
                         actions.push(UiAction::Buy(i));
                     }
                     if keyboard.just_pressed(KeyCode::KeyR) {

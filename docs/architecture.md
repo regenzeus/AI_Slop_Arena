@@ -71,8 +71,9 @@ The next wave's specs are built from the trained model and genome pool.
 | `views` | Camera, platform floor, and one view per simulation object, spawned and despawned by id. Brainrot is stacked from three part sprites. Your weapons are drawn around you and aim, kick, swing and throw from `Attacked` events. |
 | `fx` | Effects from events: numbers, deletions, names, pops, an effect per weapon, trails, kill streaks, level-ups, statuses. |
 | `hud` | Mental Health, statuses, wave timer or boss bar, Clout, level with level-ups earned this wave, banners, ads, pop-ups. |
-| `screens` | Title, hero select, briefing, level-up, shop (with the patch notes), pause and end screens, rebuilt on change. |
+| `screens` | Title, hero select, briefing, level-up, shop (with a details panel), pause and end screens, rebuilt on change. |
 | `ui` | Keyboard and mouse control of every screen: focus by stable key, arrow navigation by on-screen position, focus ring, tooltips. |
+| `display` | Fullscreen at start, Alt+Enter or F11 to switch to a window, F12 screenshots. |
 | `art`, `draw`, `icons` | A signed-distance rasteriser and every picture and icon, drawn at startup. |
 | `audio` | Sounds synthesised into WAV clips at startup. |
 | `autoplay` | The bots play a whole run and the client saves screenshots. |

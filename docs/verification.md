@@ -1,4 +1,4 @@
-# Verification: version 2
+# Verification: version 2.1
 
 Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 
@@ -7,14 +7,32 @@ Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 | Check | Result |
 | --- | --- |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clean |
-| `cargo test --workspace` | 68 passed, 0 failed (39 simulation, 23 rules, 6 client), 1 ignored (the icon sheet) |
+| `cargo test --workspace` | 69 passed, 0 failed (39 simulation, 23 rules, 7 client), 1 ignored (the icon sheet) |
 | `slop_lab determinism` | Six waves of a run, played twice by the bots: identical checksums over 15,300 ticks |
 | `slop_lab bench` | 400 slop, up to 360 projectiles, six tier IV weapons: 0.43 ms per tick (budget 2 ms) |
 | `slop_lab balance 100` | Heuristic bot wins 38% (target 20% to 40%); random bot wins 4% (target under 10%) |
 | `slop_lab economy 30` | About one level per wave; one to two purchases per shop in waves 1 to 3, three or more from wave 5 |
 | Autoplay (seeds 4 and 7) | Title with the demo behind it, hero select, briefing, waves, level-up, pause, shops and the end screen render as intended |
+| Autoplay at 1366x768, 1280x1024 and 2560x1080 | Briefing and shop lay out without overlap at each size |
+| Normal start on the 2560x1440 monitor | The window is borderless fullscreen, 2560 x 1440 |
 
 Requirement-to-test mapping: [traceability.md](traceability.md).
+
+## What changed in version 2.1, and why
+
+From the second playtest:
+
+| Feedback | Change |
+| --- | --- |
+| The briefing's cards overlap | The slop sit in fixed rows of four wide cards, each with what it does, so nothing wraps under the bosses; no tooltips there. |
+| Patch notes have no place in the shop | The patch-notes panel is gone. The briefing explains once that the slop learns; each resistance's tooltip quotes what the slop said about it. |
+| Tooltips cover the cards and stats | The shop shows details of the highlighted thing in a fixed panel where the patch notes were. |
+| Sold offers stay and confuse the arrow keys | Bought offers leave the row. Number keys count the cards still shown, and focus stays where it was. |
+| The game should start fullscreen | It starts borderless fullscreen; Alt+Enter or F11 switches to a window and back. |
+| No way to take screenshots | F12 saves one to `Pictures\AI Slop Arena`. |
+
+Also fixed: the autoplay pause screenshot showed the wave without the pause screen, because
+autoplay let go of the pause in the same frame it took the picture.
 
 ## What changed from version 1, and why
 
@@ -70,9 +88,9 @@ From autoplay screenshots (`slop_game --autoplay --seed 7 --screenshots shots --
 | --- | --- |
 | UI-02, ART-03 | Dark platform floors; characters, coins and bubbles stand out. |
 | UI-05 | Mental Health, the wave bar, Clout and level with "+1 LEVEL UP"; no weapon bar. |
-| UI-10 | The briefing: platform, eight slop cards, both bosses, how the slop learns. |
+| UI-10 | The briefing: platform, eight slop cards with what each does, both bosses, how the slop learns, at four window sizes. |
 | UI-09, ART-04 | Level-up cards with stat icons and values before and after, and the stats panel. |
-| UI-11, EVO-03 | The shop: icon cards with tiers, upgrade ribbons and prices; weapons with sell values; items; the patch notes; stats and resistances down the right side. |
+| UI-11 | The shop: icon cards with tiers, upgrade ribbons and prices; weapons with sell values; items; the details panel with the first offer; stats and resistances down the right side. |
 | UI-13 | Pause: weapons with damage dealt, items with counts, the stats panel. |
 | UI-15 | The title with the bots' demo wave behind it. |
 | WPN-09 | Weapons around you, keyboard rings, brick debris, trails. |
@@ -80,6 +98,7 @@ From autoplay screenshots (`slop_game --autoplay --seed 7 --screenshots shots --
 
 ## Not yet verified by a person
 
+- Fullscreen toggling, F12 screenshots and the new shop focus behaviour with real key presses.
 - How the new economy and difficulty feel over a whole run.
 - Keyboard navigation and tooltips in a real session (autoplay does not press keys).
 - Whether the weapon animations read well at full speed, and the new sounds.

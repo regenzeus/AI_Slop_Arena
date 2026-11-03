@@ -92,7 +92,7 @@ client (autoplay screenshots or play), **I** inspection of the code.
 | SHOP-05 | The economy lets you buy: the heuristic lab bot buys one to two things per shop in waves 1 to 3 and three or more from wave 5. | L |
 | EVO-01 | After every wave the base model's resistances move towards your kill share, zero-sum and capped. | T |
 | EVO-02 | Brainrot that hurt you and lived long breeds; children mutate their numbers and sometimes a part. | T |
-| EVO-03 | Patch notes after each wave say what the slop learned; they are shown in the shop. | T, D |
+| EVO-03 | After each wave the slop says what it learned in patch-note lines; the shop shows them in the tooltip of each slop resistance, not as a screen or panel of their own. | T, D |
 | EVO-04 | Model Collapse measures how evenly your kills spread over the four damage types. | T |
 | BAL-01 | Hard but manageable: the heuristic lab bot wins 20% to 40% of runs. | L |
 | BAL-02 | Random play rarely wins: the random lab bot wins under 10% of runs. | L |
@@ -110,12 +110,13 @@ client (autoplay screenshots or play), **I** inspection of the code.
 | UI-07 | Resizing the window scales the arena view and the HUD. | D |
 | UI-08 | Title and hero select; every choice works by mouse and by keyboard. | T, D |
 | UI-09 | Level-up screen with four cards, each with the stat's icon and its value before and after. | D |
-| UI-10 | Once per run, before wave 1, a briefing shows the platform, its slop, both bosses and how the slop learns. | D |
-| UI-11 | Full-screen shop: offer cards with icons, tier frames and upgrade ribbons, lock, reroll, your weapons and items, the patch notes, and the stats down the whole right side. | D |
+| UI-10 | Once per run, before wave 1, a briefing shows the platform, every slop with what it does, both bosses and how the slop learns, without overlap at any window size. Esc goes back to the heroes. | D |
+| UI-11 | Full-screen shop: offer cards with icons, tier frames and upgrade ribbons, lock, reroll, your weapons and items, a details panel for whatever is highlighted, and the stats down the whole right side. Bought offers leave the row; number keys and focus follow the cards still shown. | T, D |
 | UI-12 | End screen for victory or Burnout with the run's summary. | D |
 | UI-13 | Pause shows your whole build: weapons, items and stats. Every stat, item, weapon and resistance has a tooltip; a stat's tooltip explains its mechanics with your current numbers. | T, D |
 | UI-14 | Every screen works by keyboard alone: arrows or WASD move the focus to the nearest element in that direction, Enter presses it, Space continues, L or X locks or sells; the mouse focuses what it hovers. | T, D |
 | UI-15 | Behind the title and hero screens the bots play a mid-run wave, silently. | D |
+| UI-16 | The game starts fullscreen; Alt+Enter or F11 switches between fullscreen and a window; F12 saves a screenshot to Pictures\AI Slop Arena. | D |
 | ART-01 | Every sprite is drawn in code with outlines and anti-aliased edges; characters flash white when hit. | T, D |
 | ART-02 | Every character, brainrot part and boss has its own picture. | T, D |
 | ART-03 | Each platform has its own floor. | D |

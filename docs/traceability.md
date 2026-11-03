@@ -54,6 +54,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | STAT-01 | `scepticism_is_capped` | crates/slop_sim/src/stats.rs |
 | STATUS-01 | `statuses_hurt_reverse_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
 | UI-08 | `actions_walk_from_title_to_a_run_and_report_rule_errors` | crates/slop_game/src/state.rs |
+| UI-11 | `bought_offers_leave_the_row_and_numbers_count_what_is_left` | crates/slop_game/src/screens.rs |
 | UI-13 | `every_stat_explains_its_current_effect` | crates/slop_rules/src/items.rs |
 | UI-14 | `arrows_pick_the_nearest_element_in_their_direction` | crates/slop_game/src/ui.rs |
 | WAVE-01 | `a_wave_clears_on_time_and_burnout_ends_it` | crates/slop_sim/src/tests.rs |
@@ -91,7 +92,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - UI-07
 - UI-09
 - UI-10
-- UI-11
 - UI-12
 - UI-15
+- UI-16
 - WPN-09

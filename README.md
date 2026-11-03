@@ -8,13 +8,14 @@ The design and the implementation plan live in the
 
 ![A wave in progress](docs/img/wave.png)
 
-![The shop, with the slop's patch notes and your stats](docs/img/shop.png)
+![The shop: offers, your build, details of the highlighted card, and your stats](docs/img/shop.png)
 
 ## The game
 
 - **20 waves, about 40 minutes.** A briefing before wave 1 shows your platform, its slop and
-  both bosses. After every wave you level up (about once a wave) and shop; the shop shows the
-  slop's patch notes. Waves 10 and 20 are boss waves. One Burnout ends the run.
+  both bosses. After every wave you level up (about once a wave) and shop; bought offers leave
+  the shop, and a details panel explains whatever is highlighted. Waves 10 and 20 are boss
+  waves. One Burnout ends the run.
 - **Five heroes** with their own starting weapon, item and quirk: Boomer, Zoomer, Teacher,
   Programmer, Artist. Everything is unlocked; there is no meta progression.
 - **22 weapons** in four damage types: Analog, Fact, Sarcasm and Grass. Buying a weapon you
@@ -50,8 +51,12 @@ cargo run --release -p slop_game
 | R | Reroll the shop |
 | L or X | Lock the highlighted offer, or sell the highlighted weapon (twice) |
 | Q | Quit (from menus, the end screen or pause) |
+| Esc | On the briefing: back to the heroes |
+| Alt+Enter or F11 | Switch between fullscreen and a window |
+| F12 | Save a screenshot to `Pictures\AI Slop Arena` |
 
-Everything also works with the mouse: hover shows tooltips, right-click locks or sells. The window can be resized; the game scales with it.
+Everything also works with the mouse: hover shows tooltips, right-click locks or sells. The game starts fullscreen; as a window it can be resized and scales with it.
+`--windowed` starts in a window, `--size 1280x1024` sets its size.
 
 ## Tools
 

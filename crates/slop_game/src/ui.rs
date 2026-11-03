@@ -62,10 +62,18 @@ impl Tip {
     }
 }
 
+/// Where a screen shows tooltips, filling this node, instead of next to the
+/// focused element.
+#[derive(Component)]
+pub struct TipDock;
+
 /// The focused element's key.
 #[derive(Resource, Default)]
 pub struct Nav {
     pub key: Option<u32>,
+    /// Centre of the focused element; when it vanishes (an offer bought),
+    /// focus goes to whatever is now nearest. None on a fresh screen.
+    pub at: Option<Vec2>,
     /// Set when focus moved this frame, for the tick sound.
     pub moved: bool,
 }
@@ -98,7 +106,7 @@ fn setup(mut commands: Commands) {
                 border: UiRect::all(Val::Px(2.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgba(0.07, 0.07, 0.1, 0.97)),
+            BackgroundColor(Color::srgb(0.07, 0.07, 0.1)),
             BorderColor::all(FOCUS),
             GlobalZIndex(60),
             Visibility::Hidden,
@@ -160,12 +168,16 @@ fn navigate(
         return;
     }
     let current = nav.key.and_then(|k| all.iter().find(|a| a.0 == k));
-    if current.is_none() {
-        // A fresh screen: the default element, or the first one.
-        let default = items.iter().find(|(.., d)| d.is_some()).map(|(f, ..)| f.0);
-        nav.key = default.or(Some(all[0].0));
+    let Some(&(_, c, s)) = current else {
+        nav.key = match nav.at {
+            // The focused element is gone: the nearest one takes over.
+            Some(at) => all.iter().min_by(|a, b| a.1.distance_squared(at).total_cmp(&b.1.distance_squared(at))).map(|a| a.0),
+            // A fresh screen: the default element, or the first one.
+            None => items.iter().find(|(.., d)| d.is_some()).map(|(f, ..)| f.0).or(Some(all[0].0)),
+        };
         return;
-    }
+    };
+    nav.at = Some(c);
     let pressed = |a: KeyCode, b: KeyCode| keyboard.just_pressed(a) || keyboard.just_pressed(b);
     let dir = if pressed(KeyCode::ArrowLeft, KeyCode::KeyA) {
         Vec2::NEG_X
@@ -179,7 +191,6 @@ fn navigate(
     } else {
         return;
     };
-    let &(_, c, s) = current.expect("checked");
     if let Some(k) = pick((c, s), dir, &all) {
         nav.key = Some(k);
         nav.moved = true;
@@ -195,7 +206,8 @@ fn activate(
     continues: Query<&Act, With<Continue>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if game.bot {
+    // Alt+Enter toggles fullscreen and presses nothing.
+    if game.bot || keyboard.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]) {
         return;
     }
     if keyboard.just_pressed(KeyCode::KeyL) || keyboard.just_pressed(KeyCode::KeyX) {
@@ -240,6 +252,7 @@ fn tooltip(
     nav: Res<Nav>,
     windows: Query<&Window, With<PrimaryWindow>>,
     items: Query<(&Focusable, &Tip, &ComputedNode, &UiGlobalTransform)>,
+    docks: Query<(&ComputedNode, &UiGlobalTransform), With<TipDock>>,
     mut tip: Query<(&mut Node, &mut Visibility, &mut BorderColor, &ComputedNode), With<Tooltip>>,
     mut title: Query<(&mut Text, &mut TextColor), (With<TooltipTitle>, Without<TooltipBody>)>,
     mut body: Query<&mut Text, (With<TooltipBody>, Without<TooltipTitle>)>,
@@ -263,6 +276,16 @@ fn tooltip(
         }
     }
     *border = BorderColor::all(t.color);
+    if let Some((dn, dtf)) = docks.iter().find(|(dn, _)| dn.size().x > 0.0) {
+        let (c, s) = rect(dn, dtf);
+        node.left = Val::Px(c.x - s.x / 2.0);
+        node.top = Val::Px(c.y - s.y / 2.0);
+        node.width = Val::Px(s.x);
+        node.min_height = Val::Px(s.y);
+        return;
+    }
+    node.width = Val::Px(TOOLTIP_W);
+    node.min_height = Val::Auto;
     let (c, s) = rect(n, tf);
     let screen = windows.single().map_or(Vec2::new(1600.0, 900.0), |w| Vec2::new(w.physical_width() as f32, w.physical_height() as f32) * n.inverse_scale_factor);
     let height = own.size().y * own.inverse_scale_factor;

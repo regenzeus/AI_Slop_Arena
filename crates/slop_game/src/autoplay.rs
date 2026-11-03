@@ -9,7 +9,9 @@ use bevy::render::view::screenshot::{save_to_disk, Screenshot};
 use slop_rules::Phase;
 
 use crate::play::END_PAUSE;
+use crate::screens::key;
 use crate::state::{Game, Screen, UiAction};
+use crate::ui::Nav;
 
 /// (wave, tick) moments worth a screenshot during waves.
 const WAVE_SHOTS: [(u32, u32); 9] = [(1, 900), (3, 1500), (5, 1800), (8, 2400), (10, 900), (10, 2400), (13, 2400), (17, 3000), (20, 1500)];
@@ -28,11 +30,13 @@ pub struct Autoplay {
     count: u32,
     /// A screenshot is being taken of a held screen.
     holding: Option<String>,
+    /// The held screen was shot; let go once the capture has rendered.
+    release: bool,
 }
 
 impl Autoplay {
     pub fn new(shots: Option<PathBuf>, exit_on_end: bool, speed: u32) -> Autoplay {
-        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None }
+        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None, release: false }
     }
 
     fn shoot(&mut self, commands: &mut Commands, name: &str) {
@@ -57,17 +61,29 @@ impl Plugin for AutoplayPlugin {
     }
 }
 
-fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autoplay>, mut exit: MessageWriter<AppExit>) {
+fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autoplay>, mut nav: ResMut<Nav>, mut exit: MessageWriter<AppExit>) {
     auto.frames += 1;
+    // Held shops show the details of their first offer, as for a player.
+    if auto.holding.as_ref().is_some_and(|n| n.starts_with("shop")) {
+        nav.key = Some(key::OFFER);
+    }
     if auto.wait > 0 {
         auto.wait -= 1;
         return;
     }
-    // Finish a held screenshot: shoot, then let the bots go on.
+    // Finish a held screenshot: shoot, wait for the capture, then let the
+    // bots go on. Letting go in the same frame could change the screen first.
     if let Some(name) = auto.holding.take() {
         auto.shoot(&mut commands, &name);
+        auto.release = true;
+        auto.wait = 4;
+        return;
+    }
+    if auto.release {
+        auto.release = false;
         game.paused = false;
         game.frozen = false;
+        nav.key = None;
         game.dirty = true;
         auto.wait = 4;
         return;

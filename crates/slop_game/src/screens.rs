@@ -1,12 +1,11 @@
 //! The screens around the waves (UI-08 to UI-13): title, hero select, the
-//! run's briefing, level-ups, the shop with the slop's patch notes, pause
-//! with your whole build, and the end of a run. They are rebuilt from the
-//! run whenever something changes. Every one works by keyboard (`ui`).
+//! run's briefing, level-ups, the shop, pause with your whole build, and the
+//! end of a run. They are rebuilt from the run whenever something changes.
+//! Every one works by keyboard (`ui`).
 
 use bevy::prelude::*;
 use slop_rules::items::{ItemKind, StatKind, ITEMS};
 use slop_rules::shop::{Goods, Note};
-use slop_rules::training::Section;
 use slop_rules::{Hero, Phase, Run};
 use slop_sim::content::{Archetype, Pattern, Platform, TIER_DAMAGE, WEAPONS};
 use slop_sim::DamageType;
@@ -15,7 +14,7 @@ use crate::art::Art;
 use crate::play::{Simulation, END_PAUSE};
 use crate::state::{Game, Screen, UiAction};
 use crate::theme;
-use crate::ui::{focus_ring, Act, Alt, Continue, DefaultFocus, Focusable, Nav, Shade, Tip};
+use crate::ui::{focus_ring, Act, Alt, Continue, DefaultFocus, Focusable, Nav, Shade, Tip, TipDock};
 
 pub struct ScreensPlugin;
 
@@ -42,7 +41,6 @@ pub mod key {
     pub const ITEM: u32 = 300;
     pub const STAT: u32 = 500;
     pub const RESIST: u32 = 520;
-    pub const SLOP: u32 = 600;
 }
 
 pub fn roman(tier: u8) -> &'static str {
@@ -172,6 +170,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
     if *last != shown {
         // A different screen starts at its default element.
         nav.key = None;
+        nav.at = None;
     }
     *last = shown;
     game.dirty = false;
@@ -321,31 +320,42 @@ fn heroes(p: &mut ChildSpawnerCommands, game: &Game, art: &Art) {
     hints(p, &[("Arrows", "choose"), ("1-5", "jump to a hero"), ("Enter/Space", "start as this hero"), ("Q", "quit")]);
 }
 
-fn slop_card(p: &mut ChildSpawnerCommands, image: &Handle<Image>, name: &str, blurb: &str, k: u32) {
-    p.spawn((focusable(k, CARD), card(150.0), BorderColor::all(Color::srgb(0.35, 0.35, 0.42)), Tip::new(name, blurb, theme::DANGER))).with_children(|c| {
-        c.spawn(Node { justify_content: JustifyContent::Center, ..default() }).with_children(|m| icon(m, image, 76.0));
-        label(c, name, 14.0, theme::PAPER);
-    });
+/// A slop on the briefing: picture, name and what it does, all visible at once.
+fn slop_card(p: &mut ChildSpawnerCommands, image: &Handle<Image>, name: &str, blurb: &str) {
+    p.spawn((Node { width: Val::Px(338.0), min_height: Val::Px(96.0), column_gap: Val::Px(10.0), align_items: AlignItems::Center, padding: UiRect::all(Val::Px(8.0)), border: UiRect::all(Val::Px(2.0)), ..default() }, BorderColor::all(Color::srgb(0.35, 0.35, 0.42)), BackgroundColor(CARD)))
+        .with_children(|c| {
+            icon(c, image, 64.0);
+            c.spawn(Node { flex_shrink: 1.0, ..column(3.0) }).with_children(|t| {
+                label(t, name, 16.0, theme::PAPER);
+                label(t, blurb, 13.0, theme::QUIET);
+            });
+        });
 }
 
 /// Once per run, before wave 1: where you are and what is coming.
 fn briefing(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
-    backdrop(p, BACKDROP);
+    backdrop(p, Color::srgba(0.06, 0.06, 0.09, 0.95));
     let platform = run.platform;
     label(p, format!("TODAY ON {}", platform.name().to_uppercase()), 46.0, theme::PAPER);
     label(p, format!("{}  {}", platform.hazard(), platform.house_rule()), 19.0, theme::QUIET);
     label(p, "WHO YOU WILL MEET", 16.0, theme::QUIET);
-    p.spawn(Node { column_gap: Val::Px(10.0), flex_wrap: FlexWrap::Wrap, justify_content: JustifyContent::Center, max_width: Val::Px(1400.0), row_gap: Val::Px(10.0), ..default() }).with_children(|r| {
-        let mut k = key::SLOP;
-        if platform != Platform::ClockTok {
-            for a in [Archetype::ChadGpt, Archetype::Clawed, Archetype::YesBot, Archetype::Hallucinator, Archetype::ListicleDrone].iter().chain(platform.locals()) {
-                slop_card(r, &art.archetypes[a].0, a.def().name, a.def().blurb, k);
-                k += 1;
-            }
+    let mut slop: Vec<(&Handle<Image>, &str, &str)> = Vec::new();
+    if platform != Platform::ClockTok {
+        for a in [Archetype::ChadGpt, Archetype::Clawed, Archetype::YesBot, Archetype::Hallucinator, Archetype::ListicleDrone].iter().chain(platform.locals()) {
+            slop.push((&art.archetypes[a].0, a.def().name, a.def().blurb));
         }
-        let g = run.training.best();
-        slop_card(r, &art.bodies[&g.body].0, "Generated brainrot", "Built from a body, an object and an accessory, each with an ability. The ones that hurt you breed. From wave 3; on ClockTok from the start.", k);
-    });
+    }
+    let g = run.training.best();
+    slop.push((&art.bodies[&g.body].0, "Generated brainrot", "Body, object and accessory, each with an ability. The ones that hurt you breed. From wave 3 (ClockTok: wave 1)."));
+    // Fixed rows of four: wrapping rows inside a centred column overlap what follows.
+    for line in slop.chunks(4) {
+        p.spawn(row(12.0)).with_children(|r| {
+            for (image, name, blurb) in line {
+                slop_card(r, image, name, blurb);
+            }
+        });
+    }
+    p.spawn(Node { height: Val::Px(6.0), ..default() });
     p.spawn(row(30.0)).with_children(|r| {
         for (wave, boss) in [(10, platform.boss()), (20, slop_sim::BossKind::TheModel)] {
             r.spawn((card(560.0), BorderColor::all(theme::DANGER), BackgroundColor(CARD))).with_children(|c| {
@@ -363,10 +373,10 @@ fn briefing(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
     p.spawn(Node { max_width: Val::Px(1100.0), ..column(4.0) }).with_children(|c| {
         label(c, "THE SLOP LEARNS", 16.0, theme::QUIET);
         label(c, "After every wave it retrains on what killed it: it resists the damage types you kill with most.", 16.0, theme::PAPER);
-        label(c, "Resistance is zero-sum, so countering you opens a weakness elsewhere. Its patch notes are in the shop.", 16.0, theme::PAPER);
+        label(c, "Resistance is zero-sum, so countering you opens a weakness elsewhere. Watch SLOP RESISTANCE in the shop.", 16.0, theme::PAPER);
     });
     button(p, "Start wave 1", UiAction::BeginRun, theme::PLAYER_RED, key::BUTTON).insert((Continue, DefaultFocus));
-    hints(p, &[("Arrows", "look at the slop"), ("Space", "start wave 1")]);
+    hints(p, &[("Space/Enter", "start wave 1"), ("Esc", "back to heroes")]);
 }
 
 /// Your ten stats and the slop's resistances, each with a tooltip (UI-13).
@@ -395,10 +405,12 @@ fn stats_panel(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
             label(col, "SLOP RESISTANCE", 15.0, theme::QUIET);
             for t in DamageType::ALL {
                 let r = run.training.model[t as usize];
+                // What the slop said about it after the last wave.
+                let said: String = run.notes.iter().flat_map(|n| &n.lines).filter(|l| l.text.starts_with(t.name())).map(|l| format!("\n\nLast wave: {}", l.text)).collect();
                 let tip = Tip::new(
                     format!("{} resistance {:+.0}%", t.name(), r * 100.0),
                     format!(
-                        "Chatbots take {:.0}% damage from {} weapons; brainrot has its own genes on top.\nThe slop learns to resist what kills it. Resistance is zero-sum: when one rises, the others fall.",
+                        "Chatbots take {:.0}% damage from {} weapons; brainrot has its own genes on top.\nThe slop learns to resist what kills it. Resistance is zero-sum: when one rises, the others fall.{said}",
                         (1.0 - r) * 100.0,
                         t.name()
                     ),
@@ -458,31 +470,30 @@ fn level_up(p: &mut ChildSpawnerCommands, run: &Run, offers: &[slop_rules::level
     hints(p, &[("Arrows", "choose"), ("1-4", "pick"), ("Enter/Space", "pick the highlighted one")]);
 }
 
-fn offer_card(c: &mut ChildSpawnerCommands, run: &Run, i: usize, art: &Art) {
+/// Offer `i`, shown at position `n`: its number key and its focus key, so
+/// focus stays in place when the card before it is bought.
+fn offer_card(c: &mut ChildSpawnerCommands, run: &Run, i: usize, n: usize, art: &Art) {
     let o = &run.shop.offers[i];
     let tier = o.goods.tier();
-    let upgrade = run.upgrades(i).filter(|_| !o.sold);
+    let upgrade = run.upgrades(i);
     let afford = o.price <= run.clout;
     let mut tip = match o.goods {
         Goods::Weapon { def, tier } => weapon_tip(def, tier, upgrade),
         Goods::Item { item } => item_tip(item, run.items.iter().find(|(it, _)| *it == item).map_or(0, |(_, n)| *n + 1)),
     };
-    if !o.sold {
-        tip.body = format!("{}\n\nEnter: buy for {} Clout.{}", tip.body, o.price, if o.note.is_none() { " L or right-click: lock it for later." } else { "" });
-    }
-    let border = if o.sold { Color::srgb(0.3, 0.3, 0.35) } else if o.locked { tier_color(3) } else { tier_color(tier) };
-    let shade = if o.sold { Color::srgb(0.11, 0.11, 0.14) } else { CARD };
-    let node = Node { width: Val::Auto, flex_grow: 1.0, flex_basis: Val::Px(0.0), max_width: Val::Px(250.0), min_height: Val::Px(330.0), ..card(0.0) };
-    let mut e = c.spawn((focusable(key::OFFER + i as u32, shade), Act(UiAction::Buy(i)), node, BorderColor::all(border), tip));
-    if o.note.is_none() && !o.sold {
+    tip.body = format!("{}\n\nEnter or {}: buy for {} Clout.{}", tip.body, n + 1, o.price, if o.note.is_none() { " L or right-click: lock it for later." } else { "" });
+    let border = if o.locked { tier_color(3) } else { tier_color(tier) };
+    let node = Node { width: Val::Auto, flex_grow: 1.0, flex_basis: Val::Px(0.0), max_width: Val::Px(250.0), ..card(0.0) };
+    let mut e = c.spawn((focusable(key::OFFER + n as u32, CARD), Act(UiAction::Buy(i)), node, BorderColor::all(border), tip));
+    if o.note.is_none() {
         e.insert(Alt(UiAction::Lock(i)));
     }
-    if i == 0 {
+    if n == 0 {
         e.insert(DefaultFocus);
     }
     e.with_children(|c| {
         c.spawn(Node { justify_content: JustifyContent::SpaceBetween, align_items: AlignItems::Center, min_height: Val::Px(24.0), ..default() }).with_children(|h| {
-            label(h, format!("{}  {}", i + 1, roman(tier)), 15.0, tier_color(tier));
+            label(h, format!("{}  {}", n + 1, roman(tier)), 15.0, tier_color(tier));
             if o.locked {
                 icon(h, &art.lock, 24.0);
             }
@@ -500,7 +511,7 @@ fn offer_card(c: &mut ChildSpawnerCommands, run: &Run, i: usize, art: &Art) {
             Goods::Item { item } => &art.item_icons[item],
         };
         c.spawn(Node { justify_content: JustifyContent::Center, padding: UiRect::vertical(Val::Px(4.0)), ..default() }).with_children(|m| icon(m, image, 76.0));
-        label(c, o.goods.name(), 20.0, if o.sold { theme::QUIET } else { theme::PAPER });
+        label(c, o.goods.name(), 20.0, theme::PAPER);
         match o.goods {
             Goods::Weapon { def, tier } => {
                 let w = &WEAPONS[def];
@@ -518,14 +529,10 @@ fn offer_card(c: &mut ChildSpawnerCommands, run: &Run, i: usize, art: &Art) {
             }
         }
         c.spawn(Node { flex_grow: 1.0, ..default() });
-        if o.sold {
-            label(c, "SOLD", 18.0, theme::QUIET);
-        } else {
-            c.spawn(row(6.0)).with_children(|b| {
-                icon(b, &art.coin, 22.0);
-                label(b, o.price.to_string(), 22.0, if afford { theme::PAPER } else { theme::DANGER });
-            });
-        }
+        c.spawn(row(6.0)).with_children(|b| {
+            icon(b, &art.coin, 22.0);
+            label(b, o.price.to_string(), 22.0, if afford { theme::PAPER } else { theme::DANGER });
+        });
     });
 }
 
@@ -570,7 +577,7 @@ fn short(name: &str) -> &str {
     match name {
         "Mechanical Keyboard" => "Keyboard",
         "Fact-Check Flashlight" => "Flashlight",
-        "Uno Reverse Card" => "Uno Reverse",
+        "Uno Reverse Card" => "Uno",
         "Newspaper Roll" => "Newspaper",
         "CAPTCHA Turret" => "CAPTCHA",
         _ => name,
@@ -596,33 +603,15 @@ fn items_grid(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
     });
 }
 
-/// What the slop learned from the last wave, as a changelog.
-fn patch_notes(p: &mut ChildSpawnerCommands, run: &Run) {
-    let Some(notes) = &run.notes else { return };
-    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(5.0), padding: UiRect::all(Val::Px(14.0)), flex_grow: 1.0, flex_basis: Val::Px(0.0), ..default() }, BackgroundColor(theme::PAPER)))
-        .with_children(|page| {
-            label(page, format!("{} PATCH NOTES", notes.version.to_uppercase()), 18.0, theme::INK);
-            label(page, "The slop retrained on your last wave.", 13.0, Color::srgb(0.4, 0.4, 0.45));
-            let mut shown = 0;
-            for section in [Section::Improved, Section::Adjusted, Section::New, Section::Preview, Section::BugFixes] {
-                for l in notes.lines.iter().filter(|l| l.section == section) {
-                    if shown >= 7 {
-                        break;
-                    }
-                    shown += 1;
-                    let color = match section {
-                        Section::Improved => Color::srgb(0.75, 0.1, 0.35),
-                        Section::Adjusted => Color::srgb(0.15, 0.5, 0.2),
-                        Section::New => Color::srgb(0.6, 0.35, 0.0),
-                        _ => Color::srgb(0.3, 0.3, 0.38),
-                    };
-                    page.spawn(Node { column_gap: Val::Px(6.0), ..default() }).with_children(|r| {
-                        r.spawn((Text::new(section.title().to_uppercase()), TextFont { font_size: 12.0, ..default() }, TextColor(color), Node { flex_shrink: 0.0, width: Val::Px(92.0), ..default() }));
-                        label(r, l.text.clone(), 13.0, theme::INK);
-                    });
-                }
-            }
-        });
+/// The offers still for sale, in the order they are shown and numbered.
+pub fn shown_offers(run: &Run) -> Vec<usize> {
+    (0..run.shop.offers.len()).filter(|&i| !run.shop.offers[i].sold).collect()
+}
+
+/// Where the shop shows details of the highlighted thing, instead of a
+/// floating tooltip over the cards.
+fn details(p: &mut ChildSpawnerCommands) {
+    p.spawn((TipDock, Node { flex_grow: 1.0, flex_basis: Val::Px(0.0), padding: UiRect::all(Val::Px(14.0)), border: UiRect::all(Val::Px(2.0)), ..default() }, BorderColor::all(Color::srgb(0.22, 0.22, 0.28))));
 }
 
 fn shop(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
@@ -653,21 +642,26 @@ fn shop(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
                     button(c, format!("Start wave {}", run.wave), UiAction::NextWave, theme::PLAYER_RED, key::BUTTON + 1).insert(Continue);
                 });
             });
-            // Offers.
-            left.spawn(Node { column_gap: Val::Px(10.0), ..default() }).with_children(|r| {
-                for i in 0..run.shop.offers.len() {
-                    offer_card(r, run, i, art);
+            // Offers; bought ones leave the row.
+            left.spawn(Node { column_gap: Val::Px(10.0), min_height: Val::Px(330.0), align_items: AlignItems::Stretch, ..default() }).with_children(|r| {
+                let shown = shown_offers(run);
+                if shown.is_empty() {
+                    r.spawn(Node { flex_grow: 1.0, justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default() })
+                        .with_children(|e| label(e, "Sold out. Reroll for new offers, or start the wave.", 20.0, theme::QUIET));
+                }
+                for (n, &i) in shown.iter().enumerate() {
+                    offer_card(r, run, i, n, art);
                 }
             });
-            // Your weapons and items; the slop's patch notes.
+            // Your weapons and items; details of what is highlighted.
             left.spawn(Node { column_gap: Val::Px(16.0), flex_grow: 1.0, ..default() }).with_children(|bottom| {
-                bottom.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), flex_grow: 1.7, flex_basis: Val::Px(0.0), ..default() }).with_children(|c| {
+                bottom.spawn(Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(8.0), flex_grow: 1.3, flex_basis: Val::Px(0.0), ..default() }).with_children(|c| {
                     label(c, format!("YOUR WEAPONS  {} / 6", run.weapons.len()), 16.0, theme::QUIET);
                     weapons_row(c, run, art, true);
                     label(c, "YOUR ITEMS", 16.0, theme::QUIET);
                     items_grid(c, run, art);
                 });
-                patch_notes(bottom, run);
+                details(bottom);
             });
         });
         stats_panel(page, run, art);
@@ -729,4 +723,24 @@ fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art) {
         button(r, "Quit", UiAction::Quit, BUTTON, key::BUTTON + 1);
     });
     hints(p, &[("Arrows", "inspect"), ("Space", "new run"), ("Q", "quit")]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use slop_rules::shop::Offer;
+
+    // REQ: UI-11
+    #[test]
+    fn bought_offers_leave_the_row_and_numbers_count_what_is_left() {
+        let mut run = Run::new(3, Hero::Teacher);
+        let offer = |item| Offer { goods: Goods::Item { item }, price: 10, locked: false, sold: false, note: None };
+        run.shop.offers = (0..4).map(offer).collect();
+        run.shop.offers[1].sold = true;
+        assert_eq!(shown_offers(&run), vec![0, 2, 3], "card 2 on screen is offer 3, so key 2 buys offer 3");
+        for o in &mut run.shop.offers {
+            o.sold = true;
+        }
+        assert!(shown_offers(&run).is_empty());
+    }
 }
