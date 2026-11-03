@@ -23,8 +23,8 @@ pub fn stage(minutes: f32) -> f32 {
 pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
     let w = (stage - 1.0).max(0.0);
     // Fragile at first, like a horde should be; steep later.
-    let hp = 0.3 + 0.12 * w + 0.05 * w * w;
-    let damage = 1.0 + 0.13 * w;
+    let hp = 0.3 + 0.14 * w + 0.065 * w * w + 0.004 * w * w * w;
+    let damage = 1.0 + 0.12 * w + 0.008 * w * w;
     let mut speed = 1.0 + 0.01 * w.min(30.0);
     if platform == Platform::LinkedOut {
         speed += 0.15;
@@ -35,7 +35,7 @@ pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
 /// Spawn credits per second at `stage`; a credit buys 20 base HP of slop.
 pub fn rate(stage: f32) -> f32 {
     let w = stage - 1.0;
-    2.0 + 0.6 * w + 0.03 * w * w
+    2.0 + 0.7 * w + 0.05 * w * w
 }
 
 /// What a weapon looks like when The Model copies it.
@@ -50,6 +50,22 @@ pub fn weapon_look(def: usize) -> Look {
         _ => Look::Rock,
     }
 }
+
+/// When each brainrot icon starts to spawn on every platform, by stage
+/// (about 1.6 stages a minute).
+const ICON_UNLOCKS: &[(Archetype, f32)] = &[
+    (Archetype::Tralalelo, 2.2),
+    (Archetype::GlassFruit, 2.6),
+    (Archetype::TonkSahur, 3.2),
+    (Archetype::Chimpanzini, 3.8),
+    (Archetype::Ballerina, 4.4),
+    (Archetype::Lirili, 5.0),
+    (Archetype::Gusello, 5.6),
+    (Archetype::Bombardilo, 6.4),
+    (Archetype::Assassinello, 7.2),
+    (Archetype::Patapum, 8.0),
+    (Archetype::RingLight, 9.0),
+];
 
 /// A spawn table ready to hand to the world, and which specs are which
 /// brainrot genome.
@@ -113,6 +129,18 @@ pub fn table(stage: f32, platform: Platform, training: &Training) -> Table {
             let w = if clocktok { weight(spec.role, 2) } else { 1 + (stage / 6.0) as u32 };
             let index = add(spec, w, group);
             genomes.push((index, g));
+        }
+    }
+    // The brainrot icons (ICON-01) join everywhere as the Feed goes on;
+    // ClockTok has its own from the start.
+    if clocktok {
+        for &a in platform.locals() {
+            add(archetype(a), weight(a.def().role, 2), 1);
+        }
+    }
+    for &(a, from) in ICON_UNLOCKS {
+        if stage >= from && !platform.locals().contains(&a) {
+            add(archetype(a), weight(a.def().role, 1), 1);
         }
     }
     let mut r = rate(stage);
@@ -224,7 +252,7 @@ mod tests {
         let clock = table(3.0, Platform::ClockTok, &t);
         assert!(clock.specs.iter().all(|s| s.is_brainrot()), "ClockTok is all brainrot");
         let face = table(1.0, Platform::FaceSlop, &t);
-        assert!(face.specs.iter().all(|s| !s.is_brainrot()), "the first minutes are chatbots");
+        assert!(face.specs.iter().all(|s| !s.traits.has(Traits::BRAINROT)), "no generated brainrot in the first minutes");
         assert!(table(8.0, Platform::Thredd, &t).repost_chance > 0.0);
         let tank_weight = |b: &Table| -> u32 { b.spawns.iter().filter(|s| b.specs[s.spec].role == Role::Tank).map(|s| s.weight).sum() };
         assert!(tank_weight(&table(8.0, Platform::InstaSlop, &t)) > tank_weight(&table(8.0, Platform::MeTube, &t)));

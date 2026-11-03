@@ -35,14 +35,14 @@ pub struct Simulation;
 pub struct BotRng(pub Rng);
 
 /// Shortcuts; menu navigation and presses are handled by `ui`.
-fn keys(controls: Res<Controls>, mut game: ResMut<Game>, mut nav: ResMut<Nav>, mut exit: MessageWriter<AppExit>) {
+fn keys(mut controls: ResMut<Controls>, mut game: ResMut<Game>, mut nav: ResMut<Nav>, mut exit: MessageWriter<AppExit>) {
     if game.bot {
         return;
     }
     let mut actions = Vec::new();
     match game.screen {
         Screen::Heroes => {
-            if let Some(i) = controls.number.filter(|i| *i < 5) {
+            if let Some(i) = controls.number.filter(|i| *i < slop_rules::Hero::ALL.len()) {
                 nav.key = Some(key::HERO + i as u32);
                 game.hero = i;
             }
@@ -54,9 +54,20 @@ fn keys(controls: Res<Controls>, mut game: ResMut<Game>, mut nav: ResMut<Nav>, m
         Screen::Run => {
             let phase = game.run.as_ref().map(|r| r.phase.clone());
             match phase {
-                Some(Phase::Playing) if controls.pause => {
+                // Pause and resume take the whole press, so the screen that
+                // opens does not act on it too.
+                Some(Phase::Playing) if controls.pause || (game.paused && controls.back) => {
                     game.paused = !game.paused;
                     game.dirty = true;
+                    controls.consume();
+                }
+                Some(Phase::Playing) if controls.dash && !game.paused => {
+                    game.dash_queued = true;
+                }
+                Some(Phase::Glitch(offers)) => {
+                    if let Some(i) = controls.number.filter(|i| *i < offers.len()) {
+                        actions.push(UiAction::Glitch(i));
+                    }
                 }
                 Some(Phase::LevelUp(choices)) => {
                     if let Some(i) = controls.number.filter(|i| *i < choices.len()) {
@@ -142,7 +153,8 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
     if !matches!(run.phase, Phase::Playing) {
         game.since_choice += time.delta_secs();
         // The bots choose after a beat during autoplay, so it can be seen.
-        if bot && game.since_choice > 0.5 {
+        let wait = if matches!(run.phase, Phase::Chest(_)) { 3.2 } else { 0.5 };
+        if bot && game.since_choice > wait {
             slop_rules::bot::decide(run, Policy::Heuristic, &mut rng.0);
             game.since_choice = 0.0;
             game.dirty = true;
@@ -156,7 +168,9 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
         let input = if bot {
             slop_sim::bot::steer(run.world.as_ref().expect("the Feed runs"))
         } else {
-            Input { x: controls.move_dir.x, y: controls.move_dir.y }
+            // A dash pressed between ticks goes with the next one.
+            let dash = std::mem::take(&mut game.dash_queued);
+            Input { x: controls.move_dir.x, y: controls.move_dir.y, dash }
         };
         let changed = run.step(input);
         if let Some(w) = run.world.as_mut() {
@@ -166,8 +180,12 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
             game.since_choice = 0.0;
             game.since_end = 0.0;
             game.dirty = true;
-            if matches!(run.phase, Phase::Chest(_)) {
-                game.cues.push(Cue::Chest);
+            if let Phase::Chest(reward) = &run.phase {
+                game.cues.push(if reward.best >= 4 { Cue::Legendary } else { Cue::Chest });
+                game.chest_opened = 0.0;
+            }
+            if matches!(run.phase, Phase::Glitch(_)) {
+                game.cues.push(Cue::Legendary);
             }
             break;
         }
@@ -181,7 +199,13 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
             slop_sim::Event::BossIntro { kind } => game.banner = Some((kind.name().to_uppercase(), kind.puzzle().to_string(), 4.0)),
             slop_sim::Event::Regenerate { .. } => game.banner = Some(("REGENERATE RESPONSE".into(), "The Model tries again. A varied build would have stopped this.".into(), 2.5)),
             slop_sim::Event::BossPhase { .. } => game.banner = Some(("PHASE 2".into(), "It is getting serious.".into(), 1.8)),
-            slop_sim::Event::BossDefeated { kind, .. } => game.banner = Some(("DELETED".into(), format!("{} is gone. Grab its chest.", kind.name()), 3.0)),
+            slop_sim::Event::BossDefeated { kind, .. } => game.banner = Some(("DELETED".into(), format!("{} is gone. Grab its chest: a glitch waits inside.", kind.name()), 3.0)),
+            slop_sim::Event::Biome { platform } => {
+                game.banner = Some((format!("NOW ENTERING {}", platform.name().to_uppercase()), platform.hazard().to_string(), 2.6));
+            }
+            slop_sim::Event::ArenaWarning { .. } => game.banner = Some(("YOU'RE LIVE IN 3...".into(), "Stay inside the ring. Survive the stream, get the chest.".into(), 2.5)),
+            slop_sim::Event::ArenaCleared { .. } => game.banner = Some(("STREAM ENDED".into(), "Thanks for watching. Grab your chest.".into(), 2.5)),
+            slop_sim::Event::GodMode => game.banner = Some(("GOD MODE".into(), "Untouchable for 2 seconds.".into(), 1.2)),
             _ => {}
         }
     }
@@ -189,6 +213,7 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
 
 fn timers(time: Res<Time>, mut game: ResMut<Game>) {
     let dt = time.delta_secs();
+    game.chest_opened += dt;
     if let Some((_, left)) = &mut game.message {
         *left -= dt;
         if *left <= 0.0 {

@@ -118,10 +118,12 @@ pub enum PropKind {
     CommentSection,
     /// Somebody's phone: a chest.
     LostPhone,
+    /// A ring light on a tripod: stand in it to go live (EVENT-02).
+    GoLive,
 }
 
 impl PropKind {
-    pub const ALL: [PropKind; 10] = [
+    pub const ALL: [PropKind; 11] = [
         PropKind::AdBillboard,
         PropKind::PopupAd,
         PropKind::CryptoMiner,
@@ -132,6 +134,7 @@ impl PropKind {
         PropKind::DataCenter,
         PropKind::CommentSection,
         PropKind::LostPhone,
+        PropKind::GoLive,
     ];
 
     pub fn name(self) -> &'static str {
@@ -146,6 +149,7 @@ impl PropKind {
             "Data Center",
             "Comment Section",
             "Lost Phone",
+            "Go Live",
         ][self as usize]
     }
 
@@ -161,6 +165,7 @@ impl PropKind {
             "Stand inside while it uploads. The slop wants it too.",
             "Stand in the ring to open it. Elites come out. Survive them.",
             "Walk over it: a chest.",
+            "Stand in the ring to start a livestream: you are locked in with the crowd for 30 s, then a big chest.",
         ][self as usize]
     }
 
@@ -186,7 +191,7 @@ impl PropKind {
     pub fn charge(self) -> u16 {
         match self {
             PropKind::Vending | PropKind::Gacha | PropKind::Shrine => 50,
-            PropKind::CommentSection => 70,
+            PropKind::CommentSection | PropKind::GoLive => 70,
             PropKind::DataCenter => 30,
             _ => 1,
         }
@@ -213,6 +218,45 @@ pub struct Prop {
     pub left: u32,
     /// What it costs to use, in Clout; set by the rules.
     pub price: u32,
+}
+
+/// Side of a biome: the map is a patchwork of the six platforms, one per
+/// square of this size (BIOME-01). A whole number of floor tiles.
+pub const BIOME: f32 = 3072.0;
+
+/// The biome square a point is in. A run starts in the middle of one.
+pub fn biome_cell(p: V2) -> (i32, i32) {
+    (((p.x + BIOME / 2.0) / BIOME).floor() as i32, ((p.y + BIOME / 2.0) / BIOME).floor() as i32)
+}
+
+/// The centre of a biome square.
+pub fn biome_centre(c: (i32, i32)) -> V2 {
+    V2::new(c.0 as f32 * BIOME, c.1 as f32 * BIOME)
+}
+
+/// Which platform's part of the map a point is in. Neighbours always differ,
+/// so walking a while always takes you somewhere new.
+pub fn biome_at(seed: u64, p: V2) -> crate::content::Platform {
+    biome_of_cell(seed, biome_cell(p))
+}
+
+/// The biome of a point at least `margin` inside its square, or None near
+/// an edge: crossing counts once you are properly in.
+pub fn biome_settled(seed: u64, p: V2, margin: f32) -> Option<crate::content::Platform> {
+    let c = biome_cell(p);
+    let d = p - biome_centre(c);
+    let inner = BIOME / 2.0 - margin;
+    (d.x.abs() < inner && d.y.abs() < inner).then(|| biome_of_cell(seed, c))
+}
+
+pub fn biome_of_cell(seed: u64, c: (i32, i32)) -> crate::content::Platform {
+    use crate::content::Platform;
+    // A checkerboard of two families of three: squares that share a side
+    // always come from different families.
+    let family = (c.0 + c.1).rem_euclid(2) as usize;
+    let h = chunk_seed(seed ^ 0xB10E, c);
+    let pick = (h % 3) as usize;
+    Platform::ALL[family * 3 + pick]
 }
 
 /// Chunk coordinates of a point.
@@ -329,12 +373,13 @@ impl Map {
         if rng.chance(0.75) {
             let at = origin + V2::new(rng.range(250.0, CHUNK - 250.0), rng.range(250.0, CHUNK - 250.0));
             let kind = match rng.below(100) {
-                0..=17 => PropKind::Hotspot,
-                18..=33 => PropKind::Vending,
-                34..=48 => PropKind::Gacha,
-                49..=62 => PropKind::Shrine,
-                63..=76 => PropKind::DataCenter,
-                77..=88 => PropKind::CommentSection,
+                0..=15 => PropKind::Hotspot,
+                16..=29 => PropKind::Vending,
+                30..=42 => PropKind::Gacha,
+                43..=55 => PropKind::Shrine,
+                56..=67 => PropKind::DataCenter,
+                68..=78 => PropKind::CommentSection,
+                79..=89 => PropKind::GoLive,
                 _ => PropKind::LostPhone,
             };
             self.place(kind, at, &mut taken);
@@ -406,11 +451,16 @@ impl Map {
         self.fences.push(Wall { id, kind: WallKind::Fence, min: centre - half, max: centre + half, warning, ticks });
     }
 
-    /// Fences count down; finished ones open again.
-    pub fn tick_fences(&mut self) {
+    /// Fences count down; finished ones open again. A fence never closes on
+    /// top of you: it waits until you step out (MAP-04).
+    pub fn tick_fences(&mut self, you: V2, r: f32) {
         for f in &mut self.fences {
-            if f.warning > 0 {
+            if f.warning > 1 {
                 f.warning -= 1;
+            } else if f.warning == 1 {
+                if f.push_out(you, r).is_none() {
+                    f.warning = 0;
+                }
             } else {
                 f.ticks = f.ticks.saturating_sub(1);
             }

@@ -69,13 +69,13 @@ fn same_seed_and_inputs_replay_exactly() {
 fn the_map_is_endless_but_walls_stop_you() {
     let mut w = armed(&[]);
     for _ in 0..1800 {
-        w.step(Input { x: -1.0, y: -0.2 });
+        w.step(Input::moving(-1.0, -0.2));
     }
     assert!(w.player.pos.x < -3000.0, "no edge to the map");
     let at = w.player.pos;
     w.map.add_fence(at + V2::new(-200.0, 0.0), V2::new(60.0, 400.0), 1, 600);
     for _ in 0..120 {
-        w.step(Input { x: -1.0, y: 0.0 });
+        w.step(Input::moving(-1.0, 0.0));
     }
     assert!(w.player.pos.x > at.x - 140.0 - PLAYER_RADIUS - 1.0, "the fence stops you");
 }
@@ -84,10 +84,10 @@ fn the_map_is_endless_but_walls_stop_you() {
 #[test]
 fn movement_eases_to_full_speed_and_diagonals_are_not_faster() {
     let mut w = armed(&[]);
-    w.step(Input { x: 1.0, y: 0.0 });
+    w.step(Input::moving(1.0, 0.0));
     assert!(w.player.vel.x < PLAYER_SPEED * 0.6);
     for _ in 0..60 {
-        w.step(Input { x: 1.0, y: 1.0 });
+        w.step(Input::moving(1.0, 1.0));
     }
     assert!((w.player.vel.length() - PLAYER_SPEED).abs() < 1.0);
 }
@@ -98,7 +98,7 @@ fn every_weapon_damages_slop() {
     for (d, def) in WEAPONS.iter().enumerate() {
         let mut w = World::sandbox(3, &[d]);
         let dist = match def.pattern {
-            Pattern::Orbit { radius } => radius,
+            Pattern::Orbit { radius } | Pattern::Barrier { radius, .. } => radius,
             _ => (def.range * 0.5).min(200.0),
         };
         w.spawn_archetype(Archetype::EngagementBait, w.player.pos + V2::new(dist, 0.0));
@@ -262,7 +262,7 @@ fn hands_grab_slow_and_hurt_you() {
     run(&mut w, 10);
     assert_eq!(w.player.grabbed, 1);
     for _ in 0..90 {
-        w.step(Input { x: 1.0, y: 0.0 });
+        w.step(Input::moving(1.0, 0.0));
     }
     assert!((w.player.vel.x - PLAYER_SPEED * 0.8).abs() < 2.0);
     assert!(w.player.mental_health < 100.0);
@@ -358,7 +358,7 @@ fn statuses_hurt_reverse_and_can_be_prevented() {
     assert!(w.player.status.brainrot > 0, "brainrot lands after its warning");
     let x = w.player.pos.x;
     for _ in 0..20 {
-        w.step(Input { x: 1.0, y: 0.0 });
+        w.step(Input::moving(1.0, 0.0));
     }
     assert!(w.player.pos.x < x, "controls are reversed");
 
@@ -652,7 +652,7 @@ fn maintenance_closes_a_block_after_a_warning_never_on_you() {
     let mut w = World::new(4, setup, &Loadout::with_weapons(&[]));
     let mut warned = false;
     for _ in 0..(60 * 30) {
-        w.step(Input { x: 0.6, y: 0.2 });
+        w.step(Input::moving(0.6, 0.2));
         warned |= w.drain_events().iter().any(|e| matches!(e, Event::Maintenance { .. }));
         for f in w.map.fences.iter().filter(|f| f.solid()) {
             assert!(!f.contains(w.player.pos), "a closed fence never holds you inside");

@@ -59,6 +59,8 @@ fn base(stat: StatKind) -> f32 {
         StatKind::Scepticism => 4.0,
         StatKind::Curiosity => 30.0,
         StatKind::Luck => 2.0,
+        StatKind::Boundaries => 10.0,
+        StatKind::Hustle => 4.0,
     }
 }
 

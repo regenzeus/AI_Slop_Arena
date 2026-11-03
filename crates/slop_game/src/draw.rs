@@ -30,6 +30,9 @@ pub fn human(face: usize, hero: Hero) -> Canvas {
         Hero::Teacher => 0x4A6FB5,
         Hero::Programmer => 0x3A3D4D,
         Hero::Artist => 0xF28C38,
+        Hero::Influencer => 0xFF8FB8,
+        Hero::Intern => 0x5DBB4F,
+        Hero::Moderator => 0x2E3A59,
     };
     p.rect(50.0, 75.0, 29.0, 21.0, 15.0, hex(top));
     p.line(50.0, 62.0, 50.0, 92.0, 1.5, alpha(if hero == Hero::Programmer { WHITE } else { INK }, 0.35));
@@ -88,6 +91,30 @@ pub fn human(face: usize, hero: Hero) -> Canvas {
             p.dot(52.0, 6.0, 3.0, hex(0xD8344A));
             p.dot(36.0, 82.0, 4.0, hex(0x3CC8B4));
             p.dot(60.0, 88.0, 3.5, hex(0x9B6BFF));
+        }
+        Hero::Influencer => {
+            // Long hair, heart sunglasses, a phone up.
+            p.sdf(|x, y| ellipse(x, y, 50.0, 26.0, 30.0, 18.0).max(y - 30.0), hex(0xF2C230));
+            for ex in [39.0, 61.0] {
+                p.sdf(|x, y| circle(x, y, ex - 3.0, 34.0, 4.5).min(circle(x, y, ex + 3.0, 34.0, 4.5)).min(triangle(x, y, (ex - 7.5, 36.0), (ex + 7.5, 36.0), (ex, 44.0))), hex(0xFF2E94));
+            }
+            p.rect(84.0, 70.0, 6.0, 10.0, 2.0, hex(0x2A2240));
+            p.dot(84.0, 68.0, 2.5, hex(0x8CC8F2));
+        }
+        Hero::Intern => {
+            // A lanyard and a cap on backwards.
+            p.sdf(|x, y| rbox(x, y, 50.0, 14.0, 22.0, 8.0, 6.0).min(ellipse(x, y, 30.0, 18.0, 12.0, 4.0)), hex(0x3D7BE0));
+            p.line(40.0, 62.0, 50.0, 80.0, 1.5, hex(0xE23B3B));
+            p.line(60.0, 62.0, 50.0, 80.0, 1.5, hex(0xE23B3B));
+            p.rect(50.0, 84.0, 7.0, 5.0, 1.0, WHITE);
+        }
+        Hero::Moderator => {
+            // A headset, and a tiny ban hammer badge.
+            p.sdf(|x, y| (circle(x, y, 50.0, 36.0, 30.0).abs() - 2.5).max(y - 30.0), hex(0x2A2D38));
+            p.rect(21.0, 38.0, 4.0, 8.0, 2.0, hex(0x2A2D38));
+            p.line(21.0, 46.0, 36.0, 52.0, 1.5, hex(0x2A2D38));
+            p.rect(68.0, 74.0, 7.0, 4.0, 1.0, hex(0xE23B3B));
+            p.line(68.0, 78.0, 68.0, 86.0, 1.5, hex(0x9A6236));
         }
     }
     p.c
@@ -262,6 +289,216 @@ pub fn archetype(a: Archetype) -> Canvas {
             p.rect(50.0, 46.0, 27.0, 4.0, 2.0, hex(0x6FA8FF));
             p.rect(50.0, 62.0, 28.0, 4.0, 2.0, hex(0xFF8FB8));
             p.dot(50.0, 32.0, 5.0, hex(0xFFD84A));
+        }
+        _ => return icon(a, 0),
+    }
+    p.c
+}
+
+/// Frames of each brainrot icon's animation (ICON-02).
+pub const ICON_FRAMES: usize = 4;
+
+/// Two cartoon eyes looking a little to the right.
+fn eyes(p: &mut Pen, cx: f32, cy: f32, gap: f32, r: f32) {
+    for ex in [cx - gap / 2.0, cx + gap / 2.0] {
+        p.circle(ex, cy, r, WHITE);
+        p.dot(ex + r * 0.3, cy, r * 0.5, INK);
+    }
+}
+
+/// A brainrot icon (ICON-01) at one frame of its animation (ICON-02): legs
+/// walk, bats swing, propellers spin. Parodies of the viral characters,
+/// drawn here from scratch.
+pub fn icon(a: Archetype, frame: usize) -> Canvas {
+    let mut p = Pen::new(slop_size(a));
+    let t = frame as f32 / ICON_FRAMES as f32 * std::f32::consts::TAU;
+    let (s, c) = (t.sin(), t.cos());
+    match a {
+        Archetype::TonkSahur => {
+            // A log with a bat, walking.
+            p.stick(40.0, 76.0, 36.0 + 8.0 * s, 94.0, 4.0, hex(0x7A4E2D));
+            p.stick(60.0, 76.0, 64.0 - 8.0 * s, 94.0, 4.0, hex(0x7A4E2D));
+            p.rect(50.0, 50.0, 22.0, 34.0, 14.0, hex(0xC8925A));
+            for y in [30.0, 44.0, 62.0] {
+                p.line(36.0, y, 48.0, y + 3.0, 1.2, alpha(INK, 0.35));
+            }
+            p.ellipse(50.0, 18.0, 20.0, 5.0, hex(0xE0B07A));
+            eyes(&mut p, 50.0, 38.0, 16.0, 6.5);
+            p.ellipse(52.0, 58.0, 9.0, 6.0 + 3.0 * s.abs(), INK);
+            p.stick(30.0, 50.0, 18.0, 64.0, 3.0, hex(0x7A4E2D));
+            // The bat goes up and comes down.
+            let swing = -1.1 + 1.3 * (0.5 + 0.5 * s);
+            let (hx, hy) = (74.0, 48.0);
+            let (bx, by) = (hx + swing.cos() * 30.0, hy + swing.sin() * 30.0);
+            p.stick(70.0, 50.0, hx, hy, 3.0, hex(0x7A4E2D));
+            p.stick(hx, hy, bx, by, 6.0, hex(0xE9D2A8));
+        }
+        Archetype::Tralalelo => {
+            // A shark on three sneakered legs.
+            for (k, x) in [30.0, 50.0, 70.0].iter().enumerate() {
+                let step = if k % 2 == 0 { s } else { -s } * 6.0;
+                p.stick(*x, 60.0, x + step, 80.0, 3.5, hex(0x6A90C8));
+                p.rect(x + step + 4.0, 84.0, 9.0, 5.0, 3.0, WHITE);
+                p.line(x + step - 2.0, 84.0, x + step + 10.0, 84.0, 1.2, hex(0x3D7BE0));
+            }
+            p.tri((84.0, 46.0), (100.0, 30.0), (98.0, 62.0), hex(0x6A90C8));
+            p.ellipse(50.0, 48.0, 38.0, 18.0, hex(0x6A90C8));
+            p.sdf_fill(|x, y| ellipse(x, y, 48.0, 56.0, 30.0, 8.0), hex(0xE8EEF6));
+            p.tri((44.0, 32.0), (60.0, 32.0), (50.0, 12.0), hex(0x6A90C8));
+            p.dot(22.0, 44.0, 4.0, INK);
+            for k in 0..4 {
+                let x = 18.0 + k as f32 * 5.0;
+                p.tri((x, 56.0), (x + 4.0, 56.0), (x + 2.0, 61.0), WHITE);
+            }
+        }
+        Archetype::Bombardilo => {
+            // A crocodile bomber with a spinning propeller.
+            p.sdf(|x, y| polygon(x, y, &[(30.0, 44.0), (70.0, 44.0), (92.0, 30.0), (92.0, 40.0), (70.0, 56.0), (30.0, 56.0), (8.0, 40.0), (8.0, 30.0)]), hex(0x9EA3AE));
+            p.ellipse(50.0, 52.0, 34.0, 14.0, hex(0x5DBB4F));
+            p.ellipse(18.0, 52.0, 14.0, 9.0, hex(0x5DBB4F));
+            for k in 0..4 {
+                p.tri((8.0 + k as f32 * 6.0, 56.0), (12.0 + k as f32 * 6.0, 56.0), (10.0 + k as f32 * 6.0, 61.0), WHITE);
+            }
+            p.circle(28.0, 44.0, 6.0, WHITE);
+            p.dot(26.0, 44.0, 3.0, INK);
+            p.ellipse(40.0, 74.0, 6.0, 9.0, hex(0x3A3D4D));
+            p.ellipse(62.0, 74.0, 6.0, 9.0, hex(0x3A3D4D));
+            p.circle(86.0, 52.0, 5.0, hex(0x3A3D4D));
+            let blade = 14.0 * c;
+            p.stick(90.0, 52.0 - blade, 90.0, 52.0 + blade, 2.5, alpha(hex(0xD8DAE2), 0.9));
+        }
+        Archetype::Ballerina => {
+            // A cappuccino cup for a head, a pink tutu, pirouetting.
+            let lean = 4.0 * s;
+            p.stick(46.0 + lean, 70.0, 40.0 + lean, 94.0, 2.5, hex(0xF6D2B0));
+            p.stick(54.0 + lean, 70.0, 66.0 + lean * 2.0, 86.0 - 6.0 * c.abs(), 2.5, hex(0xF6D2B0));
+            p.sdf(|x, y| ellipse(x, y, 50.0 + lean, 66.0, 30.0, 10.0), hex(0xFFA8C8));
+            p.ellipse(50.0 + lean, 56.0, 9.0, 12.0, hex(0xFFA8C8));
+            p.stick(44.0 + lean, 50.0, 30.0 + lean, 34.0, 2.2, hex(0xF6D2B0));
+            p.stick(56.0 + lean, 50.0, 70.0 + lean, 34.0, 2.2, hex(0xF6D2B0));
+            p.sdf(|x, y| polygon(x, y, &[(32.0 + lean, 14.0), (68.0 + lean, 14.0), (62.0 + lean, 44.0), (38.0 + lean, 44.0)]), WHITE);
+            p.ellipse(50.0 + lean, 15.0, 18.0, 5.0, hex(0xC08850));
+            p.sdf_fill(|x, y| circle(x, y, 47.0 + lean, 15.0, 3.0).min(circle(x, y, 53.0 + lean, 15.0, 3.0)).min(triangle(x, y, (44.0 + lean, 16.0), (56.0 + lean, 16.0), (50.0 + lean, 20.0))), alpha(WHITE, 0.9));
+            p.sdf_fill(|x, y| (circle(x, y, 72.0 + lean, 28.0, 7.0).abs() - 2.0).max(x - 72.0 - lean - 9.0), WHITE);
+            eyes(&mut p, 50.0 + lean, 30.0, 12.0, 4.0);
+        }
+        Archetype::Lirili => {
+            // A cactus elephant in sandals; its trunk sways.
+            for x in [36.0, 64.0] {
+                p.rect(x, 90.0, 10.0, 4.0, 2.0, hex(0x9A6236));
+                p.stick(x, 76.0, x, 88.0, 7.0, hex(0x5DA34F));
+                p.line(x - 6.0, 88.0, x + 6.0, 88.0, 1.5, hex(0x9A6236));
+            }
+            p.ellipse(22.0, 40.0, 14.0, 18.0, hex(0x6FBF5F));
+            p.ellipse(78.0, 40.0, 14.0, 18.0, hex(0x6FBF5F));
+            p.ellipse(50.0, 52.0, 30.0, 34.0, hex(0x5DA34F));
+            for (x, y) in [(36.0, 30.0), (62.0, 26.0), (30.0, 60.0), (70.0, 62.0), (50.0, 76.0), (44.0, 22.0)] {
+                p.line(x, y, x - 3.0, y - 5.0, 0.9, INK);
+                p.line(x, y, x + 3.0, y - 5.0, 0.9, INK);
+            }
+            let sway = 8.0 * s;
+            p.stick(50.0, 54.0, 50.0 + sway, 76.0, 6.0, hex(0x6FBF5F));
+            p.stick(50.0 + sway, 76.0, 56.0 + sway * 1.4, 84.0, 4.5, hex(0x6FBF5F));
+            eyes(&mut p, 50.0, 40.0, 18.0, 5.0);
+            p.circle(50.0, 16.0, 5.0, hex(0xFF8FB8));
+        }
+        Archetype::Patapum => {
+            // A walking forest: a trunk, a crown, a moustache, huge feet.
+            let lift = 5.0 * s;
+            p.ellipse(32.0, 90.0 - lift.max(0.0), 16.0, 7.0, hex(0xC8925A));
+            p.ellipse(68.0, 90.0 + lift.min(0.0), 16.0, 7.0, hex(0xC8925A));
+            p.rect(50.0, 64.0, 16.0, 22.0, 6.0, hex(0x7A4E2D));
+            p.blob(&[(30.0, 30.0, 22.0), (50.0, 18.0, 22.0), (70.0, 30.0, 22.0), (50.0, 40.0, 24.0)], hex(0x3F9A3A));
+            for (x, y) in [(34.0, 24.0), (60.0, 14.0), (68.0, 36.0)] {
+                p.dot(x, y, 3.0, hex(0x6FCB5A));
+            }
+            eyes(&mut p, 50.0, 56.0, 14.0, 4.5);
+            p.sdf(|x, y| ellipse(x, y, 42.0, 68.0, 9.0, 4.0).min(ellipse(x, y, 58.0, 68.0, 9.0, 4.0)), INK);
+            p.circle(50.0, 64.0, 5.0, hex(0xE07050));
+        }
+        Archetype::Chimpanzini => {
+            // A chimp inside a peeled banana.
+            let bob = 3.0 * s;
+            p.sdf(|x, y| ellipse(x, y, 50.0, 60.0 + bob, 30.0, 34.0).max(-ellipse(x, y, 50.0, 40.0 + bob, 22.0, 26.0)), hex(0xF5D84A));
+            p.tri((24.0, 40.0 + bob), (34.0, 50.0 + bob), (14.0, 22.0 + bob), hex(0xF5D84A));
+            p.tri((76.0, 40.0 + bob), (66.0, 50.0 + bob), (86.0, 22.0 + bob), hex(0xF5D84A));
+            p.circle(50.0, 48.0 + bob, 20.0, hex(0x7A4E2D));
+            p.ellipse(50.0, 54.0 + bob, 13.0, 10.0, hex(0xE9C29A));
+            p.circle(30.0, 44.0 + bob, 6.0, hex(0xE9C29A));
+            p.circle(70.0, 44.0 + bob, 6.0, hex(0xE9C29A));
+            eyes(&mut p, 50.0, 44.0 + bob, 12.0, 4.0);
+            p.smile(50.0, 56.0 + bob, 6.0, INK);
+            p.rect(50.0, 96.0, 4.0, 3.0, 1.0, hex(0x5A3A22));
+        }
+        Archetype::Assassinello => {
+            // A coffee cup in a ninja mask, running.
+            p.stick(42.0, 78.0, 34.0 + 8.0 * s, 94.0, 3.0, INK);
+            p.stick(58.0, 78.0, 66.0 - 8.0 * s, 94.0, 3.0, INK);
+            p.sdf(|x, y| polygon(x, y, &[(26.0, 22.0), (74.0, 22.0), (68.0, 82.0), (32.0, 82.0)]), hex(0xF4EEDF));
+            p.sdf_fill(|x, y| (circle(x, y, 78.0, 48.0, 12.0).abs() - 3.0).max(70.0 - x), hex(0xF4EEDF));
+            p.rect(50.0, 40.0, 25.0, 9.0, 2.0, hex(0x2A2D38));
+            p.ellipse(42.0, 40.0, 6.0, 3.5, WHITE);
+            p.ellipse(58.0, 40.0, 6.0, 3.5, WHITE);
+            p.dot(44.0, 40.0, 2.0, INK);
+            p.dot(60.0, 40.0, 2.0, INK);
+            p.stick(24.0, 38.0, 10.0, 30.0 + 6.0 * s, 2.0, hex(0x2A2D38));
+            p.ellipse(50.0, 22.0, 24.0, 5.0, hex(0x5A3A22));
+            p.stick(70.0, 60.0, 96.0, 36.0, 2.2, hex(0xD8DAE2));
+            p.rect(70.0, 60.0, 4.0, 4.0, 1.0, hex(0x9A6236));
+        }
+        Archetype::Gusello => {
+            // A goose with jet engines; the flames flicker.
+            let flame = 6.0 + 5.0 * s.abs();
+            for y in [62.0, 74.0] {
+                p.sdf(|x, yy| ellipse(x, yy, 16.0 - flame * 0.5, y, flame, 4.0), hex(0xF28C38));
+                p.rect(28.0, y, 10.0, 5.0, 2.0, hex(0x9EA3AE));
+            }
+            p.ellipse(50.0, 64.0, 26.0, 18.0, WHITE);
+            p.stick(68.0, 56.0, 74.0, 28.0, 6.0, WHITE);
+            p.circle(76.0, 24.0, 10.0, WHITE);
+            p.tri((84.0, 22.0), (98.0, 26.0), (84.0, 30.0), hex(0xF28C38));
+            p.dot(78.0, 21.0, 2.5, INK);
+            p.sdf_fill(|x, y| ellipse(x, y, 46.0, 62.0, 14.0, 7.0), alpha(hex(0xD8DAE2), 0.9));
+            p.line(46.0, 82.0, 44.0, 92.0, 2.0, hex(0xF28C38));
+            p.line(56.0, 82.0, 58.0, 92.0, 2.0, hex(0xF28C38));
+        }
+        Archetype::TrampolineBunny => {
+            // A bunny mid-bounce.
+            let up = 6.0 * s.abs();
+            p.ellipse(40.0, 22.0 - up, 6.0, 18.0, WHITE);
+            p.ellipse(60.0, 22.0 - up, 6.0, 18.0, WHITE);
+            p.ellipse(50.0, 60.0 - up, 24.0 - 2.0 * s.abs(), 24.0 + 3.0 * s.abs(), WHITE);
+            p.circle(50.0, 44.0 - up, 16.0, WHITE);
+            p.dot(44.0, 42.0 - up, 2.5, INK);
+            p.dot(56.0, 42.0 - up, 2.5, INK);
+            p.dot(50.0, 48.0 - up, 2.5, hex(0xFF8FB8));
+            p.ellipse(40.0, 22.0 - up, 2.5, 10.0, hex(0xFFC2D8));
+            p.ellipse(60.0, 22.0 - up, 2.5, 10.0, hex(0xFFC2D8));
+            // The night-vision tint of a security camera.
+            p.sdf_fill(|x, y| rbox(x, y, 50.0, 50.0, 46.0, 46.0, 4.0).abs() - 1.0, alpha(hex(0x8CFF8C), 0.35));
+        }
+        Archetype::GlassFruit => {
+            // A glass strawberry that glints.
+            p.sdf(|x, y| circle(x, y, 50.0, 48.0, 30.0).min(triangle(x, y, (22.0, 52.0), (78.0, 52.0), (50.0, 92.0))), alpha(hex(0xFF6B8A), 0.75));
+            for (x, y) in [(40.0, 46.0), (58.0, 42.0), (50.0, 62.0), (38.0, 62.0), (62.0, 60.0), (50.0, 76.0)] {
+                p.dot(x, y, 2.5, alpha(WHITE, 0.8));
+            }
+            p.blob(&[(40.0, 20.0, 8.0), (50.0, 16.0, 9.0), (60.0, 20.0, 8.0)], hex(0x5DBB4F));
+            let glint = 0.3 + 0.7 * (0.5 + 0.5 * s);
+            p.sdf_fill(|x, y| capsule(x, y, 34.0, 36.0, 42.0, 28.0, 3.0), alpha(WHITE, glint));
+            eyes(&mut p, 50.0, 50.0, 14.0, 4.0);
+        }
+        _ => {
+            // Ring Light: a tripod with a glowing ring and a phone.
+            for (x, y) in [(30.0, 96.0), (50.0, 96.0), (70.0, 96.0)] {
+                p.line(50.0, 64.0, x, y, 2.0, INK);
+            }
+            let glow = 0.5 + 0.5 * (0.5 + 0.5 * s);
+            p.sdf_fill(|x, y| circle(x, y, 50.0, 36.0, 34.0), alpha(hex(0xFFF3A0), 0.25 * glow));
+            p.sdf(|x, y| circle(x, y, 50.0, 36.0, 30.0).abs() - 7.0, hex(0xFFF7D0));
+            p.rect(50.0, 36.0, 9.0, 15.0, 3.0, hex(0x2A2D38));
+            p.rect(50.0, 34.0, 6.0, 10.0, 1.0, hex(0x8CC8F2));
+            p.stick(50.0, 52.0, 50.0, 66.0, 2.0, INK);
         }
     }
     p.c
@@ -760,6 +997,19 @@ pub fn shot(look: Look) -> Canvas {
             c.shape(|x, y| rbox(x, y, 14.0, 14.0, 11.0, 11.0, 1.5), hex(0xF2E66B), INK, 2.0);
             c.fill(|x, y| rbox(x, y, 14.0, 12.0, 6.0, 1.0, 0.5), alpha(INK, 0.5));
         }
+        // Enemy shots: outlined in the danger pink (FAIR-04).
+        Look::Banana => {
+            c = Canvas::new(40, 40);
+            c.shape(|x, y| (circle(x, y, 26.0, 8.0, 24.0).abs() - 5.0).max(18.0 - y).max(x - 30.0), hex(0xF5D84A), DANGER, 2.5);
+        }
+        Look::Needle => {
+            c = Canvas::new(30, 12);
+            c.shape(|x, y| triangle(x, y, (2.0, 3.0), (28.0, 6.0), (2.0, 9.0)), hex(0x5DA34F), DANGER, 2.0);
+        }
+        Look::Shard => {
+            c = Canvas::new(26, 26);
+            c.shape(|x, y| triangle(x, y, (4.0, 22.0), (13.0, 2.0), (22.0, 18.0)), [1.0, 0.6, 0.7, 0.75], DANGER, 2.0);
+        }
         Look::Bubble | Look::Post => c = bubble(),
     }
     c
@@ -893,6 +1143,74 @@ pub fn seed_patch() -> Canvas {
     for (x0, y0) in [(40.0, 50.0), (80.0, 44.0), (60.0, 80.0), (90.0, 82.0), (34.0, 84.0)] {
         c.fill(|x, y| triangle(x, y, (x0 - 5.0, y0 + 6.0), (x0 + 5.0, y0 + 6.0), (x0, y0 - 8.0)), alpha(hex(0x3F9A3A), 0.8));
     }
+    c
+}
+
+/// A patch of sunflowers (the Sunflower Patch and its merge).
+pub fn sunflower_patch() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0), alpha(hex(0x6FCB5A), 0.28));
+    for (x0, y0, r) in [(42.0, 46.0, 13.0), (84.0, 40.0, 11.0), (64.0, 80.0, 14.0), (92.0, 84.0, 10.0), (32.0, 86.0, 10.0), (64.0, 26.0, 9.0)] {
+        c.fill(|x, y| capsule(x, y, x0, y0, x0, y0 + r * 1.6, r * 0.18), hex(0x3F9A3A));
+        for k in 0..8 {
+            let a = k as f32 * std::f32::consts::TAU / 8.0;
+            let (px, py) = (x0 + a.cos() * r * 0.75, y0 + a.sin() * r * 0.75);
+            c.shape(|x, y| circle(x, y, px, py, r * 0.42), hex(GOLD), INK, 1.2);
+        }
+        c.shape(|x, y| circle(x, y, x0, y0, r * 0.5), hex(0x7A4E2D), INK, 1.2);
+    }
+    c
+}
+
+/// Fire on the floor (Flame War, burning dashes).
+pub fn fire() -> Canvas {
+    let mut c = Canvas::new(64, 64);
+    c.paint(|x, y| {
+        let r = ((x - 32.0).powi(2) + (y - 36.0).powi(2)).sqrt() / 28.0;
+        (r < 1.0).then(|| {
+            let hot = 1.0 - r;
+            [1.0, 0.45 + 0.5 * hot, 0.1 + 0.2 * hot * hot, 0.75 * (1.0 - r * r)]
+        })
+    });
+    c
+}
+
+/// A brainrot zone (ClockTok): a purple disco floor with a spiral.
+pub fn brainrot_zone() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.paint(|x, y| {
+        let (dx, dy) = (x - 64.0, y - 64.0);
+        let r = (dx * dx + dy * dy).sqrt() / 60.0;
+        (r < 1.0).then(|| {
+            let a = dy.atan2(dx);
+            let band = ((a * 3.0 + r * 14.0).sin() * 0.5 + 0.5) * 0.25;
+            [0.62, 0.36, 1.0, 0.2 + band]
+        })
+    });
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0).abs() - 2.5, [0.62, 0.36, 1.0, 0.95]);
+    c
+}
+
+/// Roots stomped into the floor by Brr Brr Patapum.
+pub fn roots() -> Canvas {
+    let mut c = Canvas::new(128, 128);
+    c.fill(|x, y| circle(x, y, 64.0, 64.0, 60.0), alpha(hex(0x7A4E2D), 0.25));
+    for k in 0..7 {
+        let a = k as f32 * std::f32::consts::TAU / 7.0;
+        let (ex, ey) = (64.0 + a.cos() * 56.0, 64.0 + a.sin() * 56.0);
+        c.fill(|x, y| capsule(x, y, 64.0, 64.0, ex, ey, 4.0), alpha(hex(0x5A3A22), 0.8));
+    }
+    c
+}
+
+/// A pillar of light over a rare drop, seen from far (LOOT-02).
+pub fn light_beam() -> Canvas {
+    let mut c = Canvas::new(32, 256);
+    c.paint(|x, y| {
+        let across = 1.0 - ((x - 16.0).abs() / 16.0);
+        let up = y / 256.0;
+        Some([1.0, 0.9, 0.5, across * across * up * 0.8])
+    });
     c
 }
 

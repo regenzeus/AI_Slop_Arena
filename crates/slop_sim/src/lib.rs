@@ -25,6 +25,8 @@ pub mod world;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_v4;
 
 pub use content::{Archetype, BossKind, Look, Platform};
 pub use events::Event;

@@ -15,6 +15,8 @@ pub mod waves;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_v4;
 
 pub use heroes::Hero;
 pub use run::{Phase, Run};

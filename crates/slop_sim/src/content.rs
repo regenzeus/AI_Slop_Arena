@@ -49,10 +49,16 @@ pub enum Look {
     Duck,
     Plane,
     Note,
+    /// A banana peel (Chimpanzini Bananello).
+    Banana,
+    /// A cactus needle (Lirilì Larilò).
+    Needle,
+    /// A shard of a Glass Fruit.
+    Shard,
 }
 
 impl Look {
-    pub const ALL: [Look; 18] = [
+    pub const ALL: [Look; 21] = [
         Look::Rock,
         Look::Bullet,
         Look::Pen,
@@ -71,6 +77,9 @@ impl Look {
         Look::Duck,
         Look::Plane,
         Look::Note,
+        Look::Banana,
+        Look::Needle,
+        Look::Shard,
     ];
 }
 
@@ -112,6 +121,9 @@ pub enum Pattern {
     Slam { radius: f32, execute: f32 },
     /// A projectile that stuns chatbots.
     Stun { speed: f32, radius: f32, seconds: f32 },
+    /// Segments circling you that stop enemy shots and hurt slop they touch
+    /// (DEF-02).
+    Barrier { count: u8, radius: f32, size: f32 },
 }
 
 pub struct WeaponDef {
@@ -217,6 +229,11 @@ pub const WEAPONS: &[WeaponDef] = &[
     weapon("Ratio", Sarcasm, Pattern::Slam { radius: 80.0, execute: 14.0 }, 14.0, 2.0, 300.0, 260.0, "Ratio + L + touch grass."),
     weapon("Sunflower Patch", Grass, Pattern::Zone { radius: 95.0, seconds: 5.0, heal: 1.5 }, 6.0, 3.4, 360.0, 0.0, "Faces the sun. Not your feed."),
     weapon("Leaf Blower", Grass, Pattern::Cone { half_angle: 0.38 }, 4.0, 0.3, 240.0, 320.0, "Loud. Effective. Judged by neighbours."),
+    // Added with dashes and Boundaries (WPN-13, DEF-02).
+    weapon("Firewall", Fact, Pattern::Barrier { count: 3, radius: 82.0, size: 24.0 }, 6.0, 0.5, 82.0, 160.0, "Blocks 99% of slop. The other 1% is you."),
+    weapon("Bubble Wrap", Analog, Pattern::Barrier { count: 2, radius: 58.0, size: 32.0 }, 9.0, 0.6, 58.0, 420.0, "Pop. Pop. Pop. Get off me."),
+    weapon("Fidget Spinner", Analog, Pattern::Orbit { radius: 52.0 }, 5.0, 0.3, 52.0, 120.0, "Helps you focus. On violence."),
+    weapon("Vuvuzela", Sarcasm, Pattern::Cone { half_angle: 0.55 }, 3.0, 0.35, 200.0, 260.0, "BZZZZZZZZZZZZ."),
     // Merged weapons (WPN-12): only made by `MERGES`, never offered.
     evolved("Meteor Shower", Analog, Pattern::Burst { speed: 700.0, radius: 12.0, count: 7, spread: 0.32, look: Look::Rock }, 22.0, 0.9, 560.0, 360.0, "Rocks, but from space."),
     evolved("Home Run", Analog, Pattern::Arc { half_angle: 2.6 }, 48.0, 1.1, 160.0, 900.0, "Out of the park. Out of the feed."),
@@ -231,6 +248,8 @@ pub const WEAPONS: &[WeaponDef] = &[
     evolved("Rewilding", Grass, Pattern::Zone { radius: 150.0, seconds: 6.0, heal: 3.0 }, 16.0, 1.6, 480.0, 0.0, "The parking lot is a meadow now."),
     evolved("Dog Park", Grass, Pattern::Orbit { radius: 115.0 }, 26.0, 0.25, 115.0, 300.0, "Every dog. All at once."),
     evolved("Hurricane Season", Grass, Pattern::Cone { half_angle: 0.85 }, 9.0, 0.18, 330.0, 520.0, "Mother Nature hit reply-all."),
+    evolved("Great Firewall", Fact, Pattern::Barrier { count: 6, radius: 118.0, size: 34.0 }, 22.0, 0.35, 118.0, 520.0, "Nothing gets in. Nothing gets out."),
+    evolved("Stadium Wave", Sarcasm, Pattern::Ring, 26.0, 0.6, 230.0, 380.0, "Sixty thousand people, all sarcastic."),
 ];
 
 /// Merge recipes (WPN-12): two weapons, both at max level, become one
@@ -249,6 +268,8 @@ pub const MERGES: &[(&str, &str, &str)] = &[
     ("Garden Hose", "Seed Bomb", "Rewilding"),
     ("Frisbee", "Dog Walk", "Dog Park"),
     ("Leaf Blower", "Sunflower Patch", "Hurricane Season"),
+    ("Firewall", "Bubble Wrap", "Great Firewall"),
+    ("Fidget Spinner", "Vuvuzela", "Stadium Wave"),
 ];
 
 /// What `def` merges with, and into, by weapon index.
@@ -300,10 +321,40 @@ pub enum Archetype {
     FilterInfluencer,
     /// Hatches into Listicle Drones (Content Farm boss).
     SurpriseEgg,
+    // The brainrot icons (ICON-01): parodies of the viral AI characters,
+    // each with its own trick.
+    TonkSahur,
+    Tralalelo,
+    Bombardilo,
+    Ballerina,
+    Lirili,
+    Patapum,
+    Chimpanzini,
+    Assassinello,
+    Gusello,
+    TrampolineBunny,
+    GlassFruit,
+    RingLight,
 }
 
 impl Archetype {
-    pub const ALL: [Archetype; 16] = [
+    /// The brainrot icons, which spawn on every platform as the Feed goes on.
+    pub const ICONS: [Archetype; 12] = [
+        Archetype::TonkSahur,
+        Archetype::Tralalelo,
+        Archetype::Bombardilo,
+        Archetype::Ballerina,
+        Archetype::Lirili,
+        Archetype::Patapum,
+        Archetype::Chimpanzini,
+        Archetype::Assassinello,
+        Archetype::Gusello,
+        Archetype::TrampolineBunny,
+        Archetype::GlassFruit,
+        Archetype::RingLight,
+    ];
+
+    pub const ALL: [Archetype; 28] = [
         Archetype::ChadGpt,
         Archetype::Clawed,
         Archetype::YesBot,
@@ -320,7 +371,23 @@ impl Archetype {
         Archetype::KarmaFarmer,
         Archetype::FilterInfluencer,
         Archetype::SurpriseEgg,
+        Archetype::TonkSahur,
+        Archetype::Tralalelo,
+        Archetype::Bombardilo,
+        Archetype::Ballerina,
+        Archetype::Lirili,
+        Archetype::Patapum,
+        Archetype::Chimpanzini,
+        Archetype::Assassinello,
+        Archetype::Gusello,
+        Archetype::TrampolineBunny,
+        Archetype::GlassFruit,
+        Archetype::RingLight,
     ];
+
+    pub fn is_icon(self) -> bool {
+        Archetype::ICONS.contains(&self)
+    }
 
     /// Chatbots share one trained base model and are stunned by CAPTCHAs.
     pub fn is_chatbot(self) -> bool {
@@ -349,7 +416,7 @@ const fn arch(name: &'static str, role: Role, hp: f32, speed: f32, radius: f32, 
 }
 
 /// In `Archetype` order.
-const ARCHETYPES: [ArchetypeDef; 16] = [
+const ARCHETYPES: [ArchetypeDef; 28] = [
     arch("ChadGPT", Role::Shooter, 26.0, 85.0, 20.0, 5.0, 2, "Keeps its distance and fires fans of speech bubbles."),
     arch("Clawed", Role::Shooter, 34.0, 95.0, 20.0, 6.0, 2, "Aims, then throws a long em-dash. It's not a lance, it's a journey."),
     arch("Yes-Bot", Role::Support, 24.0, 105.0, 18.0, 4.0, 3, "Agrees with nearby slop. Each agreement gives them 10% more damage."),
@@ -366,6 +433,18 @@ const ARCHETYPES: [ArchetypeDef; 16] = [
     arch("Karma Farmer", Role::Support, 34.0, 100.0, 19.0, 6.0, 3, "Grows with every kill nearby. Its hits Ratio you."),
     arch("Filter Influencer", Role::Tank, 70.0, 75.0, 22.0, 7.0, 4, "A beauty filter blocks damage from the front. Flank it, or fact-check it."),
     arch("Surprise Egg", Role::Special, 20.0, 0.0, 16.0, 0.0, 1, "Hatches into Listicle Drones after three seconds."),
+    arch("Tonk Tonk Tonk Sahur", Role::Tank, 46.0, 95.0, 21.0, 7.0, 3, "A log with a bat. Calls your name three times, then bonks the ground around it. Step out of the ring."),
+    arch("Tralalelo Sneakerlala", Role::Swarmer, 24.0, 120.0, 18.0, 7.0, 2, "A shark in sneakers. Aims, then sprints at you in a straight line. Sidestep."),
+    arch("Bombardilo Crocodilo", Role::Shooter, 40.0, 110.0, 22.0, 6.0, 3, "A crocodile bomber. Flies over walls and marks where its bombs land."),
+    arch("Ballerina Cappuccinella", Role::Swarmer, 30.0, 130.0, 17.0, 5.0, 2, "Pirouettes at you. The spin hurts if you stand close."),
+    arch("Lirilì Larilò", Role::Shooter, 70.0, 0.0, 24.0, 8.0, 4, "A cactus elephant in sandals. Never moves. Fires rings of needles; touching it hurts."),
+    arch("Brr Brr Patapum", Role::Tank, 120.0, 45.0, 28.0, 9.0, 5, "A walking forest with feet. Stomps roots around itself that slow you down."),
+    arch("Chimpanzini Bananello", Role::Shooter, 26.0, 105.0, 18.0, 5.0, 2, "A chimp in a banana. Throws peels; a hit makes you slip."),
+    arch("Cappuccino Assassinello", Role::Special, 22.0, 150.0, 16.0, 9.0, 3, "A coffee ninja. Marks a spot behind you, then appears there."),
+    arch("Bombombini Gusello", Role::Swarmer, 16.0, 190.0, 15.0, 10.0, 1, "A goose with jet engines. Flies at you and explodes."),
+    arch("Trampoline Bunny", Role::Swarmer, 6.0, 170.0, 12.0, 4.0, 1, "Caught on a security camera at 3 a.m. Comes in hundreds."),
+    arch("Glass Fruit", Role::Swarmer, 18.0, 90.0, 16.0, 5.0, 2, "Satisfying to cut. Bursts into glass shards that fly at you."),
+    arch("Ring Light", Role::Support, 60.0, 0.0, 22.0, 4.0, 4, "A tripod that never moves. Buffs the slop around it and fires notification bubbles."),
 ];
 
 /// Brainrot bodies set how it moves (BRAIN-01).
@@ -522,7 +601,7 @@ impl Platform {
             "Mid-roll ads dim the arena and open pop-ups.",
             "Downvote zones slow you down.",
             "Filter zones give slop inside a beauty shield.",
-            "The beat speeds up every brainrot.",
+            "Brainrot zones pulse to the beat: stand in one when it drops and your controls flip.",
         ][self as usize]
     }
 
@@ -545,12 +624,12 @@ impl Platform {
     /// Slop that belongs to this platform.
     pub fn locals(self) -> &'static [Archetype] {
         match self {
-            Platform::FaceSlop => &[Archetype::EngagementBait, Archetype::GrandmaCake, Archetype::SixFingerHand],
-            Platform::LinkedOut => &[Archetype::ThoughtLeader, Archetype::RecruiterBot],
-            Platform::MeTube => &[Archetype::ClickbaitFace, Archetype::SubscribePopup],
-            Platform::Thredd => &[Archetype::RepostBot, Archetype::KarmaFarmer],
-            Platform::InstaSlop => &[Archetype::FilterInfluencer, Archetype::SixFingerHand],
-            Platform::ClockTok => &[],
+            Platform::FaceSlop => &[Archetype::EngagementBait, Archetype::GrandmaCake, Archetype::SixFingerHand, Archetype::GlassFruit],
+            Platform::LinkedOut => &[Archetype::ThoughtLeader, Archetype::RecruiterBot, Archetype::RingLight],
+            Platform::MeTube => &[Archetype::ClickbaitFace, Archetype::SubscribePopup, Archetype::Chimpanzini],
+            Platform::Thredd => &[Archetype::RepostBot, Archetype::KarmaFarmer, Archetype::Assassinello],
+            Platform::InstaSlop => &[Archetype::FilterInfluencer, Archetype::SixFingerHand, Archetype::Ballerina],
+            Platform::ClockTok => &[Archetype::TonkSahur, Archetype::Tralalelo, Archetype::Gusello],
         }
     }
 }
@@ -733,7 +812,7 @@ mod tests {
     // REQ: FEEL-03, WPN-11, WPN-12
     #[test]
     fn content_is_sane() {
-        assert_eq!(WEAPONS.iter().filter(|w| !w.evolved).count(), 29);
+        assert_eq!(WEAPONS.iter().filter(|w| !w.evolved).count(), 33);
         for &(a, b, into) in MERGES {
             let (ia, ib, ii) = (weapon_index(a).unwrap(), weapon_index(b).unwrap(), weapon_index(into).unwrap());
             assert!(!WEAPONS[ia].evolved && !WEAPONS[ib].evolved && WEAPONS[ii].evolved, "{into}");

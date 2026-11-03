@@ -6,42 +6,46 @@ use crate::content::{Accessory, Archetype, Body, BossKind, Object, Role};
 
 /// Trait flags (SLOP-05).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Traits(pub u32);
+pub struct Traits(pub u64);
 
 impl Traits {
-    pub const EXPLODE: u32 = 1;
-    pub const HEAL_ON_HIT: u32 = 1 << 1;
-    pub const NO_KNOCKBACK: u32 = 1 << 2;
-    pub const DOUBLE_LIKES: u32 = 1 << 3;
-    pub const DODGE_FIRST: u32 = 1 << 4;
-    pub const THORNS: u32 = 1 << 5;
-    pub const SPIN_AURA: u32 = 1 << 6;
-    pub const SPEED_AURA: u32 = 1 << 7;
-    pub const FRONT_SHIELD: u32 = 1 << 8;
-    pub const RESPAWN: u32 = 1 << 9;
-    pub const SPLIT: u32 = 1 << 10;
-    pub const GROWS: u32 = 1 << 11;
-    pub const HEALER: u32 = 1 << 12;
-    pub const BUFF_AURA: u32 = 1 << 13;
-    pub const FAKE_LIKES: u32 = 1 << 14;
-    pub const RATIO: u32 = 1 << 15;
-    pub const POPUP: u32 = 1 << 16;
-    pub const FLIES: u32 = 1 << 17;
-    pub const HEAL_BOSS: u32 = 1 << 18;
-    pub const HATCH: u32 = 1 << 19;
-    pub const CHATBOT: u32 = 1 << 20;
-    pub const BRAINROT: u32 = 1 << 21;
-    pub const DOOMSCROLL: u32 = 1 << 22;
-    pub const CLONE: u32 = 1 << 23;
-    pub const LONG_REACH: u32 = 1 << 24;
-    pub const AGREE: u32 = 1 << 25;
+    pub const EXPLODE: u64 = 1;
+    pub const HEAL_ON_HIT: u64 = 1 << 1;
+    pub const NO_KNOCKBACK: u64 = 1 << 2;
+    pub const DOUBLE_LIKES: u64 = 1 << 3;
+    pub const DODGE_FIRST: u64 = 1 << 4;
+    pub const THORNS: u64 = 1 << 5;
+    pub const SPIN_AURA: u64 = 1 << 6;
+    pub const SPEED_AURA: u64 = 1 << 7;
+    pub const FRONT_SHIELD: u64 = 1 << 8;
+    pub const RESPAWN: u64 = 1 << 9;
+    pub const SPLIT: u64 = 1 << 10;
+    pub const GROWS: u64 = 1 << 11;
+    pub const HEALER: u64 = 1 << 12;
+    pub const BUFF_AURA: u64 = 1 << 13;
+    pub const FAKE_LIKES: u64 = 1 << 14;
+    pub const RATIO: u64 = 1 << 15;
+    pub const POPUP: u64 = 1 << 16;
+    pub const FLIES: u64 = 1 << 17;
+    pub const HEAL_BOSS: u64 = 1 << 18;
+    pub const HATCH: u64 = 1 << 19;
+    pub const CHATBOT: u64 = 1 << 20;
+    pub const BRAINROT: u64 = 1 << 21;
+    pub const DOOMSCROLL: u64 = 1 << 22;
+    pub const CLONE: u64 = 1 << 23;
+    pub const LONG_REACH: u64 = 1 << 24;
+    pub const AGREE: u64 = 1 << 25;
     /// Elite affixes (ELITE-01).
-    pub const VERIFIED: u32 = 1 << 26;
-    pub const VIRAL: u32 = 1 << 27;
-    pub const SPONSORED: u32 = 1 << 28;
-    pub const TOXIC: u32 = 1 << 29;
+    pub const VERIFIED: u64 = 1 << 26;
+    pub const VIRAL: u64 = 1 << 27;
+    pub const SPONSORED: u64 = 1 << 28;
+    pub const TOXIC: u64 = 1 << 29;
+    /// Bursts into glass shards that fly at you when deleted.
+    pub const SHARDS: u64 = 1 << 30;
+    /// One of the brainrot icons (ICON-01).
+    pub const ICON: u64 = 1 << 31;
 
-    pub fn has(self, flag: u32) -> bool {
+    pub fn has(self, flag: u64) -> bool {
         self.0 & flag != 0
     }
 }
@@ -65,6 +69,12 @@ pub enum Movement {
     Pack,
     /// Does not move.
     Stand,
+    /// Aims, then runs at you in a straight line.
+    Charge,
+    /// Walks, and now and then appears behind you after a warning.
+    Blink,
+    /// Crosses the map in a straight line and is gone (a swarm).
+    Sweep,
     Boss(BossKind),
 }
 
@@ -80,6 +90,14 @@ pub enum Attack {
     Wall,
     /// A bomb that lands where you stand after a warning.
     Bomb,
+    /// A slam around itself after a warning (Tonk Tonk Tonk Sahur).
+    Bonk,
+    /// A ring of cactus needles in every direction.
+    Needles,
+    /// A stomp: a slowing ring of roots around itself.
+    Stomp,
+    /// A banana peel: you slip if it hits you.
+    Peel,
 }
 
 impl Attack {
@@ -91,6 +109,20 @@ impl Attack {
             Attack::Arrow => 170,
             Attack::Wall => 260,
             Attack::Bomb => 240,
+            Attack::Bonk => 200,
+            Attack::Needles => 170,
+            Attack::Stomp => 300,
+            Attack::Peel => 190,
+        }
+    }
+
+    /// How close you must be for it to attack.
+    pub fn reach(self) -> f32 {
+        match self {
+            Attack::Bonk => 150.0,
+            Attack::Stomp => 260.0,
+            Attack::Needles => 560.0,
+            _ => 760.0,
         }
     }
 }
@@ -141,6 +173,19 @@ impl SlopSpec {
             Archetype::KarmaFarmer => (Movement::Rush, None, Traits::GROWS | Traits::RATIO),
             Archetype::FilterInfluencer => (Movement::Rush, None, Traits::FRONT_SHIELD),
             Archetype::SurpriseEgg => (Movement::Stand, None, Traits::HATCH | Traits::NO_KNOCKBACK),
+            // The brainrot icons (ICON-01).
+            Archetype::TonkSahur => (Movement::Rush, Some(Attack::Bonk), Traits::ICON),
+            Archetype::Tralalelo => (Movement::Charge, None, Traits::ICON),
+            Archetype::Bombardilo => (Movement::Kite, Some(Attack::Bomb), Traits::ICON | Traits::FLIES),
+            Archetype::Ballerina => (Movement::Hop, None, Traits::ICON | Traits::SPIN_AURA),
+            Archetype::Lirili => (Movement::Stand, Some(Attack::Needles), Traits::ICON | Traits::NO_KNOCKBACK | Traits::THORNS),
+            Archetype::Patapum => (Movement::Rush, Some(Attack::Stomp), Traits::ICON | Traits::NO_KNOCKBACK),
+            Archetype::Chimpanzini => (Movement::Kite, Some(Attack::Peel), Traits::ICON),
+            Archetype::Assassinello => (Movement::Blink, None, Traits::ICON),
+            Archetype::Gusello => (Movement::Rush, None, Traits::ICON | Traits::EXPLODE),
+            Archetype::TrampolineBunny => (Movement::Hop, None, Traits::ICON),
+            Archetype::GlassFruit => (Movement::Rush, None, Traits::ICON | Traits::SHARDS),
+            Archetype::RingLight => (Movement::Stand, Some(Attack::Fan), Traits::ICON | Traits::NO_KNOCKBACK | Traits::BUFF_AURA),
         };
         let chatbot = if a.is_chatbot() { Traits::CHATBOT } else { 0 };
         SlopSpec {
@@ -299,6 +344,14 @@ impl SlopSpec {
     }
 
     pub fn is_brainrot(&self) -> bool {
-        self.traits.has(Traits::BRAINROT)
+        self.traits.has(Traits::BRAINROT) || self.traits.has(Traits::ICON)
+    }
+
+    /// A swarm version: crosses the map in a line instead of chasing you.
+    pub fn sweeping(mut self) -> SlopSpec {
+        self.movement = Movement::Sweep;
+        self.attack = None;
+        self.name = format!("{} (swarm)", self.name);
+        self
     }
 }

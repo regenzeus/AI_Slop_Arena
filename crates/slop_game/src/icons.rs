@@ -280,12 +280,53 @@ fn feed_weapon(index: usize) -> Canvas {
             }
             p.circle(50.0, 40.0, 16.0, hex(0x7A4E2D));
         }
-        _ => {
-            // Leaf Blower
+        "Leaf Blower" => {
             p.rect(36.0, 58.0, 22.0, 18.0, 6.0, hex(ORANGE));
             p.stick(52.0, 52.0, 90.0, 34.0, 7.0, hex(0x5A5F70));
             p.stick(26.0, 74.0, 30.0, 90.0, 4.0, hex(DARK));
             leaf(&mut p, 84.0, 64.0, 0.35, hex(GREEN));
+        }
+        "Firewall" => {
+            // Bricks on fire.
+            p.sdf(|x, y| {
+                let f = (x - 50.0) / 40.0;
+                let flame = y - (40.0 - 26.0 * (1.0 - f * f).max(0.0) - 8.0 * ((x * 0.25).sin()).abs());
+                (-flame).max((x - 50.0).abs() - 38.0).max(y - 60.0)
+            }, hex(ORANGE));
+            p.sdf_fill(|x, y| ellipse(x, y, 50.0, 48.0, 18.0, 16.0), hex(GOLD));
+            p.rect(50.0, 70.0, 40.0, 20.0, 2.0, hex(0xB5523B));
+            for (x, y) in [(30.0, 64.0), (50.0, 64.0), (70.0, 64.0), (40.0, 77.0), (60.0, 77.0)] {
+                p.rect(x, y, 9.0, 5.0, 1.0, hex(0xD9784E));
+            }
+        }
+        "Bubble Wrap" => {
+            p.rect(50.0, 50.0, 40.0, 34.0, 6.0, alpha(hex(SKY), 0.85));
+            for gy in 0..3 {
+                for gx in 0..4 {
+                    let (x, y) = (26.0 + gx as f32 * 16.0, 32.0 + gy as f32 * 18.0);
+                    p.circle(x, y, 6.5, alpha(WHITE, 0.95));
+                    p.dot(x - 2.0, y - 2.0, 2.0, hex(SKY));
+                }
+            }
+        }
+        "Fidget Spinner" => {
+            for k in 0..3 {
+                let a = k as f32 * std::f32::consts::TAU / 3.0 - std::f32::consts::FRAC_PI_2;
+                let (x, y) = (50.0 + a.cos() * 26.0, 52.0 + a.sin() * 26.0);
+                p.stick(50.0, 52.0, x, y, 9.0, hex(BLUE));
+                p.circle(x, y, 13.0, hex(BLUE));
+                p.dot(x, y, 6.0, hex(GREY));
+            }
+            p.circle(50.0, 52.0, 11.0, hex(GOLD));
+        }
+        _ => {
+            // Vuvuzela
+            p.sdf(|x, y| polygon(x, y, &[(12.0, 46.0), (12.0, 54.0), (70.0, 72.0), (70.0, 28.0)]), hex(0xF2E66B));
+            p.ellipse(72.0, 50.0, 8.0, 22.0, hex(0xD9C84E));
+            for k in 0..3 {
+                let r = 12.0 + k as f32 * 8.0;
+                p.sdf_fill(|x, y| (circle(x, y, 72.0, 50.0, r).abs() - 1.6).max(72.0 - x + 4.0), alpha(INK, 0.6));
+            }
         }
     }
     p.c
@@ -554,7 +595,7 @@ pub fn item(index: usize) -> Canvas {
             p.line(84.0, 70.0, 72.0, 82.0, 3.0, WHITE);
         }
         // Phone a Friend
-        _ => {
+        31 => {
             p.sdf(
                 |x, y| {
                     let band = (circle(x, y, 74.0, 26.0, 50.0).abs() - 8.0).max(x - 74.0).max(26.0 - y);
@@ -565,6 +606,291 @@ pub fn item(index: usize) -> Canvas {
             for r in [10.0, 18.0] {
                 p.sdf_fill(|x, y| (circle(x, y, 74.0, 26.0, r).abs() - 1.5).max(-(x - 74.0)).max(y - 26.0), alpha(INK, 0.6));
             }
+        }
+        _ => return new_item(slop_rules::items::ITEMS[index].name),
+    }
+    p.c
+}
+
+/// A shield shape.
+fn shield(p: &mut Pen, cx: f32, cy: f32, s: f32, color: Rgba) {
+    p.sdf(|x, y| rbox(x, y, cx, cy - 10.0 * s, 28.0 * s, 20.0 * s, 6.0 * s).min(triangle(x, y, (cx - 28.0 * s, cy), (cx + 28.0 * s, cy), (cx, cy + 40.0 * s))), color);
+}
+
+/// A shoe.
+fn shoe(p: &mut Pen, cx: f32, cy: f32, color: Rgba) {
+    p.sdf(|x, y| ellipse(x, y, cx + 6.0, cy, 28.0, 18.0).min(rbox(x, y, cx + 12.0, cy + 10.0, 28.0, 8.0, 6.0)), color);
+    p.rect(cx + 12.0, cy + 18.0, 30.0, 5.0, 3.0, WHITE);
+}
+
+/// A sparkle burst, for legendaries.
+fn burst(p: &mut Pen, color: Rgba) {
+    let points: Vec<(f32, f32)> = (0..16)
+        .map(|k| {
+            let ang = k as f32 * std::f32::consts::TAU / 16.0;
+            let r = if k % 2 == 0 { 50.0 } else { 32.0 };
+            (50.0 + ang.cos() * r, 50.0 + ang.sin() * r)
+        })
+        .collect();
+    p.sdf_fill(|x, y| polygon(x, y, &points), color);
+}
+
+/// Items added with dashes, Boundaries and legendaries (ITEM-03), by name.
+fn new_item(name: &str) -> Canvas {
+    let mut p = pen();
+    match name {
+        "Healthy Boundaries" => {
+            shield(&mut p, 50.0, 44.0, 1.1, hex(0x4FB8E8));
+            p.sdf_fill(|x, y| rbox(x, y, 50.0, 40.0, 4.0, 16.0, 2.0).min(rbox(x, y, 50.0, 40.0, 16.0, 4.0, 2.0)), WHITE);
+        }
+        "Bulletproof Hoodie" => {
+            p.rect(50.0, 60.0, 34.0, 28.0, 12.0, hex(0x4A4E60));
+            p.circle(50.0, 30.0, 20.0, hex(0x4A4E60));
+            p.circle(50.0, 32.0, 12.0, hex(0x2A2D38));
+            p.rect(50.0, 66.0, 14.0, 9.0, 3.0, hex(0x6A6F84));
+        }
+        "Privacy Settings" => {
+            p.rect(50.0, 62.0, 30.0, 24.0, 5.0, hex(GOLD));
+            p.sdf(|x, y| (circle(x, y, 50.0, 38.0, 17.0).abs() - 5.0).max(y - 40.0), hex(GREY));
+            p.dot(50.0, 60.0, 5.0, INK);
+            p.rect(50.0, 70.0, 2.5, 7.0, 1.0, INK);
+        }
+        "Spiky Opinions" => {
+            let points: Vec<(f32, f32)> = (0..20)
+                .map(|k| {
+                    let ang = k as f32 * std::f32::consts::TAU / 20.0;
+                    let r = if k % 2 == 0 { 44.0 } else { 26.0 };
+                    (50.0 + ang.cos() * r, 50.0 + ang.sin() * r)
+                })
+                .collect();
+            p.sdf(|x, y| polygon(x, y, &points), hex(RED));
+            p.circle(50.0, 50.0, 18.0, hex(0xF6E6E0));
+            p.line(42.0, 46.0, 48.0, 44.0, 2.0, INK);
+            p.line(52.0, 44.0, 58.0, 46.0, 2.0, INK);
+            p.line(43.0, 57.0, 57.0, 57.0, 2.0, INK);
+        }
+        "Do Not Disturb" => {
+            p.circle(50.0, 50.0, 40.0, hex(0x6A4FC8));
+            p.circle(58.0, 42.0, 30.0, hex(0x3F2E7A));
+            p.sdf_fill(|x, y| circle(x, y, 44.0, 52.0, 26.0).max(-circle(x, y, 56.0, 44.0, 22.0)), hex(0xF2E66B));
+        }
+        "Therapist on Speed Dial" => {
+            phone(&mut p, 44.0, 52.0, hex(0xE9F6FF));
+            p.sdf(|x, y| circle(x, y, 38.0, 46.0, 7.0).min(circle(x, y, 50.0, 46.0, 7.0)).min(triangle(x, y, (31.0, 48.0), (57.0, 48.0), (44.0, 62.0))), hex(PINK));
+            p.circle(76.0, 26.0, 14.0, hex(RED));
+            p.sdf_fill(|x, y| rbox(x, y, 76.0, 26.0, 2.5, 8.0, 1.0).min(rbox(x, y, 76.0, 26.0, 8.0, 2.5, 1.0)), WHITE);
+        }
+        "Emotional Support Water Bottle" => {
+            p.rect(50.0, 58.0, 20.0, 34.0, 8.0, hex(0x5ACFB0));
+            p.rect(50.0, 18.0, 12.0, 8.0, 3.0, hex(DARK));
+            p.circle(44.0, 56.0, 6.0, hex(PINK));
+            p.rect(56.0, 70.0, 6.0, 6.0, 2.0, hex(GOLD));
+            p.tri((42.0, 78.0), (52.0, 78.0), (47.0, 70.0), hex(PURPLE));
+        }
+        "Speedrun Shoes" => {
+            shoe(&mut p, 44.0, 56.0, hex(RED));
+            speed_lines(&mut p, 20.0, &[44.0, 56.0, 68.0]);
+            p.sdf(|x, y| polygon(x, y, &[(70.0, 14.0), (58.0, 36.0), (68.0, 36.0), (60.0, 52.0), (80.0, 28.0), (70.0, 28.0)]), hex(GOLD));
+        }
+        "Swipe Left" => {
+            phone(&mut p, 58.0, 52.0, hex(0xF6E6E0));
+            p.sdf(|x, y| polygon(x, y, &[(8.0, 50.0), (34.0, 30.0), (34.0, 42.0), (54.0, 42.0), (54.0, 58.0), (34.0, 58.0), (34.0, 70.0)]), hex(RED));
+        }
+        "Hot Take Spill" => {
+            p.sdf(|x, y| polygon(x, y, &[(30.0, 30.0), (70.0, 30.0), (64.0, 82.0), (36.0, 82.0)]), WHITE);
+            p.rect(50.0, 30.0, 22.0, 5.0, 2.0, hex(0x7A4E2D));
+            p.sdf(|x, y| ellipse(x, y, 50.0, 90.0, 40.0, 7.0), hex(0x7A4E2D));
+            for x in [36.0, 50.0, 64.0] {
+                p.sdf(|px, py| ellipse(px, py, x, 76.0, 6.0, 12.0).min(triangle(px, py, (x - 6.0, 72.0), (x + 6.0, 72.0), (x, 56.0))), hex(ORANGE));
+            }
+        }
+        "Left on Read" => {
+            p.rect(46.0, 48.0, 36.0, 26.0, 10.0, hex(0xE9F6FF));
+            p.tri((24.0, 66.0), (38.0, 66.0), (22.0, 84.0), hex(0xE9F6FF));
+            for x in [56.0, 66.0] {
+                p.sdf_fill(|px, py| capsule(px, py, x - 8.0, 50.0, x - 3.0, 56.0, 2.2).min(capsule(px, py, x - 3.0, 56.0, x + 6.0, 42.0, 2.2)), hex(BLUE));
+            }
+            p.line(24.0, 44.0, 40.0, 44.0, 2.0, alpha(INK, 0.4));
+        }
+        "Ghosting" => {
+            p.sdf(|x, y| circle(x, y, 50.0, 42.0, 28.0).min(rbox(x, y, 50.0, 64.0, 28.0, 22.0, 2.0)).max(-(circle(x, y, 32.0, 88.0, 9.0).min(circle(x, y, 68.0, 88.0, 9.0)))), alpha(WHITE, 0.9));
+            p.dot(40.0, 42.0, 5.0, INK);
+            p.dot(60.0, 42.0, 5.0, INK);
+            p.ellipse(50.0, 58.0, 5.0, 7.0, INK);
+        }
+        "Cold Brew" => {
+            p.sdf(|x, y| polygon(x, y, &[(28.0, 22.0), (72.0, 22.0), (66.0, 88.0), (34.0, 88.0)]), alpha(hex(0xE9F6FF), 0.9));
+            p.sdf_fill(|x, y| polygon(x, y, &[(31.0, 40.0), (69.0, 40.0), (66.0, 86.0), (34.0, 86.0)]), hex(0x5A3A22));
+            for (x, y) in [(42.0, 50.0), (56.0, 60.0), (46.0, 72.0)] {
+                p.rect(x, y, 7.0, 7.0, 2.0, alpha(WHITE, 0.8));
+            }
+            p.stick(60.0, 10.0, 54.0, 50.0, 3.0, hex(RED));
+        }
+        "Flame War" => {
+            for (x, s) in [(32.0, 0.8), (50.0, 1.1), (68.0, 0.8)] {
+                p.sdf(|px, py| ellipse(px, py, x, 66.0, 14.0 * s, 20.0 * s).min(triangle(px, py, (x - 13.0 * s, 60.0), (x + 13.0 * s, 60.0), (x, 66.0 - 46.0 * s))), hex(ORANGE));
+                p.sdf_fill(|px, py| ellipse(px, py, x, 72.0, 7.0 * s, 10.0 * s), hex(GOLD));
+            }
+        }
+        "Monetised Channel" => {
+            p.rect(50.0, 50.0, 40.0, 28.0, 10.0, hex(RED));
+            p.tri((42.0, 38.0), (42.0, 62.0), (62.0, 50.0), WHITE);
+            p.circle(80.0, 78.0, 14.0, hex(GOLD));
+            p.line(80.0, 70.0, 80.0, 86.0, 2.5, hex(0x9A7A20));
+        }
+        "Affiliate Links" => {
+            for (x, y) in [(36.0, 58.0), (64.0, 42.0)] {
+                p.sdf(|px, py| (rbox(px, py, x, y, 18.0, 10.0, 10.0).abs() - 4.0), hex(GREY));
+            }
+            p.circle(78.0, 76.0, 13.0, hex(GOLD));
+            p.circle(20.0, 24.0, 10.0, hex(GOLD));
+        }
+        "Infinite Scroll" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.sdf(|x, y| (circle(x, y, 34.0, 50.0, 14.0).abs() - 5.0).min(circle(x, y, 66.0, 50.0, 14.0).abs() - 5.0), hex(PURPLE));
+        }
+        "Viral Moment" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.blob(&[(50.0, 50.0, 24.0), (30.0, 36.0, 10.0), (70.0, 34.0, 10.0), (34.0, 70.0, 9.0), (70.0, 68.0, 11.0)], hex(RED));
+            p.circle(50.0, 50.0, 12.0, hex(GOLD));
+        }
+        "Alt Account" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.circle(40.0, 44.0, 18.0, hex(SKIN));
+            p.circle(62.0, 52.0, 18.0, alpha(hex(SKY), 0.85));
+            p.dot(36.0, 42.0, 3.0, INK);
+            p.dot(46.0, 42.0, 3.0, INK);
+            p.dot(58.0, 50.0, 3.0, INK);
+            p.dot(68.0, 50.0, 3.0, INK);
+        }
+        "Golden Ring Light" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.ring(50.0, 44.0, 26.0, 9.0, hex(GOLD));
+            p.stick(50.0, 70.0, 50.0, 94.0, 3.0, hex(DARK));
+            p.stick(50.0, 94.0, 34.0, 98.0, 3.0, hex(DARK));
+            p.stick(50.0, 94.0, 66.0, 98.0, 3.0, hex(DARK));
+        }
+        "God Mode Glitch" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.rect(50.0, 50.0, 30.0, 26.0, 4.0, hex(0x1A1A24));
+            for (dx, c) in [(-3.0, 0xFF2E94), (3.0, 0x3CC8B4), (0.0, 0xFFFFFF)] {
+                p.sdf_fill(|x, y| rbox(x, y, 50.0 + dx, 50.0, 12.0, 3.0, 1.0).min(rbox(x, y, 50.0 + dx, 50.0, 3.0, 12.0, 1.0)), hex(c));
+            }
+        }
+        "Ratio Machine" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.rect(50.0, 54.0, 30.0, 28.0, 5.0, hex(RED));
+            p.rect(50.0, 50.0, 22.0, 12.0, 2.0, WHITE);
+            for x in [40.0, 50.0, 60.0] {
+                p.dot(x, 50.0, 3.0, INK);
+            }
+            p.stick(82.0, 40.0, 82.0, 64.0, 3.0, hex(DARK));
+            p.circle(82.0, 36.0, 6.0, hex(GOLD));
+        }
+        "The Algorithm's Favourite" => {
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.sdf(|x, y| circle(x, y, 38.0, 42.0, 14.0).min(circle(x, y, 62.0, 42.0, 14.0)).min(triangle(x, y, (25.0, 48.0), (75.0, 48.0), (50.0, 80.0))), hex(PINK));
+            p.dot(34.0, 38.0, 4.0, alpha(WHITE, 0.7));
+        }
+        _ => {
+            // Dragon Energy Drink
+            burst(&mut p, alpha(hex(GOLD), 0.6));
+            p.rect(50.0, 54.0, 20.0, 32.0, 6.0, hex(0x2A2D38));
+            p.rect(50.0, 26.0, 16.0, 4.0, 2.0, hex(GREY));
+            p.sdf(|x, y| polygon(x, y, &[(50.0, 34.0), (40.0, 58.0), (48.0, 58.0), (42.0, 78.0), (62.0, 48.0), (53.0, 48.0)]), hex(RED));
+        }
+    }
+    p.c
+}
+
+/// The icon of a glitch (GLITCH-01): a glitched frame around a symbol.
+pub fn glitch(index: usize) -> Canvas {
+    let mut p = pen();
+    let name = slop_rules::items::GLITCHES[index].name;
+    for (dx, c) in [(-4.0, 0xFF2E94), (4.0, 0x3CC8B4)] {
+        p.sdf_fill(|x, y| rbox(x, y, 50.0 + dx, 50.0, 42.0, 42.0, 10.0).abs() - 2.5, alpha(hex(c), 0.9));
+    }
+    p.sdf_fill(|x, y| rbox(x, y, 50.0, 50.0, 40.0, 40.0, 10.0), hex(0x1A1A24));
+    match name {
+        "Glass Cannon" => {
+            p.rect(46.0, 56.0, 26.0, 14.0, 6.0, alpha(hex(SKY), 0.8));
+            p.stick(60.0, 52.0, 84.0, 34.0, 8.0, alpha(hex(SKY), 0.8));
+            p.line(30.0, 50.0, 40.0, 62.0, 1.5, WHITE);
+        }
+        "Ricochet Brain" => {
+            p.blob(&[(40.0, 44.0, 16.0), (60.0, 44.0, 16.0), (50.0, 58.0, 16.0)], hex(PINK));
+            p.line(20.0, 80.0, 40.0, 26.0, 2.5, hex(GOLD));
+            p.line(40.0, 26.0, 80.0, 76.0, 2.5, hex(GOLD));
+        }
+        "Speed Demon" => {
+            p.circle(54.0, 52.0, 22.0, hex(RED));
+            p.tri((38.0, 36.0), (44.0, 22.0), (48.0, 34.0), hex(RED));
+            p.tri((60.0, 34.0), (64.0, 22.0), (70.0, 36.0), hex(RED));
+            speed_lines(&mut p, 30.0, &[44.0, 56.0, 68.0]);
+        }
+        "Hoarder" => {
+            for (x, y) in [(36.0, 70.0), (50.0, 70.0), (64.0, 70.0), (43.0, 56.0), (57.0, 56.0), (50.0, 42.0)] {
+                p.circle(x, y, 9.0, hex(GOLD));
+            }
+        }
+        "Vampire Feed" => {
+            p.circle(50.0, 50.0, 26.0, hex(0xE9E2F6));
+            p.tri((40.0, 56.0), (46.0, 56.0), (43.0, 70.0), WHITE);
+            p.tri((54.0, 56.0), (60.0, 56.0), (57.0, 70.0), WHITE);
+            p.dot(42.0, 44.0, 4.0, hex(RED));
+            p.dot(58.0, 44.0, 4.0, hex(RED));
+        }
+        "Echo Chamber" => {
+            for (k, r) in [14.0, 24.0, 34.0].iter().enumerate() {
+                p.sdf_fill(|x, y| (circle(x, y, 50.0, 50.0, *r).abs() - 2.5), alpha(hex(PURPLE), 1.0 - k as f32 * 0.25));
+            }
+            p.circle(50.0, 50.0, 7.0, hex(PURPLE));
+        }
+        "Big Brain" => {
+            p.blob(&[(38.0, 42.0, 20.0), (62.0, 42.0, 20.0), (40.0, 62.0, 18.0), (60.0, 62.0, 18.0)], hex(PINK));
+            p.line(50.0, 26.0, 50.0, 76.0, 2.0, alpha(INK, 0.5));
+        }
+        "Cursed Feed" => {
+            p.circle(50.0, 46.0, 24.0, hex(0xE9E2F6));
+            p.dot(41.0, 44.0, 6.0, INK);
+            p.dot(59.0, 44.0, 6.0, INK);
+            p.rect(50.0, 70.0, 14.0, 6.0, 2.0, hex(0xE9E2F6));
+            p.dot(41.0, 44.0, 2.0, hex(0xFF2E94));
+            p.dot(59.0, 44.0, 2.0, hex(0xFF2E94));
+        }
+        "Doom Dash" => {
+            shoe(&mut p, 46.0, 56.0, hex(0x2A2D38));
+            p.sdf(|x, y| polygon(x, y, &[(26.0, 22.0), (40.0, 34.0), (30.0, 34.0)]), hex(RED));
+            speed_lines(&mut p, 22.0, &[44.0, 58.0, 72.0]);
+        }
+        "Overclocked" => {
+            p.rect(50.0, 50.0, 22.0, 22.0, 3.0, hex(GREY));
+            for k in 0..4 {
+                let o = -15.0 + k as f32 * 10.0;
+                p.line(28.0, 50.0 + o, 22.0, 50.0 + o, 2.0, hex(GREY));
+                p.line(72.0, 50.0 + o, 78.0, 50.0 + o, 2.0, hex(GREY));
+            }
+            p.sdf(|x, y| polygon(x, y, &[(52.0, 34.0), (42.0, 52.0), (50.0, 52.0), (46.0, 66.0), (58.0, 48.0), (50.0, 48.0)]), hex(GOLD));
+        }
+        "Thick Skull" => {
+            p.circle(50.0, 46.0, 26.0, hex(0xE9E2D6));
+            p.rect(50.0, 70.0, 12.0, 8.0, 2.0, hex(0xE9E2D6));
+            p.dot(41.0, 46.0, 6.0, INK);
+            p.dot(59.0, 46.0, 6.0, INK);
+            p.sdf_fill(|x, y| circle(x, y, 50.0, 46.0, 32.0).abs() - 3.0, hex(0x4FB8E8));
+        }
+        "Plot Armour" => {
+            shield(&mut p, 50.0, 44.0, 1.0, hex(GOLD));
+            p.sdf_fill(|x, y| rbox(x, y, 50.0, 40.0, 14.0, 3.0, 1.0), INK);
+            p.sdf_fill(|x, y| rbox(x, y, 44.0, 52.0, 3.0, 8.0, 1.0).min(rbox(x, y, 56.0, 52.0, 3.0, 8.0, 1.0)), INK);
+        }
+        _ => {
+            // Touch Grass Forever
+            for k in 0..6 {
+                let x = 26.0 + k as f32 * 10.0;
+                p.tri((x - 5.0, 76.0), (x + 5.0, 76.0), (x + 2.0, 34.0 + (k % 3) as f32 * 8.0), hex(GREEN));
+            }
+            p.circle(72.0, 30.0, 10.0, hex(GOLD));
         }
     }
     p.c
@@ -633,6 +959,43 @@ pub fn stat(kind: StatKind) -> Canvas {
             p.blob(&[(38.0, 38.0, 15.0), (62.0, 38.0, 15.0), (38.0, 62.0, 15.0), (62.0, 62.0, 15.0)], hex(GREEN));
             p.line(50.0, 26.0, 50.0, 74.0, 1.5, alpha(INK, 0.4));
             p.line(26.0, 50.0, 74.0, 50.0, 1.5, alpha(INK, 0.4));
+        }
+        StatKind::Boundaries => {
+            shield(&mut p, 50.0, 44.0, 1.15, hex(0x4FB8E8));
+            p.sdf_fill(|x, y| rbox(x, y, 50.0, 36.0, 18.0, 10.0, 4.0), alpha(WHITE, 0.35));
+        }
+        StatKind::Hustle => {
+            p.sdf(|x, y| polygon(x, y, &[(20.0, 80.0), (20.0, 60.0), (40.0, 48.0), (56.0, 60.0), (80.0, 30.0), (80.0, 80.0)]), hex(GREEN));
+            p.circle(30.0, 30.0, 14.0, hex(GOLD));
+            p.line(30.0, 22.0, 30.0, 38.0, 2.5, hex(0x9A7A20));
+        }
+    }
+    p.c
+}
+
+/// Coins by denomination (LOOT-03): a coin, a stack, a bag.
+pub fn coins(size: usize) -> Canvas {
+    let mut p = pen();
+    let coin = |p: &mut Pen, x: f32, y: f32, r: f32| {
+        p.circle(x, y, r, hex(GOLD));
+        p.ring(x, y, r * 0.7, r * 0.12, hex(0xD9A520));
+        p.dot(x - r * 0.3, y - r * 0.35, r * 0.18, alpha(WHITE, 0.7));
+    };
+    match size {
+        0 => coin(&mut p, 50.0, 50.0, 30.0),
+        1 => {
+            for k in 0..4 {
+                p.ellipse(50.0, 76.0 - k as f32 * 12.0, 28.0, 11.0, hex(0xD9A520));
+                p.ellipse(50.0, 72.0 - k as f32 * 12.0, 28.0, 11.0, hex(GOLD));
+            }
+            coin(&mut p, 72.0, 70.0, 16.0);
+        }
+        _ => {
+            p.blob(&[(50.0, 62.0, 34.0), (50.0, 34.0, 16.0)], hex(0xC89A5A));
+            p.rect(50.0, 28.0, 16.0, 4.0, 2.0, hex(0x8A6236));
+            p.sdf_fill(|x, y| capsule(x, y, 50.0, 46.0, 50.0, 82.0, 3.0).min((circle(x, y, 50.0, 56.0, 9.0).abs() - 3.0).max(x - 50.0).max(y - 56.0)).min((circle(x, y, 50.0, 72.0, 9.0).abs() - 3.0).max(50.0 - x).max(72.0 - y)), hex(0x6A8A3A));
+            coin(&mut p, 24.0, 82.0, 12.0);
+            coin(&mut p, 80.0, 84.0, 11.0);
         }
     }
     p.c

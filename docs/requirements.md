@@ -1,9 +1,9 @@
-# Requirements: version 3, "The Feed"
+# Requirements: version 4, "The Algorithm Update"
 
 Each requirement has an ID that tests reference with `// REQ: ID`. "Verified by" says how it
 is checked: **T** an automated test, **L** a lab measurement, **D** a demonstration in the
 client (autoplay screenshots or play), **I** inspection of the code. The design behind
-version 3 is in [design-v3.md](design-v3.md).
+version 3 is in [design-v3.md](design-v3.md), version 4 in [design-v4.md](design-v4.md).
 
 ## Simulation
 
@@ -28,10 +28,11 @@ version 3 is in [design-v3.md](design-v3.md).
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| STAT-01 | Ten stats exist. Composure multiplies damage taken by 15 / (15 + Composure); Scepticism dodges at most 60% of hits. | T |
+| STAT-01 | Twelve stats exist. Composure multiplies damage taken by 15 / (15 + Composure); Scepticism dodges at most 60% of hits. | T |
 | STATUS-01 | The slop can give you Anxiety, Doomscroll, Pop-up, Ratio'd and Brainrot. Items and heroes can prevent them. | T |
 | ACT-01 | Actives fire on their own when their trigger is met: Log Off, Block Button, Digital Detox, Unsubscribe, Phone a Friend. | T |
-| HERO-01 | Five heroes, all unlocked, each with a starting weapon, a starting item, stat changes and a quirk. | T |
+| HERO-01 | Eight heroes, all unlocked, each with a starting weapon and a starting item. | T |
+| HERO-02 | Each hero bends a rule (a banned weapon type, fewer slots, a start level, Clout as damage, more dashes...), and the hero screen lists every property, good in green and bad in red. | T, D |
 
 ## Weapons and damage
 
@@ -47,8 +48,8 @@ version 3 is in [design-v3.md](design-v3.md).
 | WPN-08 | Seed Bombs heal you inside their patch; the Dog Walk's dog circles you. | T |
 | WPN-09 | Weapons are drawn around you and aim, kick, swing and throw, each with its own effect. | D |
 | WPN-10 | Weapons have levels 1 to 8: more damage every level, an extra projectile at 3 and 8, more area at 5, faster at 7. | T |
-| WPN-11 | 29 base weapons, including the Rubber Duck, Office Memo, Sticky Notes, Side-Eye, Ratio, Sunflower Patch and Leaf Blower. | T |
-| WPN-12 | 13 merges: two weapons that belong together, both at level 8, become one merged weapon when you open a chest; the merge frees a slot. Merged weapons are never offered on a level-up. | T, D |
+| WPN-11 | 33 base weapons, including the Rubber Duck, Office Memo, Sticky Notes, Side-Eye, Ratio, Sunflower Patch, Leaf Blower, Firewall, Bubble Wrap, Fidget Spinner and Vuvuzela. | T |
+| WPN-12 | 15 merges: two weapons that belong together, both at level 8, become one merged weapon when you open a chest; the merge frees a slot. Merged weapons are never offered on a level-up. | T, D |
 | DMG-01 | Four damage types: Analog, Fact, Sarcasm, Grass; the slop resists them as it learns. | T |
 | DMG-02 | Each damage type does something besides damage: Analog staggers and knocks back harder, Fact cuts through filters, shields and Verified, Sarcasm can confuse (the slop turns around and stops attacking), Grass roots. | T |
 | DMG-03 | Set bonuses: two weapons of a type give +10% damage of that type; four make its effect stronger. | T |
@@ -102,7 +103,7 @@ version 3 is in [design-v3.md](design-v3.md).
 | LEVEL-01 | Likes are experience; the first levels take seconds, later ones about a minute. | T |
 | LEVEL-02 | A level-up offers three different choices (more with the right items); every one is valid: no new weapons with six weapons, no level for a weapon at level 8, no new items with six items, no level for a maxed item. If nothing is left, Touch Grass and Brand Deal fill in. One free reroll per level-up, then rerolls cost Clout. | T |
 | CHEST-01 | A chest merges two ready weapons; otherwise it gives one to three upgrades (three from a boss), and Clout. | T |
-| ITEM-01 | More than thirty items in four kinds; items have levels (up to five, or one for on-off effects); you carry six. | T |
+| ITEM-01 | More than fifty items in seven kinds; items have levels (up to five, or one for on-off effects and legendaries); you carry six. | T |
 | ITEM-02 | Side hustles pay Clout every minute; so does the Creator Fund. | T |
 | EVO-01 | Every two minutes the base model's resistances move towards your kill share, zero-sum and capped. | T |
 | EVO-02 | Brainrot that hurt you and lived long breeds; children mutate their numbers and sometimes a part. | T |
@@ -110,6 +111,28 @@ version 3 is in [design-v3.md](design-v3.md).
 | EVO-04 | Model Collapse measures how evenly your kills spread over the four damage types. | T |
 | BAL-01 | Hard but manageable: the heuristic lab bot's median run lasts 15 to 30 minutes, and it beats The Model in 10% to 40% of runs. | L |
 | BAL-02 | Random play dies early: the random lab bot's median run is under 10 minutes. | L |
+
+## Version 4: "The Algorithm Update"
+
+| ID | Requirement | Verified by |
+| --- | --- | --- |
+| DASH-01 | You dash with Space, Shift or A/RB/RT: about 200 units, untouchable, and grabbing hands let go. Everyone has two charges that come back in 3 s; items change the count and the time. | T, D |
+| DASH-02 | Items change what a dash does: it can hit slop, leave fire, end in a shockwave, or leave you untouchable a moment longer; Flame War leaves a burning trail as you walk. | T |
+| DEF-01 | Boundaries: a shield stat that takes hits before Mental Health and comes back after 3 s without a hit; the HUD shows it over Mental Health. | T, D |
+| DEF-02 | Barrier weapons circle you, stop enemy shots and hurt slop they touch. | T, D |
+| ITEM-03 | Items have four rarities (common, rare, epic, legendary) with frames in grey, blue, purple and gold. Legendaries are offered rarely, more often with Luck, are one of a kind, and break rules (more projectiles, exploding kills, a second you, screen wipes, God Mode). | T, D |
+| GLITCH-01 | Glitches: rare perks that change a run. Every boss's chest is followed by a pick of three; now and then one takes a level-up card. | T, D |
+| LOOT-02 | Chests open one, three or five upgrades, each spinning like a slot reel and landing rarest last, with a fanfare for a legendary. One elite in ten drops a golden chest (five upgrades, always a legendary) under a pillar of light; chests off screen get an arrow at the screen's edge. | T, D |
+| LOOT-03 | Clout drops as coins, stacks and bags; Algorithm Boost pulls every Like and coin on the map. | T, D |
+| STAT-02 | Hustle, a stat: Clout every minute, and coins drop more often. | T |
+| BIOME-01 | The map is a patchwork of the six platforms in squares; neighbours always differ. Walking into one changes the floor, the local slop and the hazard, once you are properly inside; a banner says where you are. Bosses keep their order. | T, D |
+| EVENT-01 | Trend alerts: swarms cross the screen in a line and are gone; pop-up walls ring you and close in. | T, D |
+| EVENT-02 | Livestreams: after a warning a ring holds you in with a growing crowd for 28 s, then pays a big chest. They come on their own and from Go Live ring lights on the map. | T, D |
+| ICON-01 | Twelve brainrot icons, parodies of the viral AI characters, each with its own trick: bonks, charges, blinks, needles, stomps, peels, shards, flying bombers, turrets. They join every platform as the Feed goes on. | T, D |
+| ICON-02 | The icons are animated in four frames, and every slop waddles and squashes as it walks. | D |
+| STATUS-02 | Brainrot (reversed controls) only comes from something you can see: a brainrot zone you stood in when the beat dropped, or the Supreme Brainrot's warning. While it lasts, the screen says so with a countdown. | T, D |
+| UI-18 | Print Screen saves a screenshot like F12. Start on a gamepad only pauses and resumes; B resumes too. | D |
+| UI-19 | Reroll sits below the build, out of the arrow-key path between cards; R, Y or a click rerolls. | D |
 
 ## Client
 

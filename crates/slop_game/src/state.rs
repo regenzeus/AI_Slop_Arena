@@ -31,6 +31,8 @@ pub enum UiAction {
     Buy(usize),
     /// Take shrine blessing `i`.
     Bless(usize),
+    /// Take glitch `i` after a boss.
+    Glitch(usize),
     Resume,
     NewRun,
     Quit,
@@ -46,6 +48,8 @@ pub enum Cue {
     Go,
     Tick,
     Chest,
+    /// A legendary in a chest, or a glitch: the big fanfare.
+    Legendary,
 }
 
 #[derive(Resource)]
@@ -87,6 +91,10 @@ pub struct Game {
     pub cues: Vec<Cue>,
     /// The run the bots play behind the title and hero screens.
     pub demo: Option<Run>,
+    /// A dash pressed since the last tick (DASH-01).
+    pub dash_queued: bool,
+    /// Seconds since a chest opened, for its reveal (LOOT-02).
+    pub chest_opened: f32,
 }
 
 impl Game {
@@ -113,6 +121,8 @@ impl Game {
             level_flash: false,
             cues: Vec::new(),
             demo: None,
+            dash_queued: false,
+            chest_opened: 10.0,
         }
     }
 
@@ -129,7 +139,7 @@ impl Game {
     }
 
     pub fn start_run(&mut self) {
-        let hero = Hero::ALL[self.hero.min(4)];
+        let hero = Hero::ALL[self.hero.min(Hero::ALL.len() - 1)];
         let run = Run::new(self.seed, hero);
         self.seed += 1;
         self.demo = None;
@@ -165,12 +175,12 @@ impl Game {
     /// Whether a choice may be taken: overlays ignore input for a moment so
     /// a key held while playing does not pick something by accident.
     pub fn choice_ready(&self) -> bool {
-        self.bot || self.since_choice > 0.35
+        self.bot || self.since_choice > 0.5
     }
 
     /// Does what a button or key asked (UI-08). Returns false to quit.
     pub fn act(&mut self, action: UiAction) -> bool {
-        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Close | UiAction::Reroll);
+        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Glitch(_) | UiAction::Close | UiAction::Reroll);
         if choosing && !self.choice_ready() {
             return true;
         }
@@ -180,12 +190,12 @@ impl Game {
                 self.dirty = true;
             }
             UiAction::PickHero(i) => {
-                self.hero = i.min(4);
+                self.hero = i.min(Hero::ALL.len() - 1);
                 self.dirty = true;
             }
             UiAction::StartRun => self.start_run(),
             UiAction::StartAs(i) => {
-                self.hero = i.min(4);
+                self.hero = i.min(Hero::ALL.len() - 1);
                 self.start_run();
             }
             UiAction::Resume => {
@@ -206,6 +216,7 @@ impl Game {
                     UiAction::Close => (run.close(), Cue::Tick),
                     UiAction::Buy(i) => (run.buy(i), Cue::Buy),
                     UiAction::Bless(i) => (run.bless(i), Cue::Level),
+                    UiAction::Glitch(i) => (run.take_glitch(i), Cue::Level),
                     _ => (Ok(()), Cue::Tick),
                 };
                 self.rule(result, cue);
@@ -217,7 +228,7 @@ impl Game {
 
     /// The run is waiting for a choice (an overlay is up).
     pub fn choosing(&self) -> bool {
-        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. }))
+        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_)))
     }
 }
 

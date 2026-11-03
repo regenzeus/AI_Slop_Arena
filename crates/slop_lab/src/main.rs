@@ -59,7 +59,7 @@ fn bench() {
     let start = Instant::now();
     let mut peak = 0;
     for _ in 0..ticks {
-        w.step(Input { x: 0.3, y: 0.1 });
+        w.step(Input::moving(0.3, 0.1));
         w.drain_events();
         peak = peak.max(w.projectiles.len());
     }
@@ -113,7 +113,7 @@ fn balance(runs: u64, limit: f32) {
         let mut model = 0;
         let mut weapon_use: BTreeMap<String, u32> = BTreeMap::new();
         for seed in 1..=runs {
-            let hero = Hero::ALL[(seed % 5) as usize];
+            let hero = Hero::ALL[(seed % Hero::ALL.len() as u64) as usize];
             let s = bot::play(seed, hero, policy, limit);
             minutes.push(s.minutes);
             *bosses.entry(s.bosses).or_default() += 1;
@@ -146,7 +146,7 @@ fn balance(runs: u64, limit: f32) {
 fn progress(runs: u64) {
     let mut rows: BTreeMap<u32, Vec<Sample>> = BTreeMap::new();
     for seed in 1..=runs {
-        let hero = Hero::ALL[(seed % 5) as usize];
+        let hero = Hero::ALL[(seed % Hero::ALL.len() as u64) as usize];
         let mut run = Run::new(seed, hero);
         let mut rng = slop_sim::rng::Rng::new(seed, 11);
         let mut next = 1.0;
@@ -189,7 +189,7 @@ fn progress(runs: u64) {
 /// What dealt the damage in the last 20 seconds of each run that ended in Burnout.
 fn deaths(runs: u64) {
     for seed in 1..=runs {
-        let hero = Hero::ALL[(seed % 5) as usize];
+        let hero = Hero::ALL[(seed % Hero::ALL.len() as u64) as usize];
         let mut run = Run::new(seed, hero);
         let mut rng = slop_sim::rng::Rng::new(seed, 11);
         // Damage per spec, sampled every second, so the last 20 s can be told apart.

@@ -12,6 +12,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | ART-04 | `every_weapon_item_and_stat_has_a_distinct_icon` | crates/slop_game/src/icons.rs |
 | ART-06 | `the_feed_has_a_picture_for_everything_on_the_map` | crates/slop_game/src/feed_art.rs |
 | BAL-02 | `the_same_seed_plays_the_same_run` | crates/slop_rules/src/tests.rs |
+| BIOME-01 | `the_map_is_a_patchwork_of_platforms` | crates/slop_sim/src/tests_v4.rs |
+| BIOME-01 | `the_spawns_follow_the_biome_you_are_in` | crates/slop_rules/src/tests_v4.rs |
 | BOSS-01 | `each_platform_ends_with_its_boss_and_the_feed_moves_on` | crates/slop_rules/src/tests.rs |
 | BOSS-01 | `every_boss_fights_and_can_be_beaten` | crates/slop_sim/src/tests.rs |
 | BOSS-07 | `bosses_grow_with_time_and_the_model_copies_your_weapons` | crates/slop_rules/src/waves.rs |
@@ -20,12 +22,21 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
 | CHEST-01 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
+| DASH-01 | `a_dash_is_fast_untouchable_and_its_charges_come_back` | crates/slop_sim/src/tests_v4.rs |
+| DASH-01 | `a_dash_shakes_off_grabbing_hands` | crates/slop_sim/src/tests_v4.rs |
+| DASH-02 | `dashes_and_trails_hurt_slop` | crates/slop_sim/src/tests_v4.rs |
+| DEF-01 | `boundaries_take_hits_first_and_come_back` | crates/slop_sim/src/tests_v4.rs |
+| DEF-02 | `a_firewall_stops_enemy_shots_and_hurts_slop` | crates/slop_sim/src/tests_v4.rs |
 | DMG-01 | `marks_resistance_and_type_bonus_scale_damage` | crates/slop_sim/src/tests.rs |
 | DMG-02 | `damage_types_do_something_besides_damage` | crates/slop_sim/src/tests.rs |
 | DMG-02 | `fact_cuts_through_verified` | crates/slop_sim/src/tests.rs |
 | DMG-03 | `damage_types_do_something_besides_damage` | crates/slop_sim/src/tests.rs |
 | ELITE-01 | `elites_carry_their_affix` | crates/slop_rules/src/waves.rs |
 | ELITE-01 | `fact_cuts_through_verified` | crates/slop_sim/src/tests.rs |
+| EVENT-01 | `a_swarm_crosses_the_screen_and_is_gone` | crates/slop_sim/src/tests_v4.rs |
+| EVENT-01 | `the_director_sends_swarms_rings_and_livestreams` | crates/slop_rules/src/tests_v4.rs |
+| EVENT-02 | `a_livestream_holds_you_in_and_pays_a_chest` | crates/slop_sim/src/tests_v4.rs |
+| EVENT-02 | `the_director_sends_swarms_rings_and_livestreams` | crates/slop_rules/src/tests_v4.rs |
 | EVO-01 | `resistance_rises_against_what_you_use_and_stays_zero_sum` | crates/slop_rules/src/training.rs |
 | EVO-01 | `the_slop_retrains_every_two_minutes_and_says_so` | crates/slop_rules/src/tests.rs |
 | EVO-02 | `brainrot_that_hurt_you_breeds` | crates/slop_rules/src/training.rs |
@@ -37,23 +48,35 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | FAIR-03 | `a_hit_gives_brief_invulnerability` | crates/slop_sim/src/tests.rs |
 | FEEL-02 | `sounds_are_valid_wav` | crates/slop_game/src/audio.rs |
 | FEEL-03 | `content_is_sane` | crates/slop_sim/src/content.rs |
+| GLITCH-01 | `a_bosss_chest_is_followed_by_a_pick_of_glitches` | crates/slop_rules/src/tests_v4.rs |
 | HERO-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
-| HERO-01 | `heroes_start_with_real_weapons_and_items` | crates/slop_rules/src/heroes.rs |
+| HERO-01 | `heroes_start_with_real_weapons_and_items_and_list_their_rules` | crates/slop_rules/src/heroes.rs |
+| HERO-02 | `heroes_bend_the_rules` | crates/slop_rules/src/tests_v4.rs |
+| HERO-02 | `heroes_start_with_real_weapons_and_items_and_list_their_rules` | crates/slop_rules/src/heroes.rs |
+| ICON-01 | `brainrot_icons_each_have_their_trick` | crates/slop_sim/src/tests_v4.rs |
 | ITEM-01 | `an_items_drawback_counts_once` | crates/slop_rules/src/tests.rs |
 | ITEM-01 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
 | ITEM-01 | `items_level_up_to_their_max_and_six_fit` | crates/slop_rules/src/tests.rs |
 | ITEM-02 | `side_hustles_and_the_creator_fund_pay_every_minute` | crates/slop_rules/src/tests.rs |
+| ITEM-03 | `golden_chests_hold_a_legendary_and_rarer_things_are_offered_less` | crates/slop_rules/src/tests_v4.rs |
+| ITEM-03 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
+| ITEM-03 | `legendaries_break_the_rules` | crates/slop_sim/src/tests_v4.rs |
 | LEVEL-01 | `four_different_offers_and_luck_helps` | crates/slop_rules/src/levels.rs |
 | LEVEL-01 | `likes_level_you_up_and_every_choice_is_valid` | crates/slop_rules/src/tests.rs |
 | LEVEL-02 | `a_choice_changes_the_world_at_once` | crates/slop_rules/src/tests.rs |
 | LEVEL-02 | `likes_level_you_up_and_every_choice_is_valid` | crates/slop_rules/src/tests.rs |
 | LIKE-01 | `likes_fly_to_you_and_fakes_explode` | crates/slop_sim/src/tests.rs |
 | LOOT-01 | `pickups_heal_pull_freeze_report_and_pay` | crates/slop_sim/src/tests.rs |
+| LOOT-02 | `golden_chests_hold_a_legendary_and_rarer_things_are_offered_less` | crates/slop_rules/src/tests_v4.rs |
+| LOOT-02 | `the_vacuum_pulls_every_like_and_coin` | crates/slop_sim/src/tests_v4.rs |
+| LOOT-03 | `hustle_pays_every_minute` | crates/slop_rules/src/tests_v4.rs |
+| LOOT-03 | `the_vacuum_pulls_every_like_and_coin` | crates/slop_sim/src/tests_v4.rs |
 | MAP-01 | `the_same_seed_makes_the_same_map_in_any_order` | crates/slop_sim/src/map.rs |
 | MAP-01 | `the_window_follows_its_centre_far_from_the_origin` | crates/slop_sim/src/spatial.rs |
 | MAP-02 | `circles_are_pushed_out_of_walls_and_lines_are_blocked` | crates/slop_sim/src/map.rs |
 | MAP-02 | `the_map_is_endless_but_walls_stop_you` | crates/slop_sim/src/tests.rs |
 | MAP-03 | `a_vending_machine_sells_an_item_once` | crates/slop_rules/src/tests.rs |
+| MAP-04 | `a_fence_waits_while_you_stand_where_it_would_close` | crates/slop_sim/src/tests_v4.rs |
 | MAP-04 | `maintenance_closes_a_block_after_a_warning_never_on_you` | crates/slop_sim/src/tests.rs |
 | PLAT-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
 | PLAT-02 | `every_platform_has_its_hazard` | crates/slop_sim/src/tests.rs |
@@ -67,6 +90,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | SIM-02 | `the_map_is_endless_but_walls_stop_you` | crates/slop_sim/src/tests.rs |
 | SIM-03 | `movement_eases_to_full_speed_and_diagonals_are_not_faster` | crates/slop_sim/src/tests.rs |
 | SLOP-01 | `chadgpt_fires_fans_of_three_and_only_one_talks` | crates/slop_sim/src/tests.rs |
+| SLOP-02 | `a_dash_shakes_off_grabbing_hands` | crates/slop_sim/src/tests_v4.rs |
 | SLOP-02 | `hands_grab_slow_and_hurt_you` | crates/slop_sim/src/tests.rs |
 | SLOP-03 | `killing_drone_number_one_first_scatters_the_pack` | crates/slop_sim/src/tests.rs |
 | SLOP-04 | `yes_bots_buff_and_cakes_heal` | crates/slop_sim/src/tests.rs |
@@ -74,8 +98,11 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | SLOP-06 | `the_wave_ramps_up_and_elites_drop_loot_boxes` | crates/slop_sim/src/tests.rs |
 | STAT-01 | `fifteen_composure_halves_damage` | crates/slop_sim/src/stats.rs |
 | STAT-01 | `scepticism_is_capped` | crates/slop_sim/src/stats.rs |
+| STAT-02 | `hustle_pays_every_minute` | crates/slop_rules/src/tests_v4.rs |
 | STATUS-01 | `statuses_hurt_reverse_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
+| STATUS-02 | `a_brainrot_zone_flips_you_only_if_you_stay_for_the_drop` | crates/slop_sim/src/tests_v4.rs |
 | UI-08 | `actions_walk_from_title_into_the_feed_and_report_rule_errors` | crates/slop_game/src/state.rs |
+| UI-13 | `a_ready_merge_is_announced_and_brings_a_chest_closer` | crates/slop_rules/src/tests_v4.rs |
 | UI-13 | `every_stat_explains_its_current_effect` | crates/slop_rules/src/items.rs |
 | UI-14 | `arrows_pick_the_nearest_element_in_their_direction` | crates/slop_game/src/ui.rs |
 | WAVE-01 | `a_wave_clears_on_time_and_burnout_ends_it` | crates/slop_sim/src/tests.rs |
@@ -91,6 +118,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | WPN-08 | `seed_bombs_heal_you_and_the_dog_orbits` | crates/slop_sim/src/tests.rs |
 | WPN-10 | `higher_levels_hit_harder_and_throw_more` | crates/slop_sim/src/tests.rs |
 | WPN-11 | `content_is_sane` | crates/slop_sim/src/content.rs |
+| WPN-12 | `a_ready_merge_is_announced_and_brings_a_chest_closer` | crates/slop_rules/src/tests_v4.rs |
 | WPN-12 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
 | WPN-12 | `content_is_sane` | crates/slop_sim/src/content.rs |
 | ZONE-02 | `zones_have_shapes` | crates/slop_sim/src/tests.rs |
@@ -104,6 +132,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - FAIR-04
 - FEEL-01
 - FEEL-04
+- ICON-02
 - SIM-04
 - UI-01
 - UI-02
@@ -118,4 +147,6 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - UI-15
 - UI-16
 - UI-17
+- UI-18
+- UI-19
 - WPN-09

@@ -159,6 +159,30 @@ pub fn prop(kind: PropKind) -> Canvas {
             p.line(42.0, 36.0, 58.0, 58.0, 1.5, alpha(WHITE, 0.8));
             p.dot(60.0, 30.0, 5.0, hex(RED));
         }
+        PropKind::GoLive => {
+            // A ring light on a tripod, and a red LIVE badge.
+            for x in [30.0, 50.0, 70.0] {
+                p.line(50.0, 62.0, x, 96.0, 2.0, INK);
+            }
+            p.sdf(|x, y| circle(x, y, 50.0, 36.0, 28.0).abs() - 6.0, hex(0xFFF7D0));
+            p.rect(50.0, 36.0, 8.0, 13.0, 3.0, hex(DARK));
+            p.rect(50.0, 12.0, 16.0, 7.0, 2.0, hex(RED));
+            p.line(42.0, 12.0, 58.0, 12.0, 1.5, WHITE);
+        }
+    }
+    p.c
+}
+
+/// A golden chest with a glow, for the rare drop (LOOT-02).
+pub fn golden_chest() -> Canvas {
+    let mut p = Pen::new(96.0);
+    p.sdf_fill(|x, y| circle(x, y, 50.0, 54.0, 46.0), [1.0, 0.85, 0.3, 0.35]);
+    p.rect(50.0, 64.0, 34.0, 22.0, 4.0, hex(0xF2C230));
+    p.sdf(|x, y| ellipse(x, y, 50.0, 44.0, 34.0, 16.0).max(y - 46.0), hex(0xFFD84A));
+    p.rect(50.0, 52.0, 6.0, 8.0, 2.0, hex(0x9A6236));
+    p.line(18.0, 60.0, 82.0, 60.0, 2.0, hex(0xD9A520));
+    for (x, y) in [(20.0, 22.0), (82.0, 30.0), (70.0, 12.0)] {
+        p.dot(x, y, 4.0, WHITE);
     }
     p.c
 }
@@ -188,8 +212,9 @@ pub fn wall(kind: WallKind) -> Canvas {
             c.fill(|x, y| circle(x, y, 46.0, 40.0, 4.5), WHITE);
         }
         WallKind::Fence => {
-            // Hazard stripes, tiled by the view.
-            c.paint(|x, y| Some(if ((x + y) / 16.0) as i32 % 2 == 0 { hex(0xF2C230) } else { hex(0x2A2433) }));
+            // Construction stripes, tiled by the view: a barrier, never a
+            // danger, so no pink anywhere (FAIR-04).
+            c.paint(|x, y| Some(if ((x + y) / 16.0) as i32 % 2 == 0 { hex(0xF2C230) } else { hex(0x3A3D4D) }));
         }
     }
     c

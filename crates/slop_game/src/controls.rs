@@ -4,9 +4,11 @@
 //! ```text
 //! Keyboard                     Gamepad
 //! WASD / arrows   move, choose  left stick / d-pad
+//! Space / Shift   dash          A, RB, LB, RT (while playing)
 //! Enter / E       press         A
-//! Space           continue      A (menus), Start (pause)
-//! Esc / P         pause, back   Start / B
+//! Space           continue      A (menus)
+//! Esc / P         pause         Start
+//! Esc             back, resume  B
 //! L / X           lock, other   X
 //! R               reroll        Y
 //! 1-8             pick          -
@@ -46,6 +48,8 @@ pub struct Controls {
     /// Lock or the other action of the highlighted thing.
     pub alt: bool,
     pub reroll: bool,
+    /// Dash, while playing (DASH-01).
+    pub dash: bool,
     pub number: Option<usize>,
     /// Alt is held (Alt+Enter is fullscreen, not a press).
     pub alt_key: bool,
@@ -53,6 +57,18 @@ pub struct Controls {
     pub pad: bool,
     stick_timer: f32,
     stick_dir: Option<Vec2>,
+}
+
+impl Controls {
+    /// The presses of this frame are used up: nothing else acts on them.
+    pub fn consume(&mut self) {
+        self.confirm = false;
+        self.cont = false;
+        self.back = false;
+        self.pause = false;
+        self.dash = false;
+        self.number = None;
+    }
 }
 
 const NUMBER_KEYS: [KeyCode; 8] = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3, KeyCode::Digit4, KeyCode::Digit5, KeyCode::Digit6, KeyCode::Digit7, KeyCode::Digit8];
@@ -86,11 +102,12 @@ fn read(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, pads: Query<&Gamepad>,
     };
     let alt_key = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
     let mut confirm = !alt_key && keys.any_just_pressed([KeyCode::Enter, KeyCode::NumpadEnter, KeyCode::KeyE]);
-    let mut cont = keys.just_pressed(KeyCode::Space);
+    let cont = keys.just_pressed(KeyCode::Space);
     let mut back = keys.just_pressed(KeyCode::Escape);
     let mut pause = keys.any_just_pressed([KeyCode::KeyP, KeyCode::Escape]);
     let mut alt = keys.any_just_pressed([KeyCode::KeyL, KeyCode::KeyX]);
     let mut reroll = keys.just_pressed(KeyCode::KeyR);
+    let mut dash = keys.any_just_pressed([KeyCode::Space, KeyCode::ShiftLeft, KeyCode::ShiftRight]);
     let keyboard_used = keys.get_just_pressed().next().is_some();
 
     let mut pad_used = false;
@@ -116,10 +133,12 @@ fn read(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, pads: Query<&Gamepad>,
         }
         confirm |= just(GamepadButton::South);
         back |= just(GamepadButton::East);
+        // Start only pauses and unpauses: if it also pressed "continue", the
+        // pause screen would open and close on the same press.
         pause |= just(GamepadButton::Start);
-        cont |= just(GamepadButton::Start);
         alt |= just(GamepadButton::West);
         reroll |= just(GamepadButton::North);
+        dash |= just(GamepadButton::South) || just(GamepadButton::RightTrigger) || just(GamepadButton::RightTrigger2) || just(GamepadButton::LeftTrigger);
         pad_used |= pad.get_just_pressed().next().is_some() || s.length() > 0.5;
     }
     // A flick of the stick moves through menus, repeating while held.
@@ -151,6 +170,7 @@ fn read(time: Res<Time>, keys: Res<ButtonInput<KeyCode>>, pads: Query<&Gamepad>,
     c.pause = pause;
     c.alt = alt;
     c.reroll = reroll;
+    c.dash = dash;
     c.alt_key = alt_key;
     c.number = NUMBER_KEYS.iter().position(|k| keys.just_pressed(*k));
     if pad_used {

@@ -146,8 +146,14 @@ struct Views {
     props: HashMap<u32, PropView>,
     pickups: HashMap<u32, Entity>,
     decor: HashMap<(i32, i32), Vec<Entity>>,
-    /// The platform the scraps are tinted for.
-    decor_platform: Option<Platform>,
+    /// The floor of each biome square near you (BIOME-01).
+    biomes: HashMap<(i32, i32), Vec<Entity>>,
+    /// Barrier segments, the Alt Account, and the livestream ring.
+    barriers: Vec<Entity>,
+    alt: Option<Entity>,
+    arena: Option<(Entity, Entity)>,
+    /// The seed the biome squares and scraps were made for.
+    map_seed: u64,
 }
 
 struct PropView {
@@ -221,7 +227,11 @@ fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         props: HashMap::new(),
         pickups: HashMap::new(),
         decor: HashMap::new(),
-        decor_platform: None,
+        biomes: HashMap::new(),
+        barriers: Vec::new(),
+        alt: None,
+        arena: None,
+        map_seed: u64::MAX,
     });
     commands.insert_resource(art);
 }
@@ -380,11 +390,14 @@ fn spawn_shot(commands: &mut Commands, art: &Art, look: Look, line: u16, hostile
         Look::Duck => Vec2::new(26.0, 24.0),
         Look::Plane => Vec2::new(30.0, 19.0),
         Look::Note => Vec2::splat(16.0),
+        Look::Banana => Vec2::splat(28.0),
+        Look::Needle => Vec2::new(24.0, 10.0),
+        Look::Shard => Vec2::splat(18.0),
         Look::Bubble | Look::Post => unreachable!(),
     };
     let root = commands.spawn((Root, Sprite { image: art.shots[&look].clone(), custom_size: Some(size), ..default() }, Transform::default())).id();
     // Your weapons copied by The Model hurt you: they get the danger outline (FAIR-04).
-    let danger_looks = !matches!(look, Look::EmDash | Look::Toast | Look::Arrow | Look::Letter);
+    let danger_looks = !matches!(look, Look::EmDash | Look::Toast | Look::Arrow | Look::Letter | Look::Banana | Look::Needle | Look::Shard);
     if hostile && danger_looks {
         commands.spawn((Sprite { image: art.danger_ring.clone(), custom_size: Some(Vec2::splat(size.x.max(size.y) * 1.7)), ..default() }, Transform::from_xyz(0.0, 0.0, -0.01), ChildOf(root)));
     }
@@ -393,7 +406,7 @@ fn spawn_shot(commands: &mut Commands, art: &Art, look: Look, line: u16, hostile
 
 /// A zone in its shape (ZONE-02): circles use their picture; rectangles and
 /// rings are drawn as tinted areas with a word on them.
-fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, shape: Shape) -> Entity {
+fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, shape: Shape, sunflowers: bool) -> Entity {
     let tint = match kind {
         ZoneKind::Downvote => Color::srgba(1.0, 0.35, 0.1, 0.26),
         ZoneKind::Filter => Color::srgba(1.0, 0.55, 0.85, 0.22),
@@ -418,10 +431,18 @@ fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, s
         }
     }
     let (image, size) = match kind {
+        ZoneKind::Seed { .. } if sunflowers => (art.sunflowers.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Seed { .. } => (art.seed.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Bomb => (art.bomb.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Downvote => (art.downvote.clone(), Vec2::splat(radius * 2.0)),
         ZoneKind::Filter => (art.filter.clone(), Vec2::splat(radius * 2.0)),
+        ZoneKind::Fire => (art.fire.clone(), Vec2::splat(radius * 2.2)),
+        ZoneKind::Roots => (art.roots.clone(), Vec2::splat(radius * 2.0)),
+        ZoneKind::Brainrot => {
+            let root = commands.spawn((Root, Sprite { image: art.brainrot_zone.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), ..default() }, Transform::default())).id();
+            text(commands, "BRAINROT ZONE\nleave before the drop", 15.0, Color::srgb(0.85, 0.7, 1.0), Vec3::new(0.0, 0.0, 0.05), root);
+            return root;
+        }
         ZoneKind::Banner => {
             let root = commands.spawn((Root, Sprite::from_color(Color::srgba(0.25, 0.65, 0.35, 0.35), Vec2::new(6000.0, radius * 2.0)), Transform::default())).id();
             for x in [-800.0, -400.0, 0.0, 400.0, 800.0] {
@@ -450,8 +471,8 @@ fn sync(
     let t = time.elapsed_secs();
     let world = game.world();
 
-    // The platform's floor.
-    let platform = game.shown_run().map(|r| r.platform);
+    // The floor under everything: the biome you are in.
+    let platform = world.map(|w| w.biome);
     if platform != views.platform {
         views.platform = platform;
         if let Ok((_, mut sprite, _)) = parts.get_mut(views.floor) {
@@ -603,7 +624,6 @@ fn sync(
             tf.translation = Vec3::new(at.x, at.y, Z_ACTOR + depth(at.y));
         }
         let spec = world.spec(s);
-        let phase = t * 9.0 + s.id as f32;
         let hit = s.flash as f32 / FLASH_TICKS as f32;
         let aim = if s.charging > 0 { 1.0 + 0.12 * (t * 30.0).sin() } else { 1.0 };
         let grow = s.radius / spec.radius;
@@ -615,9 +635,26 @@ fn sync(
             } else {
                 tf.scale.x.signum()
             };
-            tf.scale = Vec3::new(flip * (1.0 + 0.04 * phase.sin() + 0.15 * hit) * aim * grow, (1.0 - 0.04 * phase.sin() + 0.15 * hit) * aim * grow, 1.0);
+            // Walkers waddle and squash with their step; standing ones breathe
+            // (ICON-02).
+            let pace = (s.moving.length() / 120.0).min(1.5);
+            let step = (t * (6.0 + 8.0 * pace) + s.id as f32).sin();
+            let squash = 0.04 + 0.05 * pace;
+            tf.scale = Vec3::new(flip * (1.0 + squash * step + 0.15 * hit) * aim * grow, (1.0 - squash * step + 0.15 * hit) * aim * grow, 1.0);
+            tf.rotation = Quat::from_rotation_z(0.09 * pace * (t * (5.0 + 5.0 * pace) + s.id as f32).cos());
+            tf.translation.y = 4.0 * pace * step.abs();
         }
+        // Brainrot icons play their frames: legs, bats, propellers.
+        let frames = match spec.look {
+            SlopLook::Archetype(a) => art.icon_frames.get(&a),
+            _ => None,
+        };
+        let frame = frames.map(|f| {
+            let speed = if spec.movement == slop_sim::spec::Movement::Stand { 4.0 } else { 7.0 + s.moving.length() / 25.0 };
+            &f[((t * speed) as usize + s.id as usize) % f.len()]
+        });
         for (e, pair) in &v.parts {
+            let pair = frame.unwrap_or(pair);
             if let Ok((_, mut sprite, _)) = parts.get_mut(*e) {
                 let image = if s.flash > 0 { &pair.1 } else { &pair.0 };
                 if sprite.image != *image {
@@ -731,7 +768,10 @@ fn sync(
     let mut seen = HashSet::new();
     for z in &world.zones {
         seen.insert(z.id);
-        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius, z.shape));
+        // Sunflower patches look like sunflowers; other seed patches like seeds.
+        let sunflowers = matches!(z.kind, ZoneKind::Seed { .. })
+            && world.player.weapons.get(z.spec as usize).is_some_and(|w| matches!(w.def().name, "Sunflower Patch" | "Rewilding" | "Hurricane Season"));
+        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius, z.shape, sunflowers));
         if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(e) {
             tf.translation = Vec3::new(z.pos.x, z.pos.y, Z_ZONE + (z.id % 50) as f32 * 0.001);
             let left = z.ticks as f32 / z.max_ticks.max(1) as f32;
@@ -739,6 +779,17 @@ fn sync(
                 ZoneKind::Bomb => sprite.color = Color::WHITE.with_alpha(0.5 + 0.5 * (t * (24.0 - 18.0 * left)).sin().abs()),
                 ZoneKind::Seed { .. } | ZoneKind::Downvote | ZoneKind::Filter if z.shape == Shape::Circle => sprite.color = Color::WHITE.with_alpha((left * 4.0).min(1.0)),
                 ZoneKind::Seed { .. } | ZoneKind::Downvote | ZoneKind::Filter => sprite.color = sprite.color.with_alpha((left * 4.0).min(1.0) * 0.26),
+                ZoneKind::Fire => {
+                    sprite.color = Color::WHITE.with_alpha((left * 2.0).min(1.0));
+                    tf.scale = Vec3::splat(0.9 + 0.12 * (t * 14.0 + z.id as f32).sin());
+                }
+                ZoneKind::Roots => sprite.color = Color::WHITE.with_alpha((left * 4.0).min(1.0)),
+                // Pulses to the beat, faster and brighter as the drop nears.
+                ZoneKind::Brainrot => {
+                    let beat = 1.0 - world.beat as f32 / slop_sim::hazards::BEAT_INTERVAL as f32;
+                    sprite.color = Color::WHITE.with_alpha(0.55 + 0.45 * beat.max(0.0) * (1.0 - left).max(0.3));
+                    tf.scale = Vec3::splat(1.0 + 0.06 * beat.max(0.0));
+                }
                 ZoneKind::Banner => {}
             }
         }
@@ -756,9 +807,16 @@ fn sync(
                 (dog, leash)
             });
             let at = slop_sim::V2::new(me.x, me.y) + slop_sim::V2::from_angle(w.phase) * radius;
+            // Dogs walk on a leash; anything else circling you just spins.
+            let is_dog = matches!(w.def().name, "Dog Walk" | "Dog Park");
             if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(dog) {
-                tf.translation = Vec3::new(at.x, at.y + 3.0 * (t * 16.0).sin().abs(), Z_ACTOR + depth(at.y));
-                sprite.flip_x = (w.phase + std::f32::consts::FRAC_PI_2).cos() < 0.0;
+                tf.translation = Vec3::new(at.x, at.y + if is_dog { 3.0 * (t * 16.0).sin().abs() } else { 0.0 }, Z_ACTOR + depth(at.y));
+                if is_dog {
+                    sprite.flip_x = (w.phase + std::f32::consts::FRAC_PI_2).cos() < 0.0;
+                } else {
+                    sprite.image = art.weapon_icons[w.def].clone();
+                    tf.rotation = Quat::from_rotation_z(t * 18.0);
+                }
             }
             if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(leash) {
                 let (a, b) = (me, Vec2::new(at.x, at.y));
@@ -766,6 +824,7 @@ fn sync(
                 tf.translation = Vec3::new(mid.x, mid.y, Z_ACTOR + depth(me.y) - 0.01);
                 tf.rotation = Quat::from_rotation_z((b - a).to_angle());
                 sprite.custom_size = Some(Vec2::new((b - a).length(), 2.5));
+                sprite.color = if is_dog { Color::srgb(0.85, 0.2, 0.2) } else { Color::NONE };
             }
         }
     }
@@ -777,6 +836,69 @@ fn sync(
         }
         keep
     });
+
+    // Barriers circling you (DEF-02): each segment is its weapon's icon.
+    let segments = world.barrier_segments();
+    let offset = me - Vec2::new(world.player.pos.x, world.player.pos.y);
+    while views.barriers.len() < segments.len() {
+        let e = commands.spawn((Root, Sprite { image: art.dot.clone(), custom_size: Some(Vec2::splat(40.0)), ..default() }, Transform::default())).id();
+        views.barriers.push(e);
+    }
+    for (k, e) in views.barriers.iter().enumerate() {
+        if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(*e) {
+            match segments.get(k) {
+                Some(&(c, size, slot)) => {
+                    let def = world.player.weapons[slot].def;
+                    if sprite.image != art.weapon_icons[def] {
+                        sprite.image = art.weapon_icons[def].clone();
+                    }
+                    sprite.custom_size = Some(Vec2::splat(size * 1.5));
+                    sprite.color = Color::WHITE;
+                    tf.translation = Vec3::new(c.x + offset.x, c.y + offset.y, Z_ACTOR + depth(c.y) + 0.01);
+                    tf.rotation = Quat::from_rotation_z(t * 3.0 + k as f32);
+                }
+                None => sprite.color = Color::NONE,
+            }
+        }
+    }
+
+    // Your Alt Account, a see-through second you (ITEM-03).
+    let alt = (world.player.perks.alt_account > 0.0).then(|| world.alt_position());
+    if alt.is_some() && views.alt.is_none() {
+        views.alt = Some(commands.spawn((Root, Sprite { image: art.human[&hero][0].clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE)), color: Color::srgba(0.6, 0.85, 1.0, 0.55), ..default() }, Transform::default())).id());
+    }
+    if let Some(e) = views.alt {
+        if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(e) {
+            match alt {
+                Some(a) => {
+                    tf.translation = Vec3::new(a.x + offset.x, a.y + offset.y, Z_ACTOR + depth(a.y));
+                    sprite.color = Color::srgba(0.6, 0.85, 1.0, 0.55 + 0.1 * (t * 4.0).sin());
+                }
+                None => sprite.color = Color::NONE,
+            }
+        }
+    }
+
+    // A livestream's ring (EVENT-02): blinking red while it closes, solid
+    // with LIVE when it holds you.
+    if views.arena.is_none() {
+        let ring = commands.spawn((Root, Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(10.0)), color: Color::NONE, ..default() }, Transform::default())).id();
+        let label = text(&mut commands, "", 22.0, Color::srgb(1.0, 0.3, 0.3), Vec3::new(0.0, 0.0, 0.1), ring);
+        views.arena = Some((ring, label));
+    }
+    if let Some((ring, _)) = views.arena {
+        if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(ring) {
+            match world.arena {
+                Some(a) => {
+                    tf.translation = Vec3::new(a.centre.x, a.centre.y, Z_ZONE + 0.3);
+                    sprite.custom_size = Some(Vec2::splat(a.radius * 2.0));
+                    let alpha = if a.closed() { 0.95 } else { 0.4 + 0.5 * (t * 10.0).sin().abs() };
+                    sprite.color = Color::srgba(1.0, 0.25, 0.25, alpha);
+                }
+                None => sprite.color = Color::NONE,
+            }
+        }
+    }
 }
 
 fn retain(commands: &mut Commands, map: &mut HashMap<u32, Entity>, seen: &HashSet<u32>) {
@@ -824,6 +946,15 @@ fn map_views(
     };
     let me = lerp(world.player.prev, world.player.pos, game.alpha);
     let near = |x: f32, y: f32, r: f32| (Vec2::new(x, y) - me).length() < DRAW_RANGE + r;
+    // Another run, another map: the floors and scraps are made again.
+    if views.map_seed != world.seed {
+        views.map_seed = world.seed;
+        for (_, list) in views.decor.drain().chain(views.biomes.drain()) {
+            for e in list {
+                commands.entity(e).despawn();
+            }
+        }
+    }
 
     // Walls.
     let mut seen = HashSet::new();
@@ -877,8 +1008,9 @@ fn map_views(
         }
         if let Ok((mut text, mut color)) = words.get_mut(label) {
             let left = if solid { f.ticks } else { f.warning } as f32 / 60.0;
-            text.0 = if solid { format!("UNDER MAINTENANCE\nback in {left:.0} s") } else { format!("MAINTENANCE IN {left:.1}") };
-            color.0 = if solid { theme::PAPER } else { theme::DANGER };
+            // A barrier, never a danger: construction yellow, not pink.
+            text.0 = if solid { format!("UNDER MAINTENANCE\nback in {left:.0} s") } else { format!("CLOSING FOR MAINTENANCE IN {left:.1}\n(blocks the way, harmless)") };
+            color.0 = if solid { theme::PAPER } else { Color::srgb(0.95, 0.76, 0.19) };
         }
     }
     views.fences.retain(|id, (a, b)| {
@@ -951,8 +1083,23 @@ fn map_views(
     for k in world.pickups.iter().filter(|k| near(k.pos.x, k.pos.y, 0.0)) {
         seen_k.insert(k.id);
         let e = *views.pickups.entry(k.id).or_insert_with(|| {
-            let size = if k.kind == slop_sim::world::PickupKind::Chest { 54.0 } else if k.kind == slop_sim::world::PickupKind::Clout { 22.0 } else { 40.0 };
-            commands.spawn((Sprite { image: art.pickups[&k.kind].clone(), custom_size: Some(Vec2::splat(size)), ..default() }, Transform::default())).id()
+            use slop_sim::world::PickupKind as K;
+            // Coins come in three sizes (LOOT-03); a golden chest glows under
+            // a pillar of light (LOOT-02).
+            let (image, size) = match k.kind {
+                K::Chest if k.value >= 3 => (art.golden_chest.clone(), 70.0),
+                K::Chest => (art.pickups[&k.kind].clone(), 54.0),
+                K::Clout if k.value >= 12 => (art.coins[2].clone(), 40.0),
+                K::Clout if k.value >= 4 => (art.coins[1].clone(), 30.0),
+                K::Clout => (art.coins[0].clone(), 20.0),
+                _ => (art.pickups[&k.kind].clone(), 40.0),
+            };
+            let e = commands.spawn((Sprite { image, custom_size: Some(Vec2::splat(size)), ..default() }, Transform::default())).id();
+            if k.kind == K::Chest && k.value >= 2 {
+                let tint = if k.value >= 3 { Color::srgba(1.0, 0.85, 0.35, 0.9) } else { Color::srgba(0.7, 0.85, 1.0, 0.6) };
+                commands.spawn((Sprite { image: art.light_beam.clone(), custom_size: Some(Vec2::new(70.0, 560.0)), color: tint, ..default() }, Transform::from_xyz(0.0, 270.0, -0.05), ChildOf(e)));
+            }
+            e
         });
         if let Ok((mut tf, _, _)) = sprites.get_mut(e) {
             let bob = 3.0 * (t * 4.0 + k.id as f32).sin();
@@ -963,6 +1110,47 @@ fn map_views(
     }
     retain(&mut commands, &mut views.pickups, &seen_k);
 
+    // Each biome square has its platform's floor, and a bright seam where two
+    // platforms meet (BIOME-01).
+    let seed = world.seed;
+    let (bx, by) = slop_sim::map::biome_cell(slop_sim::V2::new(me.x, me.y));
+    let mut cells = HashSet::new();
+    for dy in -1..=1 {
+        for dx in -1..=1 {
+            cells.insert((bx + dx, by + dy));
+        }
+    }
+    for c in &cells {
+        views.biomes.entry(*c).or_insert_with(|| {
+            let platform = slop_sim::map::biome_of_cell(seed, *c);
+            let size = slop_sim::map::BIOME;
+            let centre = Vec2::new(c.0 as f32 * size, c.1 as f32 * size);
+            let floor = commands
+                .spawn((
+                    Sprite { image: art.floors[&platform].clone(), custom_size: Some(Vec2::splat(size)), image_mode: SpriteImageMode::Tiled { tile_x: true, tile_y: true, stretch_value: 1.0 }, ..default() },
+                    Transform::from_xyz(centre.x, centre.y, Z_FLOOR + 0.01),
+                ))
+                .id();
+            let seam = theme::platform_tint(platform).with_alpha(0.55);
+            let left = commands.spawn((Sprite::from_color(seam, Vec2::new(10.0, size)), Transform::from_xyz(centre.x - size / 2.0 + 5.0, centre.y, Z_FLOOR + 0.02))).id();
+            let bottom = commands.spawn((Sprite::from_color(seam, Vec2::new(size, 10.0)), Transform::from_xyz(centre.x, centre.y - size / 2.0 + 5.0, Z_FLOOR + 0.02))).id();
+            // The platform's name, big and faint, written on its floor.
+            let name = commands
+                .spawn((Text2d::new(platform.name().to_uppercase()), TextFont { font_size: 120.0, ..default() }, TextColor(theme::platform_tint(platform).with_alpha(0.12)), Transform::from_xyz(centre.x, centre.y, Z_FLOOR + 0.03)))
+                .id();
+            vec![floor, left, bottom, name]
+        });
+    }
+    views.biomes.retain(|c, list| {
+        let keep = cells.contains(c);
+        if !keep {
+            for e in list.drain(..) {
+                commands.entity(e).despawn();
+            }
+        }
+        keep
+    });
+
     // Feed scraps on the floor, chosen per chunk from the run's seed: no two
     // screens look alike.
     let (cx, cy) = slop_sim::map::chunk_of(slop_sim::V2::new(me.x, me.y));
@@ -972,8 +1160,6 @@ fn map_views(
             wanted.insert((cx + dx, cy + dy));
         }
     }
-    let seed = world.seed;
-    let platform = game.shown_run().map_or(Platform::FaceSlop, |r| r.platform);
     for c in &wanted {
         views.decor.entry(*c).or_insert_with(|| {
             let mut rng = slop_sim::rng::Rng::new(chunk_seed(seed, *c), 23);
@@ -983,7 +1169,8 @@ fn map_views(
                     let at = origin + Vec2::new(rng.range(0.0, CHUNK), rng.range(0.0, CHUNK));
                     let i = rng.below(crate::feed_art::DECOR as u32) as usize;
                     let size = rng.range(90.0, 200.0);
-                    let tint = theme::platform_tint(platform);
+                    // Tinted for the biome the scrap lies in.
+                    let tint = theme::platform_tint(slop_sim::map::biome_at(seed, slop_sim::V2::new(at.x, at.y)));
                     commands
                         .spawn((
                             Sprite { image: art.decor[i].clone(), custom_size: Some(Vec2::splat(size)), color: tint, ..default() },
@@ -1003,17 +1190,6 @@ fn map_views(
         }
         keep
     });
-    // A new platform tints the scraps.
-    if views.decor_platform != Some(platform) {
-        views.decor_platform = Some(platform);
-        for list in views.decor.values() {
-            for e in list {
-                if let Ok((_, mut sprite, _)) = sprites.get_mut(*e) {
-                    sprite.color = theme::platform_tint(platform);
-                }
-            }
-        }
-    }
 }
 
 fn prop_color(kind: PropKind) -> Color {

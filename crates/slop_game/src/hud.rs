@@ -23,7 +23,7 @@ pub struct HudPlugin;
 
 impl Plugin for HudPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PostStartup, setup).add_systems(Update, (update.after(Simulation), scale_ui));
+        app.add_systems(PostStartup, setup).add_systems(Update, (update.after(Simulation), extras.after(Simulation), scale_ui));
     }
 }
 
@@ -73,6 +73,99 @@ struct BannerTitle;
 struct BannerLine;
 #[derive(Component)]
 struct Toasts;
+#[derive(Component)]
+struct ShieldBack;
+#[derive(Component)]
+struct ShieldFill;
+#[derive(Component)]
+struct DashText;
+#[derive(Component)]
+struct KeysHint;
+#[derive(Component)]
+struct Reversed;
+#[derive(Component)]
+struct LiveText;
+#[derive(Component)]
+struct ChestArrow;
+
+const SHIELD: Color = Color::srgb(0.31, 0.72, 0.91);
+/// Off-screen chests shown at the screen's edge, at most.
+const CHEST_ARROWS: usize = 4;
+
+/// The new parts of the HUD: Boundaries, dash charges, why your controls
+/// are reversed, the livestream clock, and arrows to chests off screen.
+#[allow(clippy::type_complexity)]
+fn extras(
+    game: Res<Game>,
+    controls: Res<crate::controls::Controls>,
+    art: Res<Art>,
+    mut bars: Query<&mut Node, (With<ShieldFill>, Without<ShieldBack>, Without<ChestArrow>)>,
+    mut backs: Query<&mut Visibility, (With<ShieldBack>, Without<ShieldFill>, Without<ChestArrow>)>,
+    mut texts: ParamSet<(Query<&mut Text, With<DashText>>, Query<&mut Text, With<KeysHint>>, Query<&mut Text, With<Reversed>>, Query<&mut Text, With<LiveText>>)>,
+    mut arrows: Query<(&mut Node, &mut Visibility, &mut ImageNode), (With<ChestArrow>, Without<ShieldFill>, Without<ShieldBack>)>,
+) {
+    let Some(run) = game.run.as_ref().filter(|_| game.screen == Screen::Run) else { return };
+    let Some(world) = run.world.as_ref() else { return };
+    let p = &world.player;
+    let max = p.stats.boundaries.max(0.0);
+    if let Ok(mut v) = backs.single_mut() {
+        *v = if max > 0.0 { Visibility::Inherited } else { Visibility::Hidden };
+    }
+    if let Ok(mut node) = bars.single_mut() {
+        node.width = Val::Px(BAR_W * if max > 0.0 { (p.shield / max).clamp(0.0, 1.0) } else { 0.0 });
+    }
+    let key = if controls.pad { "A" } else { "Space" };
+    if let Ok(mut t) = texts.p0().single_mut() {
+        let charges = p.perks.dash_charges as usize;
+        let ready = p.dashes as usize;
+        let pips: String = (0..charges).map(|k| if k < ready { "[#]" } else { "[ ]" }).collect::<Vec<_>>().join(" ");
+        **t = if max > 0.0 { format!("DASH {pips}   Boundaries {:.0}/{max:.0}", p.shield) } else { format!("DASH {pips}  ({key})") };
+    }
+    if let Ok(mut t) = texts.p1().single_mut() {
+        **t = if controls.pad { "Start: pause, build and stats   A/RB/RT: dash".into() } else { "P: pause, build and stats   Space/Shift: dash".into() };
+    }
+    if let Ok(mut t) = texts.p2().single_mut() {
+        let s = &p.status;
+        **t = if s.brainrot > 0 {
+            format!("BRAINROT: CONTROLS REVERSED  {:.1} s", s.brainrot as f32 / 60.0)
+        } else if s.brainrot_warning > 0 {
+            "BRAINROT INCOMING: your controls flip in a moment".into()
+        } else {
+            String::new()
+        };
+    }
+    if let Ok(mut t) = texts.p3().single_mut() {
+        **t = match world.arena {
+            Some(a) if a.closed() => format!("LIVE  {:.0} s left: stay in the ring", a.ticks as f32 / 60.0),
+            Some(_) => "GOING LIVE...".into(),
+            None => String::new(),
+        };
+    }
+    // Arrows to chests off screen, nearest first.
+    let me = p.pos;
+    let mut chests: Vec<&slop_sim::world::Pickup> = world.pickups.iter().filter(|k| k.kind == slop_sim::world::PickupKind::Chest).collect();
+    chests.sort_by(|a, b| a.pos.distance_sq(me).total_cmp(&b.pos.distance_sq(me)));
+    let half = Vec2::new(720.0, 405.0);
+    let mut shown = chests.into_iter().filter(|k| {
+        let d = k.pos - me;
+        d.x.abs() > half.x - 40.0 || d.y.abs() > half.y - 40.0
+    });
+    for (mut node, mut vis, mut image) in &mut arrows {
+        match shown.next() {
+            Some(k) => {
+                let d = Vec2::new(k.pos.x - me.x, -(k.pos.y - me.y));
+                let s = (half.x - 60.0) / d.x.abs().max(1.0);
+                let s = s.min((half.y - 60.0) / d.y.abs().max(1.0));
+                let at = Vec2::new(800.0, 450.0) + d * s;
+                node.left = Val::Px(at.x - 20.0);
+                node.top = Val::Px(at.y - 20.0);
+                image.image = if k.value >= 3 { art.golden_chest.clone() } else { art.pickups[&slop_sim::world::PickupKind::Chest].clone() };
+                *vis = Visibility::Inherited;
+            }
+            None => *vis = Visibility::Hidden,
+        }
+    }
+}
 
 fn label(p: &mut ChildSpawnerCommands, words: impl Into<String>, size: f32, color: Color) {
     p.spawn((Text::new(words), TextFont { font_size: size, ..default() }, TextColor(color)));
@@ -142,7 +235,14 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                         .with_children(|b| {
                             b.spawn((MhFill, Node { width: Val::Px(BAR_W), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::mental_health_color(1.0))));
                         });
+                    // Boundaries: a shield over Mental Health (DEF-01).
+                    p.spawn((ShieldBack, Node { width: Val::Px(BAR_W), height: Val::Px(6.0), ..default() }, BackgroundColor(Color::srgb(0.18, 0.22, 0.28)), Visibility::Hidden))
+                        .with_children(|b| {
+                            b.spawn((ShieldFill, Node { width: Val::Px(BAR_W), height: Val::Percent(100.0), ..default() }, BackgroundColor(SHIELD)));
+                        });
                     p.spawn((MhText, Text::new(""), TextFont { font_size: 16.0, ..default() }, TextColor(theme::PAPER)));
+                    // Dash charges (DASH-01).
+                    p.spawn((DashText, Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(Color::srgb(0.6, 0.85, 1.0))));
                     p.spawn((Statuses, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::DANGER)));
                 });
             });
@@ -181,7 +281,21 @@ fn setup(mut commands: Commands, art: Res<Art>) {
             root.spawn((Toasts, Text::new(""), TextFont { font_size: 17.0, ..default() }, TextColor(theme::PAPER), TextLayout::new_with_justify(Justify::Center), Node { position_type: PositionType::Absolute, top: Val::Px(118.0), width: Val::Percent(100.0), ..default() }));
             // The way to your build: pause shows everything.
             root.spawn((Node { position_type: PositionType::Absolute, left: Val::Px(20.0), bottom: Val::Px(14.0), ..default() }, BackgroundColor(Color::NONE)))
-                .with_children(|h| label(h, "P  pause: your build and stats", 14.0, Color::srgba(1.0, 1.0, 1.0, 0.45)));
+                .with_children(|h| {
+                    h.spawn((KeysHint, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(Color::srgba(1.0, 1.0, 1.0, 0.45))));
+                });
+            // Why your controls are reversed, right where you look (STATUS-02).
+            root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(150.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|r| {
+                r.spawn((Reversed, Text::new(""), TextFont { font_size: 30.0, ..default() }, TextColor(Color::srgb(0.75, 0.55, 1.0)), TextLayout::new_with_justify(Justify::Center)));
+            });
+            // A livestream's clock (EVENT-02).
+            root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(196.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|r| {
+                r.spawn((LiveText, Text::new(""), TextFont { font_size: 28.0, ..default() }, TextColor(Color::srgb(1.0, 0.3, 0.3))));
+            });
+            // Chests off screen: an icon at the edge pointing the way (LOOT-02).
+            for _ in 0..CHEST_ARROWS {
+                root.spawn((ChestArrow, ImageNode::new(art.golden_chest.clone()), Node { position_type: PositionType::Absolute, width: Val::Px(40.0), height: Val::Px(40.0), ..default() }, Visibility::Hidden));
+            }
         });
 
     commands.spawn((Banner, overlay(), GlobalZIndex(6), Visibility::Hidden)).with_children(|p| {
@@ -283,7 +397,7 @@ fn update(
             list.push("Ratio'd".into());
         }
         if s.brainrot > 0 {
-            list.push("BRAINROT".into());
+            list.push("BRAINROT (reversed)".into());
         }
         if p.grabbed > 0 {
             list.push(format!("Grabbed x{}", p.grabbed));
@@ -291,13 +405,15 @@ fn update(
         **t = list.join("  ");
     }
     if let Ok(mut t) = texts.p2().single_mut() {
-        **t = format!("{}   {}", clock(run.seconds()), run.platform.name().to_uppercase());
+        // Where you are: the biome under your feet (BIOME-01).
+        **t = format!("{}   IN {}", clock(run.seconds()), world.biome.name().to_uppercase());
     }
     if let Ok(mut t) = texts.p3().single_mut() {
         **t = match boss {
             Some((BossKind::TheModel, h)) => format!("Model Collapse {:.0}%    {:.0}% left", world.setup.model.collapse * 100.0, h * 100.0),
-            Some((_, h)) => format!("{:.0}% left", h * 100.0),
-            None => format!("{} in {}", run.next_boss().name(), clock(run.boss_in().unwrap_or(0.0))),
+            Some((kind, h)) => format!("{}: {:.0}% left", kind.name(), h * 100.0),
+            None if run.stage >= 6 => format!("{} in {}", run.next_boss().name(), clock(run.boss_in().unwrap_or(0.0))),
+            None => format!("Boss {}/6: {} ({}) in {}", run.stage + 1, run.next_boss().name(), run.platform.name(), clock(run.boss_in().unwrap_or(0.0))),
         };
     }
     if let Ok(mut t) = texts.p4().single_mut() {
@@ -307,7 +423,8 @@ fn update(
         **t = format!("Level {}  -  {} deleted", run.level, run.kills());
     }
     if let Ok(mut t) = toasts.single_mut() {
-        let words: Vec<&str> = game.toasts.iter().rev().take(3).map(|(w, _)| w.as_str()).collect();
+        // Overlays have the screen; the news waits.
+        let words: Vec<&str> = if game.choosing() { Vec::new() } else { game.toasts.iter().rev().take(3).map(|(w, _)| w.as_str()).collect() };
         **t = words.join("
 ");
     }

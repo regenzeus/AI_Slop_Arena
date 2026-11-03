@@ -63,8 +63,8 @@ pub fn steer(world: &World) -> Input {
             force += (me - c).normalized() * 1.5;
         }
     }
-    // Get out of bomb spots and downvote zones.
-    for z in world.zones.iter().filter(|z| matches!(z.kind, ZoneKind::Bomb | ZoneKind::Downvote)) {
+    // Get out of bomb spots, downvote zones and brainrot zones.
+    for z in world.zones.iter().filter(|z| matches!(z.kind, ZoneKind::Bomb | ZoneKind::Downvote | ZoneKind::Roots | ZoneKind::Brainrot)) {
         let away = me - z.pos;
         if z.contains(me, 40.0) {
             force += away.normalized() * 2.5;
@@ -107,5 +107,11 @@ pub fn steer(world: &World) -> Input {
         force = world.player.facing.rotated(0.02);
     }
     let dir = force.normalized();
-    Input { x: dir.x, y: dir.y }
+    // Dash out when crowded or held (DASH-01), keeping a charge for later
+    // unless it is bad.
+    let crowd = world.slop.iter().filter(|s| s.pos.distance_sq(me) < 90.0 * 90.0).count();
+    let p = &world.player;
+    let low = p.mental_health < p.stats.max_mental_health * 0.35;
+    let dash = p.dashes > 0 && p.dash == 0 && (p.grabbed > 0 || crowd >= 4 || (low && crowd >= 2)) && (p.dashes > 1 || low || p.grabbed > 1);
+    Input { x: dir.x, y: dir.y, dash }
 }

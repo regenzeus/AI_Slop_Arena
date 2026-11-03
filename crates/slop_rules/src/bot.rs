@@ -7,7 +7,7 @@ use slop_sim::rng::Rng;
 
 use crate::heroes::Hero;
 use crate::items::{ItemKind, StatKind, ITEMS};
-use crate::run::{Choice, Phase, Run, WEAPON_SLOTS};
+use crate::run::{Choice, Phase, Run};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Policy {
@@ -41,6 +41,8 @@ fn stat_value(stat: StatKind, run: &Run) -> f32 {
         StatKind::SelfCare | StatKind::Reach | StatKind::Speed => 1.5,
         StatKind::Luck => 0.8,
         StatKind::Curiosity => 1.0,
+        StatKind::Boundaries => 2.0,
+        StatKind::Hustle => 0.6,
     }
 }
 
@@ -54,7 +56,7 @@ fn value(run: &Run, c: Choice) -> f32 {
         Choice::NewWeapon(d) => {
             let partner = merge_of(d).is_some_and(|(o, _)| run.weapons.iter().any(|w| w.def == o));
             let new_type = !run.weapons.iter().any(|w| WEAPONS[w.def].kind == WEAPONS[d].kind);
-            let room = if run.weapons.len() < WEAPON_SLOTS - 1 { 3.0 } else { 0.0 };
+            let room = if run.weapons.len() + 1 < run.weapon_slots() { 3.0 } else { 0.0 };
             8.0 + room + if partner { 4.0 } else { 0.0 } + if new_type { 1.5 } else { 0.0 }
         }
         Choice::ItemLevel(i) | Choice::NewItem(i) => {
@@ -64,12 +66,16 @@ fn value(run: &Run, c: Choice) -> f32 {
                 ItemKind::Healthy => 6.5,
                 ItemKind::Hustle => 3.5,
                 ItemKind::Risky => 5.0,
+                ItemKind::Movement => 5.5,
+                ItemKind::Defence => 6.5,
+                ItemKind::Legendary => 12.0,
             };
             base + d.tier as f32
         }
         Choice::Stat(up) => stat_value(up.stat, run) * (1.0 + up.tier as f32),
         Choice::Heal => 2.0,
         Choice::Clout(_) => 1.0,
+        Choice::Glitch(_) => 14.0,
     }
 }
 
@@ -111,6 +117,7 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
             run.bless(i).is_ok()
         }
         Phase::Chest(_) => run.close().is_ok(),
+        Phase::Glitch(offers) => run.take_glitch(rng.below(offers.len() as u32) as usize).is_ok(),
         Phase::Playing | Phase::Over { .. } => false,
     }
 }

@@ -1,4 +1,4 @@
-//! Your ten stats and the four damage types (STAT-01, DMG-01).
+//! Your twelve stats and the four damage types (STAT-01, DMG-01).
 
 /// The four kinds of damage a human has against slop. The slop will later
 /// learn to resist each of them.
@@ -49,6 +49,12 @@ pub struct Stats {
     /// Pickup radius for Likes, in world units.
     pub curiosity: f32,
     pub luck: f32,
+    /// A shield in front of Mental Health: it takes hits first and comes
+    /// back after a few seconds without one.
+    pub boundaries: f32,
+    /// Clout every minute, and this many percent more coins from slop: the
+    /// Feed's harvest.
+    pub hustle: f32,
 }
 
 impl Default for Stats {
@@ -64,6 +70,8 @@ impl Default for Stats {
             scepticism: 0.0,
             curiosity: 140.0,
             luck: 0.0,
+            boundaries: 0.0,
+            hustle: 0.0,
         }
     }
 }

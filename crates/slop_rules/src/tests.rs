@@ -122,7 +122,7 @@ fn each_platform_ends_with_its_boss_and_the_feed_moves_on() {
     play(&mut run, 0.2);
     assert_eq!(run.bosses_beaten, 1);
     assert_ne!(run.platform, first, "the Feed scrolls on");
-    assert!(run.toasts.iter().any(|t| t.contains("Scrolling on")));
+    assert!(run.toasts.iter().any(|t| t.contains("Next up")));
     run.stage = 6;
     assert_eq!(run.next_boss(), BossKind::TheModel, "after six platforms comes The Model");
 }

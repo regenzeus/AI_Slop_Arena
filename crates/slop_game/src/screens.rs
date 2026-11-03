@@ -4,7 +4,7 @@
 //! something changes, and every one works by keyboard and gamepad (`ui`).
 
 use bevy::prelude::*;
-use slop_rules::items::{ItemKind, StatKind, BLESSINGS, ITEMS};
+use slop_rules::items::{ItemKind, StatKind, BLESSINGS, GLITCHES, ITEMS};
 use slop_rules::run::{Choice, Reward};
 use slop_rules::{Hero, Phase, Run};
 use slop_sim::content::{level_note, merge_of, Pattern, LEVEL_DAMAGE, WEAPONS};
@@ -22,7 +22,7 @@ pub struct ScreensPlugin;
 
 impl Plugin for ScreensPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, (clicks, rebuild).chain().in_set(Rebuilt).after(Simulation));
+        app.add_systems(Update, (clicks, rebuild).chain().in_set(Rebuilt).after(Simulation)).add_systems(Update, animate.after(Rebuilt));
     }
 }
 
@@ -43,6 +43,104 @@ pub mod key {
     pub const BLESSING: u32 = 400;
     pub const STAT: u32 = 500;
     pub const RESIST: u32 = 520;
+    pub const GLITCH: u32 = 600;
+}
+
+/// Seconds after a chest opens before its first upgrade lands, and between
+/// the next ones (LOOT-02).
+const REVEAL_FIRST: f32 = 0.55;
+const REVEAL_EACH: f32 = 0.5;
+
+/// An icon that spins through other icons like a slot reel until `at`
+/// seconds after the chest opened, then lands on `image`.
+#[derive(Component)]
+struct Reel {
+    at: f32,
+    image: Handle<Image>,
+    pool: Vec<Handle<Image>>,
+}
+
+/// Hidden until `at` seconds after the chest opened.
+#[derive(Component)]
+struct Reveal(f32);
+
+/// A frame that turns its rarity's colour when its upgrade lands.
+#[derive(Component)]
+struct RevealBorder {
+    at: f32,
+    color: Color,
+    rarity: u8,
+}
+
+/// A legendary's frame pulses.
+#[derive(Component)]
+struct Shine(Color);
+
+/// Text that cycles through the colours of a legendary.
+#[derive(Component)]
+struct Rainbow;
+
+/// A full-screen glow that breathes.
+#[derive(Component)]
+struct Glow;
+
+/// The chest reveal, shining frames and rainbow titles (LOOT-02, ITEM-03).
+#[allow(clippy::type_complexity)]
+fn animate(
+    time: Res<Time>,
+    mut game: ResMut<Game>,
+    mut reels: Query<(&mut ImageNode, &mut Reel)>,
+    mut reveals: Query<(&mut Visibility, &Reveal)>,
+    mut borders: Query<(&mut BorderColor, Option<&mut RevealBorder>, Option<&Shine>)>,
+    mut rainbows: Query<&mut TextColor, With<Rainbow>>,
+    mut glows: Query<&mut BackgroundColor, With<Glow>>,
+) {
+    let t = time.elapsed_secs();
+    let since = game.chest_opened;
+    let mut landed = Vec::new();
+    for (mut node, mut reel) in &mut reels {
+        if since >= reel.at {
+            if !reel.pool.is_empty() {
+                node.image = reel.image.clone();
+                reel.pool.clear();
+            }
+        } else if !reel.pool.is_empty() {
+            let k = ((since * 18.0) as usize + reel.at as usize * 7) % reel.pool.len();
+            node.image = reel.pool[k].clone();
+        }
+    }
+    for (mut vis, r) in &mut reveals {
+        let want = if since >= r.0 { Visibility::Inherited } else { Visibility::Hidden };
+        if *vis != want {
+            *vis = want;
+        }
+    }
+    for (mut border, reveal, shine) in &mut borders {
+        if let Some(mut r) = reveal {
+            if since >= r.at && r.rarity > 0 {
+                *border = BorderColor::all(r.color);
+                landed.push(r.rarity);
+                r.rarity = 0;
+            }
+            if since < r.at {
+                continue;
+            }
+        }
+        if let Some(s) = shine {
+            let k = 0.5 + 0.5 * (t * 6.0).sin();
+            *border = BorderColor::all(s.0.mix(&Color::WHITE, k * 0.6));
+        }
+    }
+    for mut color in &mut rainbows {
+        color.0 = Color::hsl((t * 140.0) % 360.0, 0.9, 0.62);
+    }
+    for mut bg in &mut glows {
+        bg.0 = LEGENDARY.with_alpha(0.08 + 0.08 * (t * 3.0).sin().abs());
+    }
+    // A sound as each upgrade lands; the big one for a legendary.
+    for rarity in landed {
+        game.cues.push(if rarity >= 4 { crate::state::Cue::Legendary } else if rarity >= 3 { crate::state::Cue::Level } else { crate::state::Cue::Tick });
+    }
 }
 
 /// Bronze, silver, gold and diamond.
@@ -69,6 +167,11 @@ const CARD: Color = Color::srgb(0.15, 0.14, 0.2);
 const BUTTON: Color = Color::srgb(0.30, 0.30, 0.38);
 const BACKDROP: Color = Color::srgba(0.06, 0.06, 0.09, 0.8);
 const MERGE: Color = Color::srgb(1.0, 0.78, 0.25);
+pub const LEGENDARY: Color = Color::srgb(1.0, 0.72, 0.12);
+/// Glitches: a glitchy cyan.
+pub const GLITCH: Color = Color::srgb(0.25, 0.95, 0.9);
+const GOOD: Color = Color::srgb(0.45, 0.88, 0.45);
+const BAD: Color = Color::srgb(1.0, 0.42, 0.42);
 
 fn label(p: &mut ChildSpawnerCommands, words: impl Into<String>, size: f32, color: Color) {
     p.spawn((Text::new(words), TextFont { font_size: size, ..default() }, TextColor(color)));
@@ -194,6 +297,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
                     Phase::Chest(reward) => chest(p, run, reward, &art, pad),
                     Phase::Vending { offers, .. } => vending(p, run, offers, &art, pad),
                     Phase::Shrine { offers, .. } => shrine(p, offers, &art, pad),
+                    Phase::Glitch(offers) => glitch_pick(p, run, offers, &art, pad),
                     Phase::Over { victory } if game.since_end > END_PAUSE => over(p, run, *victory, &art, pad),
                     _ => {}
                 }
@@ -267,6 +371,7 @@ fn pattern_words(p: Pattern) -> &'static str {
         Pattern::Zone { .. } => "plants a patch that hurts slop and heals you inside",
         Pattern::Slam { .. } => "a slam; small slop is deleted outright",
         Pattern::Stun { .. } => "stuns chatbots",
+        Pattern::Barrier { .. } => "a barrier circling you: blocks enemy shots and hurts slop it touches",
     }
 }
 
@@ -286,45 +391,89 @@ fn item_color(kind: ItemKind) -> Color {
         ItemKind::Hustle => tier_color(3),
         ItemKind::Active => theme::type_color(DamageType::Fact),
         ItemKind::Healthy => theme::AGREE,
+        ItemKind::Movement => Color::srgb(1.0, 0.55, 0.2),
+        ItemKind::Defence => Color::srgb(0.31, 0.72, 0.91),
+        ItemKind::Legendary => LEGENDARY,
+    }
+}
+
+/// Common, rare, epic, legendary: grey, blue, purple, gold (ITEM-03).
+pub fn rarity_color(tier: u8) -> Color {
+    match tier {
+        0 | 1 => Color::srgb(0.62, 0.64, 0.7),
+        2 => Color::srgb(0.3, 0.62, 1.0),
+        3 => Color::srgb(0.72, 0.42, 1.0),
+        _ => LEGENDARY,
     }
 }
 
 fn item_tip(item: usize, level: u32) -> Tip {
     let d = &ITEMS[item];
-    Tip::new(format!("{} - level {level}/{}", d.name, d.max_level()), format!("{}.\n{} per level.\n\"{}\"", d.kind.name(), d.effect, d.flavour), item_color(d.kind))
+    let per = if d.max_level() > 1 { " per level" } else { "" };
+    Tip::new(
+        format!("{} - level {level}/{}", d.name, d.max_level()),
+        format!("{} {}.\n{}{per}.\n\"{}\"", slop_rules::items::rarity_name(d.tier), d.kind.name().to_lowercase(), d.effect, d.flavour),
+        item_color(d.kind),
+    )
+}
+
+fn glitch_tip(g: usize) -> Tip {
+    let d = &GLITCHES[g];
+    Tip::new(format!("GLITCH: {}", d.name), format!("{}.\n\"{}\"", d.effect, d.flavour), GLITCH)
 }
 
 fn heroes(p: &mut ChildSpawnerCommands, game: &Game, art: &Art, pad: bool) {
     backdrop(p, BACKDROP);
-    label(p, "CHOOSE YOUR HUMAN", 50.0, theme::PAPER);
-    label(p, "Same human, different baggage. Your hero sets your starting weapon, item and quirk.", 18.0, theme::QUIET);
-    p.spawn(Node { column_gap: Val::Px(14.0), ..default() }).with_children(|r| {
-        for (i, h) in Hero::ALL.iter().enumerate() {
-            let d = h.def();
-            let w = slop_sim::content::weapon_index(d.weapon).unwrap_or(0);
-            let it = slop_rules::items::item_index(d.item).unwrap_or(0);
-            let mut e = r.spawn((focusable(key::HERO + i as u32, CARD), Act(UiAction::StartAs(i)), card(280.0), BorderColor::all(theme::type_color(WEAPONS[w].kind))));
-            if i == game.hero {
-                e.insert(DefaultFocus);
+    label(p, "CHOOSE YOUR HUMAN", 46.0, theme::PAPER);
+    label(p, "Same human, different baggage. Every hero bends the rules: read the fine print.", 17.0, theme::QUIET);
+    // Two rows of four (HERO-02).
+    for half in Hero::ALL.chunks(4).enumerate() {
+        p.spawn(Node { column_gap: Val::Px(12.0), ..default() }).with_children(|r| {
+            for (k, h) in half.1.iter().enumerate() {
+                let i = half.0 * 4 + k;
+                let d = h.def();
+                let w = slop_sim::content::weapon_index(d.weapon).unwrap_or(0);
+                let it = slop_rules::items::item_index(d.item).unwrap_or(0);
+                let mut e = r.spawn((
+                    focusable(key::HERO + i as u32, CARD),
+                    Act(UiAction::StartAs(i)),
+                    Node { min_height: Val::Px(330.0), ..card(300.0) },
+                    BorderColor::all(theme::type_color(WEAPONS[w].kind)),
+                ));
+                if i == game.hero {
+                    e.insert(DefaultFocus);
+                }
+                e.with_children(|c| {
+                    c.spawn(row(10.0)).with_children(|t| {
+                        icon(t, &art.human[h][0], 62.0);
+                        t.spawn(column(2.0)).with_children(|n| {
+                            label(n, format!("{}  {}", i + 1, d.name), 25.0, theme::PAPER);
+                            label(n, format!("\"{}\"", d.tagline), 13.0, theme::QUIET);
+                        });
+                    });
+                    c.spawn(row(6.0)).with_children(|l| {
+                        icon(l, &art.weapon_icons[w], 28.0);
+                        label(l, d.weapon, 14.0, theme::type_color(WEAPONS[w].kind));
+                        icon(l, &art.item_icons[it], 28.0);
+                        label(l, d.item, 14.0, item_color(ITEMS[it].kind));
+                    });
+                    // Every property, exactly: good in green, bad in red.
+                    for line in d.properties {
+                        let color = if line.starts_with('+') {
+                            GOOD
+                        } else if line.starts_with('-') {
+                            BAD
+                        } else {
+                            theme::PAPER
+                        };
+                        label(c, *line, 14.0, color);
+                    }
+                    label(c, "Everyone: 2 dash charges", 12.0, theme::QUIET);
+                });
             }
-            e.with_children(|c| {
-                c.spawn(Node { justify_content: JustifyContent::Center, ..default() }).with_children(|m| icon(m, &art.human[h][0], 110.0));
-                label(c, format!("{}  {}", i + 1, d.name), 28.0, theme::PAPER);
-                c.spawn(row(8.0)).with_children(|l| {
-                    icon(l, &art.weapon_icons[w], 34.0);
-                    label(l, d.weapon, 16.0, theme::type_color(WEAPONS[w].kind));
-                });
-                label(c, format!("{}: {}", WEAPONS[w].kind.name(), pattern_words(WEAPONS[w].pattern)), 13.0, theme::QUIET);
-                c.spawn(row(8.0)).with_children(|l| {
-                    icon(l, &art.item_icons[it], 34.0);
-                    label(l, d.item, 16.0, item_color(ITEMS[it].kind));
-                });
-                label(c, d.stats, 15.0, theme::PAPER);
-                label(c, d.quirk, 15.0, theme::QUIET);
-            });
-        }
-    });
-    hints(p, pad, &[("Arrows", "Stick", "choose"), ("1-5", "", "jump to a hero"), ("Enter/Space", "A", "start"), ("Esc", "B", "back")]);
+        });
+    }
+    hints(p, pad, &[("Arrows", "Stick", "choose"), ("1-8", "", "jump to a hero"), ("Enter", "A", "start"), ("Esc", "B", "back")]);
 }
 
 /// Your stats and the slop's resistances, each with a tooltip (UI-13).
@@ -349,7 +498,9 @@ fn stats_panel(p: &mut ChildSpawnerCommands, run: &Run, art: &Art) {
                         label(r, k.read(&s), 16.0, theme::PAPER);
                     });
             }
-            col.spawn(Node { height: Val::Px(8.0), ..default() });
+            let perks = run.loadout().perks;
+            label(col, format!("Dash: {} charges, back in {:.1} s each", perks.dash_charges, perks.dash_recharge), 14.0, theme::QUIET);
+            col.spawn(Node { height: Val::Px(6.0), ..default() });
             label(col, "SLOP RESISTANCE", 15.0, theme::QUIET);
             for t in DamageType::ALL {
                 let r = run.training.model[t as usize];
@@ -402,8 +553,13 @@ fn describe(run: &Run, c: Choice, art: &Art) -> (Handle<Image>, String, String, 
         Choice::NewItem(i) | Choice::ItemLevel(i) => {
             let d = &ITEMS[i];
             let (from, to) = run.levels_of(c).unwrap_or((0, 1));
-            let tag = if from == 0 { format!("NEW {}", d.kind.name()) } else { format!("Level {from} -> {to} of {}", d.max_level()) };
+            let rarity = slop_rules::items::rarity_name(d.tier).to_uppercase();
+            let tag = if from == 0 { format!("NEW {rarity} {}", d.kind.name().to_lowercase()) } else { format!("Level {from} -> {to} of {}", d.max_level()) };
             (art.item_icons[i].clone(), d.name.to_string(), tag, format!("{}.\n\"{}\"", d.effect, d.flavour), item_color(d.kind))
+        }
+        Choice::Glitch(g) => {
+            let d = &GLITCHES[g];
+            (art.glitch_icons[g].clone(), d.name.to_string(), "GLITCH: changes your run".into(), format!("{}.\n\"{}\"", d.effect, d.flavour), GLITCH)
         }
         Choice::Stat(up) => {
             let grade = ["Stat", "Good stat", "Great stat"][up.tier as usize - 1];
@@ -423,15 +579,30 @@ fn capital(s: &str) -> String {
 fn choice_card(p: &mut ChildSpawnerCommands, run: &Run, c: Choice, art: &Art, k: u32, action: UiAction, price: Option<u32>) {
     let (image, name, tag, words, color) = describe(run, c, art);
     let merge = matches!(c, Choice::WeaponLevel(d) | Choice::NewWeapon(d) if merge_of(d).is_some_and(|(o, _)| run.weapons.iter().any(|x| x.def == o)));
-    let border = if merge { MERGE } else { color };
-    let mut e = p.spawn((focusable(k, CARD), Act(action), Node { width: Val::Px(300.0), min_height: Val::Px(330.0), ..card(300.0) }, BorderColor::all(border)));
+    // Rare things get a frame in their rarity's colour, and the rarest shine.
+    let rarity = c.rarity();
+    let border = if matches!(c, Choice::Glitch(_)) {
+        GLITCH
+    } else if rarity >= 2 && matches!(c, Choice::NewItem(_) | Choice::ItemLevel(_)) {
+        rarity_color(rarity)
+    } else if merge {
+        MERGE
+    } else {
+        color
+    };
+    let back = if rarity >= 4 { Color::srgb(0.22, 0.17, 0.1) } else { CARD };
+    let width = if rarity >= 4 { 5.0 } else { 3.0 };
+    let mut e = p.spawn((focusable(k, back), Act(action), Node { width: Val::Px(300.0), min_height: Val::Px(330.0), border: UiRect::all(Val::Px(width)), ..card(300.0) }, BorderColor::all(border)));
+    if rarity >= 4 {
+        e.insert(Shine(border));
+    }
     if k == key::CHOICE {
         e.insert(DefaultFocus);
     }
     e.with_children(|c| {
         c.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|h| {
             label(h, format!("{}", k - key::CHOICE + 1), 16.0, theme::QUIET);
-            label(h, tag, 15.0, color);
+            label(h, tag, 15.0, if rarity >= 3 { border } else { color });
         });
         c.spawn(Node { justify_content: JustifyContent::Center, padding: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|m| icon(m, &image, 96.0));
         label(c, name, 24.0, theme::PAPER);
@@ -450,7 +621,7 @@ fn choice_card(p: &mut ChildSpawnerCommands, run: &Run, c: Choice, art: &Art, k:
 fn build_strip(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, focus: bool) {
     p.spawn(row(18.0)).with_children(|r| {
         r.spawn(row(6.0)).with_children(|ws| {
-            for slot in 0..slop_rules::run::WEAPON_SLOTS {
+            for slot in 0..run.weapon_slots() {
                 let Some(w) = run.weapons.get(slot) else {
                     ws.spawn((Node { width: Val::Px(56.0), height: Val::Px(56.0), border: UiRect::all(Val::Px(2.0)), ..default() }, BorderColor::all(Color::srgb(0.25, 0.25, 0.3))));
                     continue;
@@ -511,24 +682,38 @@ fn level_up(p: &mut ChildSpawnerCommands, run: &Run, choices: &[Choice], art: &A
             choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Choose(i), None);
         }
     });
+    build_strip(p, run, art, false);
+    // The reroll sits under everything and is not in the arrow-key path, so
+    // moving between cards never lands on it: R or Y, or click it.
     p.spawn(row(14.0)).with_children(|r| {
         let cost = run.reroll_cost();
-        let words = if cost == 0 { format!("Reroll (free, {} left)", run.rerolls) } else { format!("Reroll: {cost} Clout") };
-        let mut b = button(r, words, UiAction::Reroll, BUTTON, key::BUTTON);
-        b.with_children(|r| icon(r, &art.reroll, 24.0));
+        let key_name = if pad { "Y" } else { "R" };
+        let words = if cost == 0 { format!("{key_name}: reroll (free, {} left)", run.rerolls) } else { format!("{key_name}: reroll for {cost} Clout") };
+        r.spawn((Button, Act(UiAction::Reroll), Node { padding: UiRect::axes(Val::Px(14.0), Val::Px(7.0)), column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }, BackgroundColor(Color::srgb(0.2, 0.2, 0.26))))
+            .with_children(|b| {
+                icon(b, &art.reroll, 20.0);
+                label(b, words, 16.0, theme::PAPER);
+            });
         r.spawn(row(6.0)).with_children(|c| {
-            icon(c, &art.coin, 26.0);
-            label(c, run.clout.to_string(), 22.0, theme::PAPER);
+            icon(c, &art.coin, 22.0);
+            label(c, run.clout.to_string(), 18.0, theme::PAPER);
         });
     });
-    build_strip(p, run, art, false);
-    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter/Space", "A", "pick"), ("1-4", "", "pick"), ("R", "Y", "reroll")]);
+    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter", "A", "pick"), ("1-4", "", "pick"), ("R", "Y", "reroll")]);
 }
 
 fn chest(p: &mut ChildSpawnerCommands, run: &Run, reward: &Reward, art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.04, 0.04, 0.07, 0.72));
     let gold = tier_color(3);
-    label(p, reward.title.to_uppercase(), 60.0, if reward.merged.is_some() { MERGE } else { gold });
+    if reward.best >= 4 {
+        // A golden glow behind everything for a legendary (LOOT-02).
+        p.spawn((Node { position_type: PositionType::Absolute, width: Val::Percent(100.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(LEGENDARY.with_alpha(0.12)), Glow));
+    }
+    let title = if reward.best >= 4 && reward.merged.is_none() { format!("{}: LEGENDARY!", reward.title.to_uppercase()) } else { reward.title.to_uppercase() };
+    let mut t = p.spawn((Text::new(title), TextFont { font_size: 60.0, ..default() }, TextColor(if reward.merged.is_some() { MERGE } else { gold })));
+    if reward.best >= 4 {
+        t.insert(Rainbow);
+    }
     if let Some((a, b, into)) = reward.merged {
         p.spawn(row(24.0)).with_children(|r| {
             for (d, size) in [(a, 90.0), (b, 90.0)] {
@@ -547,19 +732,39 @@ fn chest(p: &mut ChildSpawnerCommands, run: &Run, reward: &Reward, art: &Art, pa
         });
         label(p, "Two weapons became one. A slot is free again.", 18.0, theme::PAPER);
     } else {
-        p.spawn(row(16.0)).with_children(|r| {
-            for c in &reward.upgrades {
+        // Each upgrade spins like a slot reel, then lands, rarest last
+        // (LOOT-02).
+        let mut order: Vec<Choice> = reward.upgrades.clone();
+        order.sort_by_key(|c| c.rarity());
+        let pool: Vec<Handle<Image>> = art.item_icons.iter().chain(art.weapon_icons.iter().take(33)).cloned().collect();
+        p.spawn(row(14.0)).with_children(|r| {
+            for (n, c) in order.iter().enumerate() {
+                let at = REVEAL_FIRST + n as f32 * REVEAL_EACH;
                 let (image, name, tag, _, color) = describe(run, *c, art);
-                r.spawn((Node { width: Val::Px(220.0), padding: UiRect::all(Val::Px(12.0)), border: UiRect::all(Val::Px(3.0)), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(6.0), ..default() }, BorderColor::all(color), BackgroundColor(CARD)))
-                    .with_children(|k| {
-                        icon(k, &image, 80.0);
-                        label(k, name, 20.0, theme::PAPER);
-                        label(k, chest_tag(run, *c, tag), 14.0, color);
-                    });
+                let rarity = c.rarity();
+                let frame = if rarity >= 2 && matches!(c, Choice::NewItem(_) | Choice::ItemLevel(_)) { rarity_color(rarity) } else { color };
+                let mut card = r.spawn((
+                    Node { width: Val::Px(200.0), min_height: Val::Px(200.0), padding: UiRect::all(Val::Px(12.0)), border: UiRect::all(Val::Px(if rarity >= 4 { 5.0 } else { 3.0 })), flex_direction: FlexDirection::Column, align_items: AlignItems::Center, row_gap: Val::Px(6.0), ..default() },
+                    BorderColor::all(Color::srgb(0.3, 0.3, 0.36)),
+                    BackgroundColor(if rarity >= 4 { Color::srgb(0.22, 0.17, 0.1) } else { CARD }),
+                    RevealBorder { at, color: frame, rarity },
+                ));
+                if rarity >= 4 {
+                    card.insert(Shine(frame));
+                }
+                card.with_children(|k| {
+                    k.spawn((ImageNode::new(pool[n % pool.len()].clone()), Node { width: Val::Px(80.0), height: Val::Px(80.0), ..default() }, Reel { at, image, pool: pool.clone() }));
+                    k.spawn((Text::new(name), TextFont { font_size: 19.0, ..default() }, TextColor(theme::PAPER), Visibility::Hidden, Reveal(at)));
+                    let rarity_line = match c {
+                        Choice::NewItem(i) | Choice::ItemLevel(i) => format!("{}  -  {}", slop_rules::items::rarity_name(ITEMS[*i].tier).to_uppercase(), chest_tag(run, *c, tag)),
+                        _ => chest_tag(run, *c, tag),
+                    };
+                    k.spawn((Text::new(rarity_line), TextFont { font_size: 13.0, ..default() }, TextColor(frame), Visibility::Hidden, Reveal(at)));
+                });
             }
         });
         if let Some((a, b, into)) = near_merge(run) {
-            label(p, format!("Level {} and {} to 8, then open a chest: {}.", WEAPONS[a].name, WEAPONS[b].name, WEAPONS[into].name), 16.0, MERGE);
+            label(p, merge_line(run, a, b, into), 16.0, MERGE);
         }
     }
     p.spawn(row(8.0)).with_children(|c| {
@@ -587,6 +792,32 @@ fn near_merge(run: &Run) -> Option<(usize, usize, usize)> {
         let (other, into) = merge_of(w.def)?;
         run.weapons.iter().any(|x| x.def == other).then_some((w.def, other, into))
     })
+}
+
+/// Exactly where a merge stands: both levels, and what is still missing.
+fn merge_line(run: &Run, a: usize, b: usize, into: usize) -> String {
+    let level = |d: usize| run.weapons.iter().find(|w| w.def == d).map_or(0, |w| w.level);
+    let (la, lb) = (level(a), level(b));
+    let what = if la >= MAX_LEVEL && lb >= MAX_LEVEL {
+        "READY: the next chest merges them (elites and bosses drop chests).".to_string()
+    } else {
+        "Get both to level 8, then open a chest.".to_string()
+    };
+    format!("Merge: {} (level {la}/8) + {} (level {lb}/8) = {}. {what}", WEAPONS[a].name, WEAPONS[b].name, WEAPONS[into].name)
+}
+
+/// After a boss: three glitches, pick one (GLITCH-01).
+fn glitch_pick(p: &mut ChildSpawnerCommands, run: &Run, offers: &[usize], art: &Art, pad: bool) {
+    backdrop(p, Color::srgba(0.02, 0.05, 0.06, 0.85));
+    p.spawn((Text::new("THE FEED GLITCHED"), TextFont { font_size: 58.0, ..default() }, TextColor(GLITCH), Rainbow));
+    label(p, "The boss left a hole in the algorithm. Pick one glitch: it changes how this run plays.", 18.0, theme::QUIET);
+    p.spawn(Node { column_gap: Val::Px(16.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }).with_children(|r| {
+        for (i, &g) in offers.iter().enumerate() {
+            choice_card(r, run, Choice::Glitch(g), art, key::CHOICE + i as u32, UiAction::Glitch(i), None);
+        }
+    });
+    build_strip(p, run, art, false);
+    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter", "A", "take it"), ("1-3", "", "pick")]);
 }
 
 fn vending(p: &mut ChildSpawnerCommands, run: &Run, offers: &[(Choice, u32)], art: &Art, pad: bool) {
@@ -629,7 +860,7 @@ fn shrine(p: &mut ChildSpawnerCommands, offers: &[usize], art: &Art, pad: bool) 
             });
         }
     });
-    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter/Space", "A", "take it")]);
+    hints(p, pad, &[("Arrows", "Stick", "choose"), ("Enter", "A", "take it")]);
 }
 
 fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
@@ -655,8 +886,16 @@ fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
                     }
                 });
             }
+            if !run.glitches.is_empty() {
+                label(c, "GLITCHES", 16.0, theme::QUIET);
+                c.spawn(row(8.0)).with_children(|r| {
+                    for (k, &g) in run.glitches.iter().enumerate() {
+                        r.spawn((focusable(key::GLITCH + k as u32, Color::NONE), Node { padding: UiRect::all(Val::Px(4.0)), ..default() }, glitch_tip(g))).with_children(|i| icon(i, &art.glitch_icons[g], 44.0));
+                    }
+                });
+            }
             if let Some((a, b, into)) = near_merge(run) {
-                label(c, format!("Merge in reach: {} + {} at level 8 -> {}", WEAPONS[a].name, WEAPONS[b].name, WEAPONS[into].name), 16.0, MERGE);
+                label(c, merge_line(run, a, b, into), 16.0, MERGE);
             }
             // Details of whatever is highlighted, instead of tooltips over the build.
             c.spawn((TipDock, Node { flex_grow: 1.0, min_height: Val::Px(160.0), border: UiRect::all(Val::Px(2.0)), padding: UiRect::all(Val::Px(14.0)), ..default() }, BorderColor::all(Color::srgb(0.22, 0.22, 0.28)), BackgroundColor(Color::srgb(0.07, 0.07, 0.1))))
@@ -664,7 +903,7 @@ fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
         });
         stats_panel(page, run, art);
     });
-    hints(p, pad, &[("Arrows", "Stick", "inspect"), ("Space/P/Esc", "Start", "resume")]);
+    hints(p, pad, &[("Arrows", "Stick", "inspect"), ("P/Esc", "Start/B", "resume")]);
 }
 
 fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art, pad: bool) {

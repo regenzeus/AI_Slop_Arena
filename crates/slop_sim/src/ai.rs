@@ -38,6 +38,21 @@ const BEAT_BOOST: f32 = 1.25;
 const BEAT_TICKS: u16 = 12;
 const FAKE_LIKE_TICKS: i32 = 240;
 const HATCHLINGS: u8 = 3;
+/// Chargers (Tralalelo): aim, run, rest, in ticks; run speed multiplier.
+const CHARGE_AIM: u16 = 40;
+const CHARGE_RUN: i32 = 38;
+const CHARGE_REST: i32 = 70;
+const CHARGE_SPEED: f32 = 3.4;
+const CHARGE_RANGE: f32 = 460.0;
+/// Blinkers (Cappuccino Assassinello).
+const BLINK_EVERY: i32 = 300;
+const BLINK_WARNING: u16 = 45;
+const BLINK_DISTANCE: f32 = 90.0;
+/// Bonks and stomps around the slop itself.
+const BONK_RADIUS: f32 = 105.0;
+const STOMP_RADIUS: f32 = 140.0;
+const BONK_WARNING: u16 = 42;
+const NEEDLES: u32 = 10;
 
 /// The parts of a spec the AI needs, copied so the slop can be borrowed mutably.
 #[derive(Clone, Copy)]
@@ -202,6 +217,51 @@ impl World {
                         }
                     }
                 }
+                Movement::Charge => {
+                    // Aim (telegraphed), then run straight; then catch breath.
+                    if s.charging > 0 {
+                        s.charging -= 1;
+                        if s.charging == 0 {
+                            s.timer = CHARGE_RUN;
+                        }
+                    } else if s.timer > 0 {
+                        s.timer -= 1;
+                        want = s.aim * (speed * CHARGE_SPEED);
+                        if s.timer == 0 {
+                            s.timer = -CHARGE_REST;
+                        }
+                    } else if s.timer < 0 {
+                        s.timer += 1;
+                        want = dir * (speed * 0.5);
+                    } else if dist < CHARGE_RANGE {
+                        s.charging = CHARGE_AIM;
+                        s.aim = dir;
+                        self.events.push(Event::ChargeAim { from: s.pos, dir });
+                    } else {
+                        want = dir * speed;
+                    }
+                }
+                Movement::Blink => {
+                    // Walks; now and then marks a spot behind you and appears there.
+                    if s.charging > 0 {
+                        s.charging -= 1;
+                        if s.charging == 0 {
+                            s.pos = s.aim;
+                            s.prev = s.aim;
+                            s.timer = BLINK_EVERY + self.rng_ai.below(120) as i32;
+                        }
+                    } else {
+                        want = dir * speed;
+                        s.timer -= 1;
+                        if s.timer <= 0 && dist < 700.0 {
+                            let behind = if self.player.vel.length_sq() > 100.0 { -self.player.vel.normalized() } else { -dir };
+                            s.aim = player + behind * BLINK_DISTANCE;
+                            s.charging = BLINK_WARNING;
+                            self.events.push(Event::BlinkWarning { at: s.aim });
+                        }
+                    }
+                }
+                Movement::Sweep => want = s.aim * speed,
                 Movement::Grab => {
                     if let Some(offset) = s.grab {
                         s.pos = player + offset;
@@ -260,7 +320,7 @@ impl World {
             }
             if let Some(attack) = b.attack.filter(|_| s.confused == 0) {
                 s.attack_timer -= 1;
-                if s.attack_timer <= 0 && dist < SHOOT_RANGE {
+                if s.attack_timer <= 0 && dist < SHOOT_RANGE.min(attack.reach()) {
                     s.attack_timer = attack.interval() + self.rng_ai.below(40) as i32;
                     let k = s.agreement();
                     let spec = s.spec as usize;
@@ -284,9 +344,19 @@ impl World {
                         }
                         Attack::Bomb => {
                             let at = player + self.player.vel * 0.5;
-                            self.events.push(Event::BombWarning { at, radius: 60.0 });
-                            queued.push(Queued::Bomb { at, damage: b.contact * 1.6 * k, spec: spec as u16 });
+                            queued.push(Queued::Blast { at, radius: 60.0, ticks: BOMB_WARNING, damage: b.contact * 1.6 * k, spec: spec as u16 });
                         }
+                        // Tonk Tonk Tonk Sahur: the ground around it, after a warning.
+                        Attack::Bonk => queued.push(Queued::Blast { at: s.pos, radius: BONK_RADIUS, ticks: BONK_WARNING, damage: b.contact * 1.8 * k, spec: spec as u16 }),
+                        Attack::Stomp => queued.push(Queued::Blast { at: s.pos, radius: STOMP_RADIUS, ticks: BONK_WARNING, damage: b.contact * 0.8 * k, spec: spec as u16 }),
+                        Attack::Needles => {
+                            let turn = self.rng_ai.range(0.0, 0.8);
+                            for n in 0..NEEDLES {
+                                let aim = V2::from_angle(turn + n as f32 * std::f32::consts::TAU / NEEDLES as f32);
+                                shots.push((s.pos + aim * b.radius, aim * 230.0, b.contact * k, Look::Needle, NO_LINE, spec));
+                            }
+                        }
+                        Attack::Peel => shots.push((s.pos + dir * b.radius, dir * 300.0, b.contact * 0.8 * k, Look::Banana, NO_LINE, spec)),
                     }
                 }
             }
@@ -324,7 +394,7 @@ impl World {
                     let drone = self.ensure_spec(SlopSpec::archetype(Archetype::ListicleDrone));
                     self.pending.push((drone, at, 0.0, pack, number));
                 }
-                Queued::Bomb { at, damage, spec } => self.drop_bomb(at, damage, spec),
+                Queued::Blast { at, radius, ticks, damage, spec } => self.blast(at, radius, ticks, damage, spec),
                 Queued::Toxic { at } => {
                     let id = self.id();
                     self.zones.push(Zone::new(id, ZoneKind::Downvote, at, 46.0, 300));
@@ -356,13 +426,19 @@ impl World {
             Look::Arrow => (12.0, 150),
             Look::Post => (16.0, 240),
             Look::Letter => (18.0, 900),
+            Look::Needle => (7.0, 150),
+            Look::Shard => (8.0, 90),
+            Look::Banana => (13.0, 150),
             _ => (10.0, 180),
         };
         let mut p = Projectile::new(id, pos, vel, radius, damage, DamageType::Analog, true, look, life);
         p.line = line;
         p.spec = spec;
-        if look == Look::Post {
-            p.shove = 420.0;
+        match look {
+            Look::Post => p.shove = 420.0,
+            // You slip on it.
+            Look::Banana => p.shove = 650.0,
+            _ => {}
         }
         if look == Look::Arrow && self.setup.specs.get(spec as usize).is_some_and(|s| s.traits.has(Traits::DOOMSCROLL)) {
             p.doomscroll = true;
@@ -446,6 +522,15 @@ impl World {
             }
         }
         self.player.grabbed = holding;
+        // Spiky Opinions: whatever touches you gets hurt.
+        let thorns = self.player.perks.thorns;
+        if thorns > 0.0 && self.tick % 20 == 0 {
+            let touching: Vec<usize> = contact.iter().map(|c| c.3).chain((0..self.slop.len()).filter(|&i| self.slop[i].grab.is_some())).collect();
+            for i in touching {
+                let push = (self.slop[i].pos - p).normalized() * 300.0;
+                self.damage_slop(i, thorns * (1.0 + self.player.stats.conviction), DamageType::Sarcasm, push, p, None);
+            }
+        }
         for (dmg, spec, traits, i) in contact {
             if self.hurt(dmg, spec) {
                 if traits.has(Traits::POPUP) {
@@ -468,9 +553,14 @@ impl World {
 
     /// Marks a spot where a bomb lands after `BOMB_WARNING` ticks.
     pub(crate) fn drop_bomb(&mut self, at: V2, damage: f32, spec: u16) {
+        self.blast(at, 60.0, BOMB_WARNING, damage, spec);
+    }
+
+    /// Marks a circle that explodes after `ticks` (FAIR-02).
+    pub(crate) fn blast(&mut self, at: V2, radius: f32, ticks: u16, damage: f32, spec: u16) {
         let id = self.id();
-        self.events.push(Event::BombWarning { at, radius: 60.0 });
-        let mut z = Zone::new(id, ZoneKind::Bomb, at, 60.0, BOMB_WARNING);
+        self.events.push(Event::BombWarning { at, radius });
+        let mut z = Zone::new(id, ZoneKind::Bomb, at, radius, ticks);
         z.damage = damage;
         z.spec = spec;
         self.zones.push(z);
@@ -485,7 +575,8 @@ enum Queued {
     HealBoss,
     /// A Surprise Egg hatches a drone.
     Hatch { at: V2, pack: u32, number: u8 },
-    Bomb { at: V2, damage: f32, spec: u16 },
+    /// A marked circle that explodes after a warning.
+    Blast { at: V2, radius: f32, ticks: u16, damage: f32, spec: u16 },
     /// A Toxic elite leaves a slowing puddle.
     Toxic { at: V2 },
 }

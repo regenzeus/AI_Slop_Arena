@@ -1,8 +1,11 @@
 //! The window (UI-16): fullscreen by default, Alt+Enter or F11 to switch to
-//! a window and back, F12 to save a screenshot to Pictures\AI Slop Arena.
+//! a window and back, F12 or Print Screen to save a screenshot to
+//! Pictures\AI Slop Arena.
 
 use std::path::PathBuf;
 
+use bevy::input::keyboard::KeyboardInput;
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{save_to_disk, Screenshot, ScreenshotCaptured};
 use bevy::window::{MonitorSelection, PrimaryWindow, WindowMode};
@@ -36,8 +39,11 @@ fn folder() -> PathBuf {
     home.map_or_else(|| PathBuf::from("screenshots"), |h| h.join("Pictures").join("AI Slop Arena"))
 }
 
-fn screenshot(mut commands: Commands, keyboard: Res<ButtonInput<KeyCode>>) {
-    if !keyboard.just_pressed(KeyCode::F12) {
+fn screenshot(mut commands: Commands, keyboard: Res<ButtonInput<KeyCode>>, mut raw: MessageReader<KeyboardInput>) {
+    // Windows reports only the release of Print Screen, and a release without
+    // a press never reaches `ButtonInput`: read the raw key events instead.
+    let print = raw.read().any(|k| k.key_code == KeyCode::PrintScreen && k.state == ButtonState::Released);
+    if !keyboard.just_pressed(KeyCode::F12) && !print {
         return;
     }
     let dir = folder();

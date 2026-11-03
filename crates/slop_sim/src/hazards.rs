@@ -16,9 +16,13 @@ const AD_TICKS: u16 = 180;
 /// Ticks between maintenance fences, and their warning.
 const MAINTENANCE_EVERY: u32 = 60 * 50;
 const FENCE_WARNING: u16 = 150;
+/// Ticks a brainrot zone pulses before its drop (eight beats).
+pub const BRAINROT_ZONE_TICKS: u16 = BEAT_INTERVAL * 8;
 
 impl World {
     pub(crate) fn hazards(&mut self) {
+        // The rules set the platform to the part of the map you are in
+        // (BIOME-01), so its hazard follows you across the map.
         let platform = self.setup.platform;
         self.beat = self.beat.saturating_add(1);
         if platform == Some(Platform::ClockTok) && self.beat >= BEAT_INTERVAL {
@@ -96,8 +100,16 @@ impl World {
                 600
             }
             Platform::ClockTok => {
-                self.apply_status(StatusKind::BrainrotWarning);
-                1500
+                // Brainrot zones pulse to the beat; when the drop comes,
+                // whoever stands inside has their controls flipped.
+                if !self.player.perks.fluent {
+                    for _ in 0..2 {
+                        let at = self.near(me, 120.0, 420.0);
+                        let id = self.id();
+                        self.zones.push(Zone::new(id, ZoneKind::Brainrot, at, 110.0, BRAINROT_ZONE_TICKS));
+                    }
+                }
+                600
             }
         };
     }

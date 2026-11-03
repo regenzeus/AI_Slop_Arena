@@ -112,6 +112,42 @@ pub enum Event {
     Confused { at: V2 },
     /// A block of the map will close for maintenance.
     Maintenance { at: V2, half: V2 },
+    /// You dashed from `from` along `dir` (DASH-01).
+    Dashed { from: V2, dir: V2 },
+    /// A dash charge came back.
+    DashReady,
+    /// Your Boundaries took a hit, broke, or came back (DEF-01).
+    ShieldHit { amount: f32 },
+    ShieldBroke,
+    ShieldUp,
+    /// A firewall segment stopped a projectile.
+    Deflected { at: V2 },
+    /// The end of a dash left a shockwave (Left on Read).
+    Shock { at: V2, radius: f32 },
+    /// Do Not Disturb pushed everything away.
+    DoNotDisturb { at: V2 },
+    /// God Mode Glitch: invulnerable and stronger for a moment.
+    GodMode,
+    /// You healed yourself (Therapist on Speed Dial, lifesteal is silent).
+    SelfHeal { amount: f32 },
+    /// A charger aims from `from` along `dir` before it runs.
+    ChargeAim { from: V2, dir: V2 },
+    /// An assassin will appear at `at`.
+    BlinkWarning { at: V2 },
+    /// You walked into another platform's part of the map (BIOME-01).
+    Biome { platform: crate::content::Platform },
+    /// A livestream arena closes around you after a warning (EVENT-02).
+    ArenaWarning { at: V2, radius: f32 },
+    ArenaClosed { at: V2, radius: f32 },
+    ArenaCleared { at: V2 },
+    /// A swarm crosses the screen (EVENT-01).
+    Swarm { dir: V2, spec: u16 },
+    /// A ring of slop closes in.
+    Encircled { at: V2, radius: f32 },
+    /// Algorithm Boost: everything on the floor flies to you.
+    Vacuum,
+    /// A rare drop landed: a golden chest (LOOT-02).
+    RareDrop { at: V2 },
     WaveCleared,
     Burnout,
 }

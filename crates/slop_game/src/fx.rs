@@ -13,7 +13,7 @@ use slop_sim::spec::SlopLook;
 use slop_sim::world::{Active, LANCE_AIM, SPAWN_WARNING, TICK_RATE};
 use slop_sim::{DamageType, Event, V2};
 
-use crate::art::Art;
+use crate::art::{Art, HUMAN_SIZE};
 use crate::play::Simulation;
 use crate::state::Game;
 use crate::theme;
@@ -144,8 +144,8 @@ fn status_words(kind: StatusKind) -> (&'static str, Color) {
         StatusKind::Doomscroll => ("Doomscrolling...", theme::DANGER),
         StatusKind::Popup => ("Pop-up!", theme::DANGER),
         StatusKind::Ratio => ("Ratio'd", theme::DANGER),
-        StatusKind::Brainrot => ("BRAINROT", Color::srgb(0.62, 0.36, 1.0)),
-        StatusKind::BrainrotWarning => ("Brainrot incoming...", Color::srgb(0.62, 0.36, 1.0)),
+        StatusKind::Brainrot => ("BRAINROT: CONTROLS REVERSED!", Color::srgb(0.62, 0.36, 1.0)),
+        StatusKind::BrainrotWarning => ("Brainrot incoming: controls flip in a moment!", Color::srgb(0.62, 0.36, 1.0)),
     }
 }
 
@@ -406,9 +406,9 @@ fn spawn_fx(
             Event::PickedUp { kind, at } => {
                 use slop_sim::world::PickupKind as K;
                 let (words, color) = match kind {
-                    K::Food => ("Touched grass!", theme::AGREE),
-                    K::Magnet => ("Algorithm boost!", Color::srgb(0.5, 0.8, 1.0)),
-                    K::Freeze => ("SERVER OUTAGE", Color::srgb(0.6, 0.85, 1.0)),
+                    K::Food => ("Touched grass: healed!", theme::AGREE),
+                    K::Magnet => ("VACUUM: everything flies to you!", Color::srgb(0.5, 0.8, 1.0)),
+                    K::Freeze => ("SERVER OUTAGE: slop frozen", Color::srgb(0.6, 0.85, 1.0)),
                     K::Chest => ("Chest!", Color::srgb(1.0, 0.8, 0.2)),
                     K::Bomb | K::Clout => ("", theme::PAPER),
                 };
@@ -425,11 +425,12 @@ fn spawn_fx(
                 say(&mut commands, "MASS REPORT!", v(at) + Vec2::Y * 90.0, 34.0, theme::DANGER, 1.5);
             }
             Event::Broke { at, kind } => {
+                // Say what breaking it did: something dropped.
                 let words = match kind {
-                    slop_sim::map::PropKind::PopupAd => "[x] closed",
-                    slop_sim::map::PropKind::CryptoMiner => "rug pulled",
-                    slop_sim::map::PropKind::LostPhone => "finders keepers",
-                    _ => "[ad blocked]",
+                    slop_sim::map::PropKind::PopupAd => "[x] closed: loot!",
+                    slop_sim::map::PropKind::CryptoMiner => "rug pulled: Clout!",
+                    slop_sim::map::PropKind::LostPhone => "finders keepers: chest!",
+                    _ => "ad smashed: loot!",
                 };
                 say(&mut commands, words, v(at) + Vec2::Y * 30.0, 15.0, theme::PAPER, 0.9);
                 ring(&mut commands, &art, v(at), 60.0, Color::srgba(1.0, 1.0, 1.0, 0.6), 0.25);
@@ -445,7 +446,72 @@ fn spawn_fx(
                 ring(&mut commands, &art, v(at), 500.0, Color::srgba(1.0, 0.8, 0.2, 0.9), 0.6);
             }
             Event::Confused { at } => say(&mut commands, "?", v(at) + Vec2::Y * 34.0, 22.0, Color::srgb(1.0, 0.6, 0.9), 0.7),
-            Event::Maintenance { at, .. } => say(&mut commands, "Scheduled maintenance!", v(at), 20.0, theme::DANGER, 1.5),
+            Event::Maintenance { at, .. } => say(&mut commands, "Maintenance: this block closes. It blocks, it never hurts.", v(at), 18.0, Color::srgb(0.95, 0.76, 0.19), 2.0),
+            Event::Dashed { from, dir } => {
+                // Afterimages along the dash.
+                for k in 0..4 {
+                    let at = v(from) + Vec2::new(dir.x, dir.y) * (k as f32 * 45.0);
+                    let fx = Fx::new(Kind::Flash, 0.25 + k as f32 * 0.04, Vec2::ZERO);
+                    commands.spawn((
+                        Sprite { image: art.human[&game.shown_run().map_or(slop_rules::Hero::Boomer, |r| r.hero)][0].clone(), custom_size: Some(Vec2::splat(HUMAN_SIZE)), color: Color::srgba(0.6, 0.85, 1.0, 0.5), ..default() },
+                        Transform::from_xyz(at.x, at.y, Z_FX - 1.0),
+                        fx,
+                    ));
+                }
+            }
+            Event::ShieldHit { .. } => ring(&mut commands, &art, me, 34.0, Color::srgba(0.31, 0.72, 0.91, 0.8), 0.18),
+            Event::ShieldBroke => {
+                ring(&mut commands, &art, me, 60.0, Color::srgba(0.31, 0.72, 0.91, 0.9), 0.35);
+                say(&mut commands, "Boundaries broken!", me + Vec2::new(0.0, 56.0), 18.0, Color::srgb(0.31, 0.72, 0.91), 1.0);
+            }
+            Event::ShieldUp => say(&mut commands, "Boundaries back up", me + Vec2::new(0.0, 56.0), 15.0, Color::srgb(0.31, 0.72, 0.91), 0.9),
+            Event::Deflected { at } => {
+                if particles < MAX_PARTICLES {
+                    particles += 1;
+                    particle(&mut commands, &art, v(at), 10.0, Color::srgb(0.5, 0.85, 1.0), Fx::new(Kind::Particle, 0.25, spread(n) * 120.0));
+                }
+            }
+            Event::Shock { at, .. } | Event::DoNotDisturb { at } => {
+                ring(&mut commands, &art, v(at), radius_of(e), Color::srgba(0.75, 0.6, 1.0, 0.85), 0.3);
+                shake.trauma = shake.trauma.max(0.2);
+            }
+            Event::GodMode => {
+                ring(&mut commands, &art, me, 120.0, Color::srgba(1.0, 0.9, 0.4, 0.9), 0.5);
+                say(&mut commands, "GOD MODE", me + Vec2::new(0.0, 80.0), 30.0, Color::srgb(1.0, 0.85, 0.3), 1.2);
+            }
+            Event::SelfHeal { amount } => say(&mut commands, &format!("Therapist: +{amount:.0}"), me + Vec2::new(0.0, 50.0), 18.0, theme::AGREE, 1.2),
+            Event::ChargeAim { from, dir } => {
+                commands.spawn((
+                    Sprite { image: art.dot.clone(), custom_size: Some(Vec2::new(380.0, 6.0)), color: theme::DANGER.with_alpha(0.6), ..default() },
+                    Transform::from_xyz(from.x + dir.x * 190.0, from.y + dir.y * 190.0, Z_FX).with_rotation(Quat::from_rotation_z(dir.y.atan2(dir.x))),
+                    Fx::new(Kind::Flash, 0.66, Vec2::ZERO),
+                ));
+            }
+            Event::BlinkWarning { at } => {
+                ring(&mut commands, &art, v(at), 40.0, theme::DANGER, 0.75);
+                say(&mut commands, "behind you!", v(at) + Vec2::Y * 36.0, 16.0, theme::DANGER, 0.8);
+            }
+            Event::Swarm { .. } => {
+                shake.trauma = shake.trauma.max(0.3);
+                say(&mut commands, "TREND ALERT!", me + Vec2::new(0.0, 120.0), 34.0, Color::srgb(1.0, 0.45, 0.2), 1.6);
+            }
+            Event::Encircled { at, radius } => ring(&mut commands, &art, v(at), radius, theme::DANGER.with_alpha(0.6), 1.0),
+            Event::ArenaWarning { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 0.8), 2.5),
+            Event::ArenaClosed { at, radius } => {
+                shake.trauma = shake.trauma.max(0.4);
+                ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 1.0), 0.5);
+                say(&mut commands, "LIVE", me + Vec2::new(0.0, 100.0), 40.0, Color::srgb(1.0, 0.25, 0.25), 1.2);
+            }
+            Event::ArenaCleared { at } => {
+                shake.trauma = shake.trauma.max(0.5);
+                ring(&mut commands, &art, v(at), 300.0, Color::srgba(1.0, 0.8, 0.2, 0.9), 0.6);
+            }
+            Event::Vacuum => ring(&mut commands, &art, me, 600.0, Color::srgba(0.5, 0.8, 1.0, 0.6), 0.5),
+            Event::RareDrop { at } => {
+                ring(&mut commands, &art, v(at), 160.0, Color::srgba(1.0, 0.85, 0.3, 1.0), 0.8);
+                say(&mut commands, "GOLDEN CHEST!", v(at) + Vec2::Y * 70.0, 28.0, Color::srgb(1.0, 0.85, 0.3), 2.0);
+                shake.trauma = shake.trauma.max(0.4);
+            }
             Event::Hustle { level } => say(&mut commands, &format!("Rise and grind! Speed x{level:.2}"), me + Vec2::new(0.0, 80.0), 20.0, theme::PLAYER_RED, 1.5),
             Event::WaveCleared => {
                 for (k, s) in world.slop.iter().enumerate() {
@@ -459,8 +525,17 @@ fn spawn_fx(
             Event::Burnout => shake.trauma = 1.0,
             Event::Beat => shake.trauma = shake.trauma.max(0.12),
             Event::BossIntro { .. } | Event::BossPhase { .. } | Event::Regenerate { .. } => shake.trauma = shake.trauma.max(0.5),
-            Event::Fired { .. } | Event::LikeCollected { .. } | Event::BombWarning { .. } | Event::AdBreak => {}
+            Event::Fired { .. } | Event::LikeCollected { .. } | Event::BombWarning { .. } | Event::AdBreak | Event::DashReady | Event::Biome { .. } => {}
         }
+    }
+}
+
+/// The radius of a shockwave event.
+fn radius_of(e: &Event) -> f32 {
+    match *e {
+        Event::Shock { radius, .. } => radius,
+        Event::DoNotDisturb { .. } => 160.0,
+        _ => 0.0,
     }
 }
 

@@ -59,13 +59,30 @@ const MAX_LIKES: usize = 300;
 /// Ticks a Server Outage freezes the slop.
 const FREEZE_TICKS: u16 = 480;
 const SCATTER_TICKS: u16 = 90;
+/// Chance an elite drops a golden chest instead of a plain one (LOOT-02): rare
+/// at first, up to one in eight later.
+const GOLDEN_CHANCE: f32 = 0.03;
+const GOLDEN_MAX: f32 = 0.12;
 const REPOST_HP: f32 = 0.6;
+
+/// Ticks a livestream arena is announced before it closes.
+const ARENA_WARNING: u16 = 150;
+/// Stationary slop this far behind you are gone for good.
+const FORGET: f32 = 2400.0;
 
 /// Movement wanted this tick; longer than 1 is shortened.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub struct Input {
     pub x: f32,
     pub y: f32,
+    /// Dash this tick, if a charge is ready (DASH-01).
+    pub dash: bool,
+}
+
+impl Input {
+    pub fn moving(x: f32, y: f32) -> Input {
+        Input { x, y, dash: false }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -158,6 +175,52 @@ pub struct Perks {
     /// Zoomer: immune to Brainrot, pop-ups close twice as fast.
     pub fluent: bool,
     pub actives: Vec<Active>,
+    /// Dash charges and seconds to recharge one (DASH-01).
+    pub dash_charges: u8,
+    pub dash_recharge: f32,
+    /// Swipe Left: dashing through slop hurts it this much.
+    pub dash_damage: f32,
+    /// Hot Take Spill: a dash leaves fire behind.
+    pub dash_fire: bool,
+    /// Left on Read: the end of a dash confuses and shoves slop nearby.
+    pub dash_shock: bool,
+    /// Ghosting: seconds of invulnerability after a dash.
+    pub ghost: f32,
+    /// Flame War: you leave a burning trail; damage per burn.
+    pub flame_trail: f32,
+    /// Spiky Opinions: slop that touch you take this much.
+    pub thorns: f32,
+    /// Privacy Settings: share of shot damage ignored.
+    pub shot_armor: f32,
+    /// Do Not Disturb: every 8 s, a moment untouchable that shoves slop away.
+    pub do_not_disturb: bool,
+    /// Therapist on Speed Dial: heal this much below half Mental Health,
+    /// every 30 s.
+    pub therapist: f32,
+    /// Legendary items (ITEM-03).
+    /// Infinite Scroll: every weapon fires this many more projectiles.
+    pub extra_shots: u8,
+    /// Viral Moment: deleted slop explode for this share of their HP.
+    pub kill_blast: f32,
+    /// Alt Account: a clone fires your weapons at this share of damage.
+    pub alt_account: f32,
+    /// Golden Ring Light: a Mass Report every 25 s.
+    pub ring_light: bool,
+    /// God Mode Glitch: every 12 s, 2 s invulnerable with +50% damage.
+    pub god_mode: bool,
+    /// Ratio Machine: chance that a hit chains to three more slop.
+    pub chain_chance: f32,
+    /// Glitches (GLITCH-01).
+    /// Every projectile bounces this many more times.
+    pub extra_bounces: u8,
+    /// Mental Health healed per kill.
+    pub lifesteal: f32,
+    /// Every attack happens again a moment later at half damage.
+    pub echo: bool,
+    /// Damage grows with your Speed.
+    pub speed_damage: bool,
+    /// Elites drop this many more chests (the Teacher grades them).
+    pub elite_chests: u8,
 }
 
 /// What you bring into a wave.
@@ -225,6 +288,23 @@ pub struct Player {
     pub(crate) noise_block: u16,
     pub(crate) coffee_timer: u16,
     pub(crate) letter_timer: u16,
+    /// Dash charges ready, and seconds towards the next one (DASH-01).
+    pub dashes: u8,
+    pub dash_charge: f32,
+    /// Slop a dash already hit, so it hits each once.
+    pub(crate) dash_hits: Vec<u32>,
+    /// Boundaries left, and ticks until they come back (DEF-01).
+    pub shield: f32,
+    pub shield_wait: u16,
+    /// Ticks of God Mode left.
+    pub god: u16,
+    pub(crate) trail_timer: u16,
+    pub(crate) dnd_timer: u16,
+    pub(crate) therapist_timer: u16,
+    pub(crate) ring_timer: u16,
+    pub(crate) god_timer: u16,
+    /// Attacks to repeat (Echo Chamber): ticks left and weapon slot.
+    pub(crate) echoes: Vec<(u16, usize)>,
 }
 
 impl Player {
@@ -250,6 +330,18 @@ impl Player {
             noise_block: 0,
             coffee_timer: 0,
             letter_timer: 0,
+            dashes: loadout.perks.dash_charges,
+            dash_charge: 0.0,
+            dash_hits: Vec::new(),
+            shield: stats.boundaries,
+            shield_wait: 0,
+            god: 0,
+            trail_timer: 0,
+            dnd_timer: 0,
+            therapist_timer: 0,
+            ring_timer: 0,
+            god_timer: 0,
+            echoes: Vec::new(),
         }
     }
 }
@@ -310,6 +402,9 @@ pub struct Slop {
     pub dealt: f32,
     /// The prop whose challenge it belongs to, or 0.
     pub tag: u32,
+    /// Gone without a trace: a swarm that crossed the map, or a turret left
+    /// far behind. No Likes, no drops.
+    pub vanish: bool,
 }
 
 impl Slop {
@@ -429,6 +524,13 @@ pub enum ZoneKind {
     Banner,
     /// Slop inside take less damage (InstaSlop).
     Filter,
+    /// Burns slop inside (Flame War, burning dashes).
+    Fire,
+    /// Pulses to the beat; standing inside when it drops flips your
+    /// controls (ClockTok).
+    Brainrot,
+    /// Roots stomped by Brr Brr Patapum: they slow you like a downvote.
+    Roots,
 }
 
 /// The outline of a zone (ZONE-02).
@@ -500,6 +602,24 @@ pub struct Pickup {
     /// Clout in a coin; chest quality.
     pub value: u32,
     pub pulled: bool,
+}
+
+/// A livestream arena (EVENT-02): after a warning, a ring closes around you
+/// and holds you inside until the stream ends.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Arena {
+    pub centre: V2,
+    pub radius: f32,
+    /// Ticks before it closes, then ticks it stays closed.
+    pub warning: u16,
+    pub ticks: u16,
+    pub max_ticks: u16,
+}
+
+impl Arena {
+    pub fn closed(&self) -> bool {
+        self.warning == 0
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -665,6 +785,12 @@ pub struct World {
     pub ad_break: u16,
     /// Ticks since the last beat (ClockTok).
     pub beat: u16,
+    /// The platform whose part of the map you are in (BIOME-01).
+    pub biome: Platform,
+    /// A livestream arena, warning or closed (EVENT-02).
+    pub arena: Option<Arena>,
+    /// Spawn rate multiplier the rules set for events (a livestream).
+    pub spawn_boost: f32,
     pub(crate) next_id: u32,
     pub(crate) next_pack: u32,
     pub(crate) spawn_credit: f32,
@@ -726,6 +852,9 @@ impl World {
             hustle: 1.0,
             ad_break: 0,
             beat: 0,
+            biome: crate::map::biome_at(seed, V2::ZERO),
+            arena: None,
+            spawn_boost: 1.0,
             next_id: 1,
             next_pack: 1,
             spawn_credit: 0.0,
@@ -805,6 +934,7 @@ impl World {
         let timer = match sp.movement {
             Movement::Follow => 90,
             Movement::Stand if sp.traits.has(Traits::HATCH) => 180,
+            Movement::Blink => 150 + self.rng_spawn.below(120) as i32,
             _ => 0,
         };
         let attack_timer = sp.attack.map_or(0, |a| 40 + self.rng_spawn.below(a.interval() as u32) as i32);
@@ -848,6 +978,7 @@ impl World {
             born: self.tick,
             dealt: 0.0,
             tag: 0,
+            vanish: false,
         });
         if let Some(t) = self.spec_tally.get_mut(spec) {
             t.spawned += 1;
@@ -912,6 +1043,70 @@ impl World {
         }
     }
 
+    /// A swarm of `count` slop of `spec` (a sweeping spec) crosses the screen
+    /// in a wide line (EVENT-01). Returns the direction it travels.
+    pub fn sweep(&mut self, spec: usize, count: u32) -> V2 {
+        let me = self.player.pos;
+        let dir = V2::from_angle(self.rng_spawn.range(0.0, std::f32::consts::TAU));
+        let start = me - dir * 950.0;
+        let across = dir.perp();
+        for k in 0..count {
+            let off = (k as f32 - (count as f32 - 1.0) / 2.0) * 34.0;
+            let jitter = dir * self.rng_spawn.range(-120.0, 120.0);
+            let id = self.place(spec, start + across * off + jitter, 0, 1);
+            if let Some(s) = self.slop.last_mut().filter(|s| s.id == id) {
+                s.aim = dir;
+            }
+        }
+        self.events.push(Event::Swarm { dir, spec: spec as u16 });
+        dir
+    }
+
+    /// A ring of `count` slop of `spec` appears around you and closes in.
+    pub fn encircle(&mut self, spec: usize, count: u32, radius: f32) {
+        let me = self.player.pos;
+        for k in 0..count {
+            let at = me + V2::from_angle(k as f32 * std::f32::consts::TAU / count as f32) * radius;
+            self.warnings.push(Warning { pos: at, spec: spec as u16, ticks: SPAWN_WARNING, pack: 0, number: 1, elite: false, tag: 0 });
+        }
+        self.events.push(Event::Encircled { at: me, radius });
+    }
+
+    /// A livestream: a ring of `radius` closes around you after a warning
+    /// and holds you inside for `seconds` (EVENT-02).
+    pub fn start_arena(&mut self, radius: f32, seconds: f32) {
+        if self.arena.is_some() {
+            return;
+        }
+        let centre = self.player.pos;
+        let ticks = (seconds * TICK_RATE as f32) as u16;
+        self.arena = Some(Arena { centre, radius, warning: ARENA_WARNING, ticks, max_ticks: ticks });
+        self.events.push(Event::ArenaWarning { at: centre, radius });
+    }
+
+    /// The livestream counts down; when it ends it pays a chest.
+    fn tick_arena(&mut self) {
+        let Some(a) = self.arena.as_mut() else { return };
+        if a.warning > 0 {
+            a.warning -= 1;
+            if a.warning == 0 {
+                let (at, radius) = (a.centre, a.radius);
+                self.events.push(Event::ArenaClosed { at, radius });
+            }
+            return;
+        }
+        a.ticks = a.ticks.saturating_sub(1);
+        if a.ticks == 0 {
+            let at = a.centre;
+            self.arena = None;
+            self.drop_pickup(PickupKind::Chest, at, 2);
+            for _ in 0..6 {
+                self.drop_pickup(PickupKind::Clout, at, 5);
+            }
+            self.events.push(Event::ArenaCleared { at });
+        }
+    }
+
     /// Advances one tick.
     pub fn step(&mut self, input: Input) {
         if self.outcome != Outcome::Running {
@@ -926,9 +1121,19 @@ impl World {
             p.prev = p.pos;
         }
         self.map.ensure(self.player.pos);
-        self.map.tick_fences();
+        self.map.tick_fences(self.player.pos, PLAYER_RADIUS);
+        // A crossing counts once you are properly in, so walking along a
+        // seam does not flicker between platforms.
+        let biome = crate::map::biome_settled(self.seed, self.player.pos, 160.0).unwrap_or(self.biome);
+        if biome != self.biome {
+            self.biome = biome;
+            self.hazard_timer = self.hazard_timer.max(240);
+            self.events.push(Event::Biome { platform: biome });
+        }
+        self.tick_arena();
         self.move_player(input);
         self.tick_status();
+        self.tick_defence();
         self.spawn();
         self.relocate();
         self.grid.rebuild(self.player.pos, self.slop.iter().map(|s| s.pos));
@@ -945,6 +1150,7 @@ impl World {
             self.touch();
         }
         self.use_actives();
+        self.trails();
         self.fire_weapons();
         self.move_projectiles();
         self.tick_zones();
@@ -993,7 +1199,9 @@ impl World {
         let (lo, hi) = self.setup.rate;
         // A boss on the field holds back the crowd.
         let calm = if self.boss.is_some() { 0.45 } else { 1.0 };
-        self.spawn_credit += (lo + (hi - lo) * progress) * calm * DT;
+        // A livestream brings the crowd.
+        let live = if self.arena.is_some_and(|a| a.closed()) { 2.2 } else { 1.0 };
+        self.spawn_credit += (lo + (hi - lo) * progress) * calm * live * self.spawn_boost * DT;
         while self.spawn_credit >= 1.0 && self.slop.len() + self.warnings.len() < MAX_SLOP {
             let Some(entry) = self.pick_spawn(t) else { break };
             self.spawn_credit -= entry.cost.max(0.2);
@@ -1093,11 +1301,25 @@ impl World {
     /// endless, the crowd is not.
     fn relocate(&mut self) {
         let me = self.player.pos;
+        // Swarms that crossed the screen, and turrets far behind, are gone.
+        for s in &mut self.slop {
+            let movement = self.setup.specs[s.spec as usize].movement;
+            let d = s.pos.distance_sq(me);
+            let gone = match movement {
+                Movement::Sweep => d > RELOCATE * RELOCATE && s.aim.dot(s.pos - me) > 0.0,
+                Movement::Stand => d > FORGET * FORGET && s.tag == 0,
+                _ => false,
+            };
+            if gone {
+                s.hp = 0.0;
+                s.vanish = true;
+            }
+        }
         let far: Vec<usize> = (0..self.slop.len())
             .filter(|&i| {
                 let s = &self.slop[i];
                 let sp = &self.setup.specs[s.spec as usize];
-                s.pos.distance_sq(me) > RELOCATE * RELOCATE && !matches!(sp.movement, Movement::Boss(_) | Movement::Stand) && s.tag == 0
+                s.pos.distance_sq(me) > RELOCATE * RELOCATE && !matches!(sp.movement, Movement::Boss(_) | Movement::Stand | Movement::Sweep) && s.tag == 0
             })
             .collect();
         for i in far {
@@ -1113,6 +1335,14 @@ impl World {
     fn collide_walls(&mut self) {
         let p = &mut self.player;
         p.pos = self.map.resolve(p.pos, PLAYER_RADIUS);
+        // A closed livestream holds you inside (EVENT-02).
+        if let Some(a) = self.arena.filter(|a| a.closed()) {
+            let d = p.pos - a.centre;
+            let max = a.radius - PLAYER_RADIUS;
+            if d.length() > max {
+                p.pos = a.centre + d.normalized() * max;
+            }
+        }
         let specs = &self.setup.specs;
         for s in &mut self.slop {
             if s.grab.is_some() || specs[s.spec as usize].traits.has(Traits::FLIES) {
@@ -1143,13 +1373,21 @@ impl World {
         let mut blasts = Vec::new();
         let mut reposts = Vec::new();
         let mut virals = Vec::new();
+        let mut shards = Vec::new();
+        let mut kill_blasts = Vec::new();
+        let mut kills_now = 0u32;
         let mut boss_died = None;
+        let coin_chance = (25.0 * (1.0 + self.player.stats.hustle.max(0.0) / 100.0)) as u32;
+        let minutes = self.elapsed() / 60.0;
         for s in self.slop.iter().filter(|s| s.hp <= 0.0) {
             let sp = &self.setup.specs[s.spec as usize];
-            let clone = sp.traits.has(Traits::CLONE);
             if let Some(t) = self.spec_tally.get_mut(s.spec as usize) {
                 t.alive_ticks += self.tick - s.born;
             }
+            if s.vanish {
+                continue;
+            }
+            let clone = sp.traits.has(Traits::CLONE);
             if self.boss.as_ref().is_some_and(|b| b.id == s.id) {
                 boss_died = Some(s.pos);
             }
@@ -1161,22 +1399,46 @@ impl World {
                     value *= 2;
                 }
                 drops.push((s.pos, value));
+                kills_now += 1;
                 if sp.elite {
                     self.tally.loot_boxes += 1;
-                    loot.push((PickupKind::Chest, s.pos, 1));
-                    self.events.push(Event::LootBox { at: s.pos });
+                    // Now and then an elite drops a golden chest (LOOT-02).
+                    let golden = self.rng_combat.chance((GOLDEN_CHANCE + 0.005 * minutes).min(GOLDEN_MAX) + self.player.stats.luck.max(0.0) * 0.002);
+                    loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
+                    for _ in 0..self.player.perks.elite_chests {
+                        loot.push((PickupKind::Chest, s.pos, 1));
+                    }
+                    self.events.push(if golden { Event::RareDrop { at: s.pos } } else { Event::LootBox { at: s.pos } });
                 }
                 if sp.traits.has(Traits::SPONSORED) {
-                    for _ in 0..6 {
-                        loot.push((PickupKind::Clout, s.pos, 3));
+                    loot.push((PickupKind::Clout, s.pos, 25));
+                    for _ in 0..3 {
+                        loot.push((PickupKind::Clout, s.pos, 4));
                     }
                 } else {
                     let roll = self.rng_combat.below(1000);
-                    if roll < 25 {
-                        loot.push((PickupKind::Clout, s.pos, 1 + self.rng_combat.below(3)));
-                    } else if roll < 29 {
+                    if roll < coin_chance {
+                        // Mostly small change; now and then a stack or a bag.
+                        let size = self.rng_combat.below(100);
+                        let value = if size < 80 {
+                            1 + self.rng_combat.below(2)
+                        } else if size < 97 {
+                            4
+                        } else {
+                            12
+                        };
+                        loot.push((PickupKind::Clout, s.pos, value));
+                    } else if roll < coin_chance + 4 {
                         loot.push((PickupKind::Food, s.pos, 0));
+                    } else if roll < coin_chance + 5 {
+                        loot.push((PickupKind::Magnet, s.pos, 0));
                     }
+                }
+                if sp.traits.has(Traits::SHARDS) {
+                    shards.push((s.pos, sp.contact, s.spec));
+                }
+                if self.player.perks.kill_blast > 0.0 && kill_blasts.len() < 12 {
+                    kill_blasts.push((s.pos, s.max_hp * self.player.perks.kill_blast));
                 }
                 let grass = s.last_type == crate::stats::DamageType::Grass as u8;
                 let heal = if grass { self.player.perks.houseplant as f32 + self.player.perks.grass_heal } else { 0.0 };
@@ -1189,6 +1451,9 @@ impl World {
                 }
             }
             self.events.push(Event::SlopDied { at: s.pos, spec: s.spec });
+            if clone {
+                continue;
+            }
             if sp.traits.has(Traits::EXPLODE) {
                 blasts.push(s.pos);
             }
@@ -1216,6 +1481,27 @@ impl World {
             if at.distance(self.player.pos) < 70.0 + PLAYER_RADIUS {
                 self.hurt(8.0, NO_SPEC);
             }
+        }
+        // Glass Fruit: six shards fly out; the ones aimed at you are the danger.
+        for (at, contact, spec) in shards {
+            for k in 0..6 {
+                let dir = V2::from_angle(k as f32 * std::f32::consts::TAU / 6.0 + 0.3);
+                self.hostile_shot(at + dir * 10.0, dir * 300.0, contact * 1.2, Look::Shard, NO_LINE, spec);
+            }
+        }
+        // Viral Moment: deleted slop explode and hurt the slop around them.
+        for (at, damage) in kill_blasts {
+            self.events.push(Event::Splash { at, radius: 85.0 });
+            let near: Vec<usize> = (0..self.slop.len()).filter(|&j| self.slop[j].hp > 0.0 && self.slop[j].pos.distance_sq(at) < 85.0 * 85.0).collect();
+            for j in near {
+                self.damage_slop(j, damage.max(4.0), crate::stats::DamageType::Sarcasm, V2::ZERO, at, None);
+            }
+        }
+        // Lifesteal is capped at 6 Mental Health a second.
+        let heal = (self.player.perks.lifesteal * kills_now as f32).min(0.1);
+        if heal > 0.0 {
+            let p = &mut self.player;
+            p.mental_health = (p.mental_health + heal).min(p.stats.max_mental_health);
         }
         for (spec, at) in reposts {
             let id = self.place(spec as usize, at, 0, 1);
@@ -1259,7 +1545,6 @@ impl World {
     fn collect_likes(&mut self) {
         let p = self.player.pos;
         let curiosity = self.player.stats.curiosity;
-        let step = LIKE_PULL_SPEED * DT;
         let mut got = 0;
         let mut fakes = 0;
         self.likes.retain_mut(|l| {
@@ -1270,6 +1555,8 @@ impl World {
             if !l.pulled {
                 return true;
             }
+            // Far ones fly faster, so a vacuum empties the map in a second or two.
+            let step = (LIKE_PULL_SPEED + d * 1.5) * DT;
             if d <= step + PLAYER_RADIUS {
                 if l.fake {
                     fakes += 1;
@@ -1304,7 +1591,6 @@ impl World {
     fn collect_pickups(&mut self) {
         let me = self.player.pos;
         let pull = self.player.stats.curiosity * 0.7;
-        let step = LIKE_PULL_SPEED * DT;
         let mut got = Vec::new();
         self.pickups.retain_mut(|k| {
             let d = k.pos.distance(me);
@@ -1312,6 +1598,7 @@ impl World {
                 k.pulled = true;
             }
             if k.pulled {
+                let step = (LIKE_PULL_SPEED + d * 1.5) * DT;
                 k.pos += (me - k.pos).normalized() * step.min(d);
             }
             if d < PLAYER_RADIUS + 22.0 {
@@ -1327,34 +1614,43 @@ impl World {
                     p.mental_health = (p.mental_health + 25.0 + p.stats.max_mental_health * 0.1).min(p.stats.max_mental_health);
                 }
                 PickupKind::Magnet => {
+                    // A vacuum: every Like and coin on the map flies to you.
                     for l in self.likes.iter_mut().filter(|l| !l.fake) {
                         l.pulled = true;
                     }
-                }
-                PickupKind::Bomb => {
-                    for j in 0..self.slop.len() {
-                        let s = &self.slop[j];
-                        let d = s.pos - me;
-                        if d.x.abs() > 900.0 || d.y.abs() > 520.0 || s.hp <= 0.0 {
-                            continue;
-                        }
-                        let boss = matches!(self.setup.specs[s.spec as usize].movement, Movement::Boss(_));
-                        if boss {
-                            let hit = s.max_hp * 0.05;
-                            self.slop[j].hp -= hit;
-                        } else {
-                            self.slop[j].hp = 0.0;
-                            self.slop[j].last_type = crate::stats::DamageType::Fact as u8;
-                        }
+                    for k in self.pickups.iter_mut().filter(|k| k.kind == PickupKind::Clout) {
+                        k.pulled = true;
                     }
-                    self.events.push(Event::MassReport { at: me });
+                    self.events.push(Event::Vacuum);
                 }
+                PickupKind::Bomb => self.mass_report(),
                 PickupKind::Freeze => self.freeze = FREEZE_TICKS,
                 PickupKind::Clout => self.clout += value,
                 PickupKind::Chest => self.chests.push(value),
             }
             self.events.push(Event::PickedUp { kind, at });
         }
+    }
+
+    /// Mass Report: deletes the slop on screen; bosses lose 5%.
+    pub(crate) fn mass_report(&mut self) {
+        let me = self.player.pos;
+        for j in 0..self.slop.len() {
+            let s = &self.slop[j];
+            let d = s.pos - me;
+            if d.x.abs() > 900.0 || d.y.abs() > 520.0 || s.hp <= 0.0 {
+                continue;
+            }
+            let boss = matches!(self.setup.specs[s.spec as usize].movement, Movement::Boss(_));
+            if boss {
+                let hit = s.max_hp * 0.05;
+                self.slop[j].hp -= hit;
+            } else {
+                self.slop[j].hp = 0.0;
+                self.slop[j].last_type = crate::stats::DamageType::Fact as u8;
+            }
+        }
+        self.events.push(Event::MassReport { at: me });
     }
 
     /// Props you walk into or stand in (MAP-03). Breakables drop loot; the
@@ -1419,6 +1715,9 @@ impl World {
                             used.push(p.id);
                             if k == PropKind::DataCenter {
                                 p.state = PropState::Active;
+                            }
+                            if k == PropKind::GoLive {
+                                p.state = PropState::Done;
                             }
                         }
                     }

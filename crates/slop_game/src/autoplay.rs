@@ -98,7 +98,7 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
         }
         Screen::Heroes => {
             if auto.wants("heroes") {
-                let hero = (game.seed % 5) as usize;
+                let hero = (game.seed % slop_rules::Hero::ALL.len() as u64) as usize;
                 game.act(UiAction::PickHero(hero));
                 auto.holding = Some("heroes".into());
                 auto.wait = 10;
@@ -123,10 +123,12 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 }
                 Phase::Playing => FEED_SHOTS.iter().find(|&&m| minutes >= m).map(|m| format!("feed_{m:04.1}min")),
                 Phase::LevelUp(_) => Some("levelup".into()),
+                Phase::Chest(_) if game.chest_opened < 2.8 => None,
                 Phase::Chest(r) if r.merged.is_some() => Some("merge".into()),
                 Phase::Chest(_) => Some("chest".into()),
                 Phase::Vending { .. } => Some("vending".into()),
                 Phase::Shrine { .. } => Some("shrine".into()),
+                Phase::Glitch(_) => Some("glitch".into()),
                 Phase::Over { .. } if settled => Some("over".into()),
                 Phase::Over { .. } => None,
             };

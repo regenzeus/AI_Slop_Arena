@@ -45,6 +45,10 @@ enum Sound {
     Thud,
     Clack,
     Zap,
+    Fanfare,
+    Dash,
+    Shield,
+    Swarm,
 }
 
 #[derive(Resource)]
@@ -178,6 +182,24 @@ fn synth(sound: Sound) -> Vec<f32> {
         }
         Sound::Clack => note(&mut s, 0.0, Wave::Square, 2400.0, 1800.0, 0.015, 0.15),
         Sound::Zap => note(&mut s, 0.0, Wave::Sine, 1200.0, 2400.0, 0.1, 0.22),
+        Sound::Fanfare => {
+            // A rising arpeggio and a shimmer: something legendary (LOOT-02).
+            for (k, f) in [523.0, 659.0, 784.0, 1047.0, 1319.0].iter().enumerate() {
+                note(&mut s, k as f32 * 0.08, Wave::Square, *f, *f, 0.22, 0.16);
+            }
+            note(&mut s, 0.4, Wave::Sine, 1568.0, 2093.0, 0.5, 0.2);
+            note(&mut s, 0.45, Wave::Sine, 2093.0, 2637.0, 0.45, 0.12);
+        }
+        Sound::Dash => note(&mut s, 0.0, Wave::Noise, 900.0, 300.0, 0.14, 0.2),
+        Sound::Shield => {
+            note(&mut s, 0.0, Wave::Sine, 880.0, 440.0, 0.12, 0.22);
+            note(&mut s, 0.05, Wave::Noise, 1200.0, 600.0, 0.12, 0.12);
+        }
+        Sound::Swarm => {
+            for k in 0..6 {
+                note(&mut s, k as f32 * 0.07, Wave::Square, 220.0 + k as f32 * 40.0, 330.0 + k as f32 * 40.0, 0.08, 0.1);
+            }
+        }
     }
     s
 }
@@ -204,6 +226,10 @@ fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
         Sound::Thud,
         Sound::Clack,
         Sound::Zap,
+        Sound::Fanfare,
+        Sound::Dash,
+        Sound::Shield,
+        Sound::Swarm,
     ];
     let clips = all.iter().map(|&s| (s, sources.add(AudioSource { bytes: wav(&synth(s)).into() }))).collect();
     commands.insert_resource(Sounds { clips });
@@ -232,6 +258,7 @@ fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: R
             Cue::Go => Sound::Go,
             Cue::Tick => Sound::Tick,
             Cue::Chest => Sound::Cleared,
+            Cue::Legendary => Sound::Fanfare,
         })
         .collect();
     if nav.moved {
@@ -266,6 +293,13 @@ fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: R
             Event::BossDefeated { .. } | Event::PropDone { .. } => Sound::Cleared,
             Event::PropUsed { .. } => Sound::LevelUp,
             Event::Broke { .. } => Sound::Pop,
+            Event::Dashed { .. } => Sound::Dash,
+            Event::ShieldBroke | Event::Deflected { .. } => Sound::Shield,
+            Event::Swarm { .. } | Event::Encircled { .. } | Event::ArenaWarning { .. } => Sound::Swarm,
+            Event::RareDrop { .. } | Event::GodMode => Sound::Fanfare,
+            Event::ArenaCleared { .. } | Event::Vacuum => Sound::Cleared,
+            Event::Biome { .. } | Event::DashReady => Sound::Tick,
+            Event::Shock { .. } | Event::DoNotDisturb { .. } => Sound::Thud,
             _ => continue,
         });
     }

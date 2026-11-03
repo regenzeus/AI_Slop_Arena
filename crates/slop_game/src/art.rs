@@ -365,6 +365,18 @@ pub struct Art {
     pub decor: Vec<Handle<Image>>,
     pub blessings: Vec<Handle<Image>>,
     pub like: Handle<Image>,
+    /// The frames of each brainrot icon's animation (ICON-02).
+    pub icon_frames: HashMap<Archetype, Vec<Pair>>,
+    /// In `GLITCHES` order (GLITCH-01).
+    pub glitch_icons: Vec<Handle<Image>>,
+    /// Coin, stack and bag (LOOT-03).
+    pub coins: [Handle<Image>; 3],
+    pub golden_chest: Handle<Image>,
+    pub light_beam: Handle<Image>,
+    pub sunflowers: Handle<Image>,
+    pub fire: Handle<Image>,
+    pub brainrot_zone: Handle<Image>,
+    pub roots: Handle<Image>,
 }
 
 impl Art {
@@ -378,6 +390,7 @@ impl Art {
         }
         let mut pair = |c: Canvas| (images.add(c.image()), images.add(c.whitened().image()));
         let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(draw::archetype(a)))).collect();
+        let icon_frames = Archetype::ICONS.iter().map(|&a| (a, (0..draw::ICON_FRAMES).map(|f| pair(draw::icon(a, f))).collect())).collect();
         let bodies = Body::ALL.iter().map(|&b| (b, pair(draw::body(b)))).collect();
         let objects = Object::ALL.iter().map(|&o| (o, pair(draw::object(o)))).collect();
         let accessories = Accessory::ALL.iter().map(|&a| (a, pair(draw::accessory(a)))).collect();
@@ -426,6 +439,15 @@ impl Art {
             decor: (0..feed_art::DECOR).map(|i| add(feed_art::decor(i))).collect(),
             blessings: (0..slop_rules::items::BLESSINGS.len()).map(|i| add(feed_art::blessing(i))).collect(),
             like: add(feed_art::like()),
+            icon_frames,
+            glitch_icons: (0..slop_rules::items::GLITCHES.len()).map(|i| add(icons::glitch(i))).collect(),
+            coins: [add(icons::coins(0)), add(icons::coins(1)), add(icons::coins(2))],
+            golden_chest: add(feed_art::golden_chest()),
+            light_beam: add(draw::light_beam()),
+            sunflowers: add(draw::sunflower_patch()),
+            fire: add(draw::fire()),
+            brainrot_zone: add(draw::brainrot_zone()),
+            roots: add(draw::roots()),
         }
     }
 }

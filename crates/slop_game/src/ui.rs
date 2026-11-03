@@ -4,7 +4,7 @@
 //! Screens are rebuilt from scratch when the run changes, so focus is held
 //! as a stable key rather than an entity. Enter (or E) presses the focused
 //! element; Space presses the screen's `Continue` element if it has one, and
-//! the focused element otherwise. The mouse focuses what it hovers.
+//! nothing else (Space is also the dash). The mouse focuses what it hovers.
 
 use bevy::prelude::*;
 use bevy::ui::UiGlobalTransform;
@@ -212,7 +212,9 @@ fn activate(
         return;
     }
     let focused = nav.key.and_then(|k| items.iter().find(|(f, _)| f.0 == k)).map(|(_, a)| a.0);
-    let action = if space { continues.iter().next().map(|a| a.0).or(focused) } else { focused };
+    // Space is also the dash: it presses only a screen's Continue button, never
+    // a card, so mashing dash when a level-up opens picks nothing.
+    let action = if space { continues.iter().next().map(|a| a.0) } else { focused };
     if let Some(a) = action {
         if !game.act(a) {
             exit.write(AppExit::Success);

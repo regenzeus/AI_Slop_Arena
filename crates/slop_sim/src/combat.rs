@@ -31,6 +31,16 @@ const CONFUSE_CHANCE: f32 = 0.12;
 const ROOT_TICKS: u16 = 75;
 /// Verified elites take this share of non-Fact damage.
 const VERIFIED: f32 = 0.5;
+/// Radians per second a barrier turns around you.
+const BARRIER_SPEED: f32 = 1.6;
+/// How far your Alt Account stands from you.
+const ALT_DISTANCE: f32 = 120.0;
+/// Ticks before Echo Chamber repeats an attack.
+const ECHO_TICKS: u16 = 18;
+/// Fire burns slop inside this often.
+const FIRE_EVERY: u16 = 12;
+/// Ticks of flipped controls when a brainrot zone drops on you.
+const BRAINROT_TICKS: u16 = 90;
 
 impl World {
     /// Applies a hit to one slop (DMG-01): Conviction, the type bonus, a
@@ -66,6 +76,12 @@ impl World {
         }
         if ratio {
             mult *= RATIO_DAMAGE;
+        }
+        if self.player.god > 0 {
+            mult *= 1.5;
+        }
+        if perks.speed_damage {
+            mult *= stats.speed.max(1.0);
         }
         if filtered {
             mult *= FILTERED;
@@ -181,10 +197,53 @@ impl World {
         out
     }
 
+    /// Where your Alt Account stands: circling you, a little way off.
+    pub fn alt_position(&self) -> V2 {
+        self.player.pos + V2::from_angle(self.tick as f32 * 0.015) * ALT_DISTANCE
+    }
+
+    /// The segments of barrier weapons around you: centre and radius (DEF-02).
+    pub fn barrier_segments(&self) -> Vec<(V2, f32, usize)> {
+        let mut out = Vec::new();
+        for (wi, w) in self.player.weapons.iter().enumerate() {
+            if let Pattern::Barrier { count, radius, size } = w.def().pattern {
+                let (shots, area, _) = level_extra(w.level);
+                let n = count + if w.def().evolved { 0 } else { shots };
+                let r = radius * (1.0 + self.player.stats.reach) * area;
+                for k in 0..n {
+                    let a = w.phase + k as f32 * std::f32::consts::TAU / n as f32;
+                    out.push((self.player.pos + V2::from_angle(a) * r, size * area, wi));
+                }
+            }
+        }
+        out
+    }
+
     /// Every weapon whose cooldown is up attacks (WPN-01).
     pub(crate) fn fire_weapons(&mut self) {
         let stats = self.player.stats;
         let at = self.player.pos;
+        // Echo Chamber: attacks come back a moment later at half damage.
+        let mut due = Vec::new();
+        self.player.echoes.retain_mut(|e| {
+            e.0 = e.0.saturating_sub(1);
+            if e.0 == 0 {
+                due.push(e.1);
+                false
+            } else {
+                true
+            }
+        });
+        for wi in due {
+            if let Some(w) = self.player.weapons.get(wi) {
+                let (def_index, level) = (w.def, w.level);
+                let def = &WEAPONS[def_index];
+                let (_, area, _) = level_extra(level);
+                let range = def.range * (1.0 + stats.reach) * area;
+                let damage = def.damage * LEVEL_DAMAGE[level as usize - 1] * 0.5;
+                self.attack(wi, def_index, damage, range, level, at);
+            }
+        }
         for wi in 0..self.player.weapons.len() {
             let (def_index, level, enabled) = {
                 let w = &self.player.weapons[wi];
@@ -202,16 +261,28 @@ impl World {
                 let crowd = self.around(at, range).len().min(10);
                 rate *= 1.0 + 0.1 * crowd as f32;
             }
-            if let Pattern::Orbit { .. } = def.pattern {
-                self.player.weapons[wi].phase += ORBIT_SPEED * DT * (1.0 + stats.focus);
+            match def.pattern {
+                Pattern::Orbit { .. } => self.player.weapons[wi].phase += ORBIT_SPEED * DT * (1.0 + stats.focus),
+                Pattern::Barrier { .. } => self.player.weapons[wi].phase += BARRIER_SPEED * DT,
+                _ => {}
             }
             self.player.weapons[wi].cooldown -= rate;
             if self.player.weapons[wi].cooldown > 0.0 {
                 continue;
             }
-            let fired = self.attack(wi, def_index, damage, range, level);
+            let fired = self.attack(wi, def_index, damage, range, level, at);
             if let Some(to) = fired {
                 self.events.push(Event::Attacked { weapon: wi as u8, to });
+                let perks = &self.player.perks;
+                // The Alt Account fires too, from where it stands.
+                if perks.alt_account > 0.0 && !matches!(def.pattern, Pattern::Orbit { .. } | Pattern::Barrier { .. }) {
+                    let share = perks.alt_account;
+                    let alt = self.alt_position();
+                    self.attack(wi, def_index, damage * share, range, level, alt);
+                }
+                if self.player.perks.echo && !matches!(def.pattern, Pattern::Orbit { .. } | Pattern::Barrier { .. }) {
+                    self.player.echoes.push((ECHO_TICKS, wi));
+                }
             }
             let w = &mut self.player.weapons[wi];
             if fired.is_some() {
@@ -225,13 +296,26 @@ impl World {
 
     /// One attack of weapon slot `wi`, returning where it was aimed; None when
     /// there was nothing to attack.
-    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32, level: u8) -> Option<V2> {
+    fn attack(&mut self, wi: usize, def_index: usize, damage: f32, range: f32, level: u8, at: V2) -> Option<V2> {
         let def = &WEAPONS[def_index];
-        // Merged weapons are built big already: no extra copies.
-        let extra = if def.evolved { 0 } else { level_extra(level).0 };
-        let at = self.player.pos;
+        // Merged weapons are built big already: no extra copies from levels.
+        let extra = if def.evolved { 0 } else { level_extra(level).0 } + self.player.perks.extra_shots;
         let slot = Some(wi);
         match def.pattern {
+            Pattern::Barrier { .. } => {
+                let mut any = None;
+                for (c, size, w) in self.barrier_segments() {
+                    if w != wi {
+                        continue;
+                    }
+                    for j in self.around(c, size) {
+                        let push = (self.slop[j].pos - self.player.pos).normalized() * def.knockback;
+                        self.damage_slop(j, damage, def.kind, push, c, slot);
+                        any = Some(c);
+                    }
+                }
+                return any;
+            }
             Pattern::Orbit { radius } => {
                 let phase = self.player.weapons[wi].phase;
                 let dog = at + V2::from_angle(phase) * radius;
@@ -392,7 +476,7 @@ impl World {
                 self.events.push(Event::Slam { at: goal, radius });
                 return Some(goal);
             }
-            Pattern::Orbit { .. } | Pattern::Ring | Pattern::Aura | Pattern::Reflect => unreachable!("handled above"),
+            Pattern::Orbit { .. } | Pattern::Ring | Pattern::Aura | Pattern::Reflect | Pattern::Barrier { .. } => unreachable!("handled above"),
         }
         // Higher levels throw more of the same, fanned out (WPN-10).
         if extra > 0 && !shots.is_empty() {
@@ -407,10 +491,14 @@ impl World {
                 }
             }
         }
+        let bounces = self.player.perks.extra_bounces;
         for mut p in shots {
             p.id = self.id();
             p.knockback = def.knockback;
             p.weapon = wi as u8;
+            if !p.boomerang && p.splash == 0.0 {
+                p.bounces += bounces;
+            }
             self.projectiles.push(p);
         }
         self.events.push(Event::Fired { weapon: wi as u8 });
@@ -422,7 +510,9 @@ impl World {
         let mut hits = Vec::new();
         let mut on_you = Vec::new();
         let mut splashes = Vec::new();
+        let mut deflected = Vec::new();
         let noise = self.player.perks.noise_cancel;
+        let barriers = self.barrier_segments();
         for i in 0..self.projectiles.len() {
             let p = &mut self.projectiles[i];
             if p.boomerang {
@@ -458,6 +548,12 @@ impl World {
                 continue;
             }
             if p.hostile {
+                // Barriers stop enemy shots (DEF-02).
+                if barriers.iter().any(|(c, size, _)| c.distance_sq(p.pos) < (size + p.radius) * (size + p.radius)) {
+                    p.life = 0;
+                    deflected.push(p.pos);
+                    continue;
+                }
                 let reach = p.radius + PLAYER_RADIUS * 0.8;
                 if p.pos.distance_sq(player) < reach * reach {
                     if noise && p.look == Look::Bubble && self.player.noise_block == 0 {
@@ -489,6 +585,11 @@ impl World {
             }
             let weapon = (p.weapon != u8::MAX).then_some(p.weapon as usize);
             self.damage_slop(j, p.damage, p.kind, p.vel.normalized() * p.knockback, p.pos - p.vel * 0.05, weapon);
+            // Ratio Machine: a hit may jump on to three more slop.
+            let chance = self.player.perks.chain_chance;
+            if chance > 0.0 && self.rng_combat.chance(chance) {
+                self.chain_hit(p.pos, j, 3, p.damage * 0.6, DamageType::Sarcasm, weapon);
+            }
             let chatbot = self.setup.specs[self.slop[j].spec as usize].is_chatbot();
             let s = &mut self.slop[j];
             if let Some((bonus, ticks)) = p.mark {
@@ -532,8 +633,12 @@ impl World {
             self.events.push(Event::Splash { at, radius });
         }
         self.pop_bubbles();
+        for at in deflected {
+            self.events.push(Event::Deflected { at });
+        }
+        let armor = 1.0 - self.player.perks.shot_armor.clamp(0.0, 0.8);
         for (damage, spec, shove, doomscroll, vel) in on_you {
-            if self.hurt(damage, spec) {
+            if self.hurt(damage * armor, spec) {
                 if shove > 0.0 {
                     self.player.vel += vel.normalized() * shove;
                 }
@@ -573,17 +678,31 @@ impl World {
         let me = self.player.pos;
         let mut bombs = Vec::new();
         let mut seeds = Vec::new();
+        let mut fires = Vec::new();
+        let mut flipped = false;
         for z in &mut self.zones {
             z.ticks = z.ticks.saturating_sub(1);
             z.pos += z.vel * DT;
             match z.kind {
                 ZoneKind::Bomb if z.ticks == 0 => bombs.push((z.pos, z.radius, z.damage, z.spec)),
                 ZoneKind::Seed { heal } if z.ticks % 30 == 0 => seeds.push((z.pos, z.radius, z.damage, heal, z.spec)),
+                ZoneKind::Fire if z.ticks % FIRE_EVERY == 0 => fires.push((z.pos, z.radius, z.damage)),
+                // The drop: inside a brainrot zone, your controls flip.
+                ZoneKind::Brainrot if z.ticks == 0 && z.contains(me, PLAYER_RADIUS * 0.5) => flipped = true,
                 ZoneKind::Banner if z.pos.distance_sq(me) > 2000.0 * 2000.0 => z.ticks = 0,
                 _ => {}
             }
         }
         self.zones.retain(|z| z.ticks > 0);
+        for (at, radius, damage) in fires {
+            for j in self.around(at, radius) {
+                self.damage_slop(j, damage, DamageType::Sarcasm, V2::ZERO, at, None);
+            }
+        }
+        if flipped && !self.player.perks.fluent && self.player.status.brainrot == 0 {
+            self.player.status.brainrot = BRAINROT_TICKS;
+            self.events.push(Event::Status { kind: StatusKind::Brainrot });
+        }
         for (at, radius, damage, heal, slot) in seeds {
             for j in self.around(at, radius) {
                 self.damage_slop(j, damage, DamageType::Grass, V2::ZERO, at, Some(slot as usize));
@@ -597,6 +716,11 @@ impl World {
             self.events.push(Event::Splash { at, radius });
             if me.distance_sq(at) < (radius + PLAYER_RADIUS) * (radius + PLAYER_RADIUS) {
                 self.hurt(damage, spec);
+            }
+            // Brr Brr Patapum's stomp leaves roots behind.
+            if self.setup.specs.get(spec as usize).is_some_and(|s| s.attack == Some(crate::spec::Attack::Stomp)) {
+                let id = self.id();
+                self.zones.push(Zone::new(id, ZoneKind::Roots, at, radius, 240));
             }
         }
     }
