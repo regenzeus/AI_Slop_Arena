@@ -535,3 +535,35 @@ fn the_later_bosses_pose_their_puzzles() {
         assert!(!b.puzzle().is_empty() && b.base().0 > 0.0);
     }
 }
+
+// REQ: CHEST-03
+#[test]
+fn a_chest_is_an_event_one_on_the_floor_and_one_a_minute() {
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    let elite = w.add_spec(SlopSpec::archetype(Archetype::ChadGpt).elite());
+    let kill = |w: &mut World| {
+        let id = w.place(elite, w.player.pos + V2::new(400.0, 0.0), 0, 1);
+        w.slop.iter_mut().find(|s| s.id == id).unwrap().hp = 0.0;
+        run(w, 1);
+    };
+    let chests = |w: &World| w.pickups.iter().filter(|p| p.kind == PickupKind::Chest).count();
+    for _ in 0..6 {
+        kill(&mut w);
+    }
+    assert_eq!(chests(&w), 1, "six elites, one chest; the rest paid Clout");
+    assert!(w.pickups.iter().filter(|p| p.kind == PickupKind::Clout).count() >= 5);
+    // Picked up and a minute gone: the next elite pays again.
+    w.pickups.retain(|p| p.kind != PickupKind::Chest);
+    kill(&mut w);
+    assert_eq!(chests(&w), 0, "too soon");
+    w.tick += 60 * 60;
+    kill(&mut w);
+    assert_eq!(chests(&w), 1);
+    // A Loot Box build skips the wait but still never stacks chests.
+    w.pickups.clear();
+    w.player.perks.elite_chests = 1;
+    kill(&mut w);
+    kill(&mut w);
+    assert_eq!(chests(&w), 1);
+}

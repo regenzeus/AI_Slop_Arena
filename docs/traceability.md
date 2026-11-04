@@ -38,6 +38,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | CHEST-01 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
 | CHEST-02 | `a_maxed_build_gets_paid_instead_of_stopped` | crates/slop_rules/src/tests_v4.rs |
 | CHEST-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
+| CHEST-03 | `a_chest_is_an_event_one_on_the_floor_and_one_a_minute` | crates/slop_sim/src/tests_v4.rs |
 | DASH-01 | `a_dash_is_fast_untouchable_and_its_charges_come_back` | crates/slop_sim/src/tests_v4.rs |
 | DASH-01 | `a_dash_shakes_off_grabbing_hands` | crates/slop_sim/src/tests_v4.rs |
 | DASH-02 | `dashes_and_trails_hurt_slop` | crates/slop_sim/src/tests_v4.rs |

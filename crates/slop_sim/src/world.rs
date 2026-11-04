@@ -59,12 +59,11 @@ const MAX_LIKES: usize = 300;
 /// Ticks a Server Outage freezes the slop.
 const FREEZE_TICKS: u16 = 480;
 const SCATTER_TICKS: u16 = 90;
-/// Chance an elite drops a golden chest instead of a plain one (LOOT-02): rare
-/// at first, up to one in eight later.
-const GOLDEN_CHANCE: f32 = 0.03;
-const GOLDEN_MAX: f32 = 0.12;
-/// Share of elites that carry a chest; the rest drop Clout and Likes.
-const ELITE_CHEST: f32 = 0.45;
+/// A chest is an event, not litter (CHEST-03): an elite pays one only when
+/// none is lying on the floor and this many ticks have passed since the
+/// last; otherwise it pays Clout and Likes. Bosses, goblins, a Nemesis and
+/// the map's challenges always pay, and they are where golden chests come from.
+const CHEST_EVERY: u32 = 60 * 60;
 /// Ticks a Power Outlet's charge lasts after you step out.
 const CHARGED_TICKS: u16 = 600;
 /// Ticks a Prompt Injection lasts, how often it bites, and the share of a
@@ -842,6 +841,8 @@ pub struct World {
     pub last_hurt: u16,
     /// The Nemesis was deleted.
     pub nemesis_down: bool,
+    /// Tick of the last chest an elite paid (CHEST-03).
+    pub last_chest: u32,
     pub(crate) next_id: u32,
     pub(crate) next_pack: u32,
     pub(crate) spawn_credit: f32,
@@ -910,6 +911,7 @@ impl World {
             hallucinate: 0.0,
             last_hurt: NO_SPEC,
             nemesis_down: false,
+            last_chest: 0,
             next_id: 1,
             next_pack: 1,
             spawn_credit: 0.0,
@@ -1477,7 +1479,6 @@ impl World {
         let mut kills_now = 0u32;
         let mut boss_died = None;
         let coin_chance = (25.0 * (1.0 + self.player.stats.hustle.max(0.0) / 100.0)) as u32;
-        let minutes = self.elapsed() / 60.0;
         for s in self.slop.iter().filter(|s| s.hp <= 0.0) {
             let sp = &self.setup.specs[s.spec as usize];
             if let Some(t) = self.spec_tally.get_mut(s.spec as usize) {
@@ -1501,18 +1502,18 @@ impl World {
                 kills_now += 1;
                 if sp.elite && !s.reposted {
                     self.tally.loot_boxes += 1;
-                    // Not every elite carries a chest; the ones that do are
-                    // worth the walk. Now and then it is golden (LOOT-02).
-                    if self.rng_combat.chance(ELITE_CHEST) {
-                        let golden = self.rng_combat.chance((GOLDEN_CHANCE + 0.005 * minutes).min(GOLDEN_MAX) + self.player.stats.luck.max(0.0) * 0.002);
-                        loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
-                        self.events.push(if golden { Event::RareDrop { at: s.pos } } else { Event::LootBox { at: s.pos } });
+                    // One chest at a time, and not more than one a minute, so a
+                    // chest stays an event (CHEST-03). A Loot Box build skips
+                    // the wait, never the floor rule.
+                    let floor = self.pickups.iter().any(|p| p.kind == PickupKind::Chest) || loot.iter().any(|l| l.0 == PickupKind::Chest);
+                    let soon = self.last_chest > 0 && self.tick < self.last_chest + CHEST_EVERY && self.player.perks.elite_chests == 0;
+                    if !floor && !soon {
+                        self.last_chest = self.tick;
+                        loot.push((PickupKind::Chest, s.pos, 1));
+                        self.events.push(Event::LootBox { at: s.pos });
                     } else {
                         loot.push((PickupKind::Clout, s.pos, 12));
                         drops.push((s.pos, sp.likes * 2));
-                    }
-                    for _ in 0..self.player.perks.elite_chests {
-                        loot.push((PickupKind::Chest, s.pos, 1));
                     }
                 }
                 // A Nemesis pays for what it did to you (NEMESIS-01).

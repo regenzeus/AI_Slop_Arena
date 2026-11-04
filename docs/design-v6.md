@@ -56,6 +56,17 @@ minute of a chapter the model stops being patient: capability climbs ever faster
 your resource drains a little more every second ("Copilot v2.20 has learned enough. It is
 wearing you down now."). No build outlasts a chapter; a good one gets fifteen minutes.
 
+### Chests: an event, not litter
+
+A chest is the one reward that stops the game, so it has to be earned and it has to be
+rare. It exists for three things: a burst of upgrades for a kill that mattered, the only
+way two ready weapons merge, and the legendary in a golden one. So: bosses, loot goblins,
+a Nemesis and the map's challenges (data centers, comment sections, livestreams) always
+pay a chest, and golden ones come only from them. An elite pays a chest only when none is
+lying on the floor and a minute has passed since the last; otherwise it pays Clout and
+Likes on the spot. A chest left behind still glows, still gets its arrow at the screen's
+edge, and is still the only one until you open it.
+
 ### Automation: the thesis as a meter
 
 A 0 to 100 meter on the HUD, never going down, carried across chapters.

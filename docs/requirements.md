@@ -122,7 +122,7 @@ version 3 is in [design-v3.md](design-v3.md), version 4 in [design-v4.md](design
 | DEF-02 | Barrier weapons circle you, stop enemy shots and hurt slop they touch. | T, D |
 | ITEM-03 | Items have four rarities (common, rare, epic, legendary) with frames in grey, blue, purple and gold. Legendaries are offered rarely, more often with Luck, are one of a kind, and break rules (more projectiles, exploding kills, a second you, screen wipes, God Mode). | T, D |
 | GLITCH-01 | Glitches: rare perks that change a run. Every boss's chest is followed by a pick of three; now and then one takes a level-up card. | T, D |
-| LOOT-02 | Chests open one, three or five upgrades, each spinning like a slot reel and landing rarest last, with a fanfare for a legendary. Elites with a chest sometimes drop a golden one (rare early, up to one in eight later; five upgrades, always a legendary) under a pillar of light; each card says what the upgrade does; chests off screen get an arrow at the screen's edge. | T, D |
+| LOOT-02 | Chests open one, three or five upgrades, each spinning like a slot reel and landing rarest last, with a fanfare for a legendary. Golden chests (five upgrades, always a legendary) stand under a pillar of light; each card says what the upgrade does; chests off screen get an arrow at the screen's edge. | T, D |
 | LOOT-03 | Clout drops as coins, stacks and bags; Algorithm Boost pulls every Like and coin on the map. | T, D |
 | STAT-02 | Hustle, a stat: Clout every minute, and coins drop more often. | T |
 | BIOME-01 | The map is a patchwork of the six platforms in squares of 6144 units; neighbours always differ. Walking into one changes the floor, the local slop and the hazard, once you are properly inside; the floor and the HUD show where you are, without an announcement. Bosses keep their order. | T, D |
@@ -170,6 +170,7 @@ The spec is [design-v6.md](design-v6.md), the plan [plan-v6.md](plan-v6.md).
 | LESSON-01 | Every archetype has a lesson; the chapter card and the model card name what deleted you and the lesson; the last frame holds for two seconds with the killer named. | T, D |
 | MUSIC-01 | Each chapter has its own generated loop, crossfaded on change; Automation quantizes it, until at 100% the grid plays itself. | T, D |
 | ASSET-01 | Files in `assets/` (sprites, music, sfx) replace drawn sprites, generated music and synthesised sounds; the game runs with none. | T |
+| CHEST-03 | A chest is an event: an elite pays one only when none lies on the floor and a minute has passed since the last (a Loot Box build skips the wait); otherwise it pays Clout and Likes. Bosses, loot goblins, a Nemesis and the map's challenges always pay, and golden chests come only from them. | T |
 
 ## Client
 
