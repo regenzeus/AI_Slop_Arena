@@ -369,6 +369,8 @@ pub struct Art {
     pub icon_frames: HashMap<Archetype, Vec<Pair>>,
     /// In `GLITCHES` order (GLITCH-01).
     pub glitch_icons: Vec<Handle<Image>>,
+    /// The easy option (AUTO-01).
+    pub delegate: Handle<Image>,
     /// Coin, stack and bag (LOOT-03).
     pub coins: [Handle<Image>; 3],
     pub golden_chest: Handle<Image>,
@@ -443,6 +445,7 @@ impl Art {
             like: add(feed_art::like()),
             icon_frames,
             glitch_icons: (0..slop_rules::items::GLITCHES.len()).map(|i| add(icons::glitch(i))).collect(),
+            delegate: add(icons::delegate()),
             coins: [add(icons::coins(0)), add(icons::coins(1)), add(icons::coins(2))],
             golden_chest: add(feed_art::golden_chest()),
             light_beam: add(draw::light_beam()),

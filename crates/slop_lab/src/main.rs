@@ -29,7 +29,8 @@ fn main() {
         Some("balance") => balance(n(1, 30), n(2, 45) as f32, slop_rules::memory::Temperature::ALL[(n(3, 1) as usize).min(3)]),
         Some("progress") => progress(n(1, 8)),
         Some("deaths") => deaths(n(1, 8)),
-        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes] [temperature 0-3]|progress [runs]>"),
+        Some("story") => story(n(1, 6), slop_rules::memory::Temperature::ALL[(n(2, 1) as usize).min(3)]),
+        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes] [temperature 0-3]|story [runs] [temperature]|progress [runs]>"),
     }
 }
 
@@ -37,7 +38,7 @@ fn main() {
 fn bench() {
     let picks = ["Rock", "Stapler", "Library Book", "Eye-Roll", "Slow Clap", "Seed Bomb"];
     let weapons: Vec<(usize, u8)> = picks.iter().map(|p| (slop_sim::content::weapon_index(p).unwrap(), MAX_LEVEL)).collect();
-    let mut loadout = Loadout { weapons, stats: Default::default(), perks: Default::default() };
+    let mut loadout = Loadout { weapons, agents: Vec::new(), stats: Default::default(), perks: Default::default() };
     loadout.stats.focus = 3.0;
     loadout.stats.max_mental_health = 1e9;
     let mut w = World::new(1, WaveSetup::sandbox(), &loadout);
@@ -153,7 +154,7 @@ fn progress(runs: u64) {
         let mut next = 1.0;
         while !run.is_over() && run.minutes() < 45.0 {
             match run.phase {
-                Phase::Playing => {
+                Phase::Playing | Phase::Takeover { .. } => {
                     let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
                     run.step(input);
                     if run.minutes() >= next {
@@ -198,7 +199,7 @@ fn deaths(runs: u64) {
         let mut next = 0.0;
         while !run.is_over() && run.minutes() < 45.0 {
             match run.phase {
-                Phase::Playing => {
+                Phase::Playing | Phase::Takeover { .. } => {
                     let input = slop_sim::bot::steer(run.world.as_ref().unwrap());
                     run.step(input);
                     if run.seconds() >= next {
@@ -227,4 +228,46 @@ fn deaths(runs: u64) {
             blame.iter().take(5).map(|(n, d)| format!("{n} {d:.0}")).collect::<Vec<_>>().join(", ")
         );
     }
+}
+
+/// Whole runs, chapters and all (CH-01, AUTO-01, END-01): how long each
+/// chapter lasts, where Automation ends, what deleted you, for a bot that
+/// always takes the easy option, one that never does, and a random one.
+fn story(runs: u64, temperature: slop_rules::memory::Temperature) {
+    let start = Instant::now();
+    println!("Temperature {}", temperature.label());
+    for policy in [Policy::Heuristic, Policy::Luddite, Policy::Random] {
+        let mut per_chapter: BTreeMap<usize, Vec<f32>> = BTreeMap::new();
+        let mut autos = Vec::new();
+        let mut scores = Vec::new();
+        let mut reached: BTreeMap<usize, u32> = BTreeMap::new();
+        let mut killers: BTreeMap<String, u32> = BTreeMap::new();
+        for seed in 1..=runs {
+            let hero = Hero::ALL[(seed % Hero::ALL.len() as u64) as usize];
+            let run = bot::play_run(seed, hero, policy, 90.0, temperature);
+            for c in &run.chapters {
+                per_chapter.entry(c.chapter.number()).or_default().push(c.seconds / 60.0);
+                if let Some((name, _)) = &c.killer {
+                    *killers.entry(name.clone()).or_default() += 1;
+                }
+            }
+            *reached.entry(run.chapter.number()).or_default() += 1;
+            autos.push(run.automation);
+            scores.push(run.score);
+        }
+        let k = runs as f32;
+        println!("\n{policy:?} bot, {runs} runs:");
+        for (ch, mins) in &per_chapter {
+            let mean = mins.iter().sum::<f32>() / mins.len() as f32;
+            println!("  chapter {ch}: {} runs, mean {mean:.1} min", mins.len());
+        }
+        println!("  furthest chapter reached: {reached:?}");
+        println!("  automation at the end: mean {:.0}%, max {}%", autos.iter().sum::<u32>() as f32 / k, autos.iter().max().unwrap_or(&0));
+        println!("  score: mean {:.0}", scores.iter().sum::<u32>() as f32 / k);
+        let mut top: Vec<(String, u32)> = killers.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1));
+        let top: Vec<String> = top.into_iter().take(6).map(|(n, c)| format!("{n} {c}")).collect();
+        println!("  deleted by: {}", top.join(", "));
+    }
+    println!("\n{} s", start.elapsed().as_secs());
 }

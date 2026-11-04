@@ -38,6 +38,8 @@ pub enum UiAction {
     Recycle(usize),
     /// Choose Temperature `i` on the hero screen (TEMP-01).
     SetTemperature(usize),
+    /// From a chapter card into the next chapter (CH-01).
+    NextChapter,
     Resume,
     NewRun,
     Quit,
@@ -195,7 +197,7 @@ impl Game {
 
     /// Does what a button or key asked (UI-08). Returns false to quit.
     pub fn act(&mut self, action: UiAction) -> bool {
-        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Glitch(_) | UiAction::Recycle(_) | UiAction::Close | UiAction::Reroll);
+        let choosing = matches!(action, UiAction::Choose(_) | UiAction::Buy(_) | UiAction::Bless(_) | UiAction::Glitch(_) | UiAction::Recycle(_) | UiAction::NextChapter | UiAction::Close | UiAction::Reroll);
         if choosing && !self.choice_ready() {
             return true;
         }
@@ -237,6 +239,7 @@ impl Game {
                     UiAction::Bless(i) => (run.bless(i), Cue::Level),
                     UiAction::Glitch(i) => (run.take_glitch(i), Cue::Level),
                     UiAction::Recycle(i) => (run.recycle(i), Cue::Buy),
+                    UiAction::NextChapter => (run.next_chapter(), Cue::Go),
                     _ => (Ok(()), Cue::Tick),
                 };
                 self.rule(result, cue);
@@ -248,7 +251,7 @@ impl Game {
 
     /// The run is waiting for a choice (an overlay is up).
     pub fn choosing(&self) -> bool {
-        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_) | Phase::Recycle { .. }))
+        self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_) | Phase::Recycle { .. } | Phase::ChapterCard(_)))
     }
 }
 

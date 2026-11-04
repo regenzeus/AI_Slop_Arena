@@ -973,6 +973,20 @@ pub fn stat(kind: StatKind) -> Canvas {
     p.c
 }
 
+/// The easy option (AUTO-01): a cursor handing a task to a robot.
+pub fn delegate() -> Canvas {
+    let mut p = pen();
+    p.rect(60.0, 50.0, 24.0, 22.0, 6.0, hex(0x9EA3AE));
+    p.rect(60.0, 46.0, 16.0, 8.0, 3.0, hex(0x3CC8B4));
+    p.dot(54.0, 46.0, 2.5, INK);
+    p.dot(66.0, 46.0, 2.5, INK);
+    p.rect(60.0, 58.0, 10.0, 2.0, 1.0, INK);
+    p.line(60.0, 28.0, 60.0, 22.0, 2.0, hex(0x9EA3AE));
+    p.dot(60.0, 20.0, 3.5, hex(0xFF2E94));
+    p.sdf(|x, y| polygon(x, y, &[(14.0, 36.0), (14.0, 72.0), (24.0, 64.0), (31.0, 78.0), (37.0, 75.0), (30.0, 62.0), (42.0, 60.0)]), WHITE);
+    p.c
+}
+
 /// Coins by denomination (LOOT-03): a coin, a stack, a bag.
 pub fn coins(size: usize) -> Canvas {
     let mut p = pen();

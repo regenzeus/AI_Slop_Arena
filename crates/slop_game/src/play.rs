@@ -77,6 +77,7 @@ fn keys(mut controls: ResMut<Controls>, mut game: ResMut<Game>, mut nav: ResMut<
                         actions.push(UiAction::Reroll);
                     }
                 }
+                Some(Phase::ChapterCard(_)) if controls.confirm || controls.cont => actions.push(UiAction::NextChapter),
                 Some(Phase::Recycle { .. }) if controls.back => actions.push(UiAction::Close),
                 Some(Phase::Vending { offers, .. }) => {
                     if let Some(i) = controls.number.filter(|i| *i < offers.len()) {
@@ -159,8 +160,19 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
         game.since_end += time.delta_secs();
         return;
     }
-    if !matches!(run.phase, Phase::Playing) {
+    if !matches!(run.phase, Phase::Playing | Phase::Takeover { .. }) {
         game.since_choice += time.delta_secs();
+        // Automation picks for you after a moment (AUTO-03).
+        if !bot && matches!(run.phase, Phase::LevelUp(_)) {
+            if let Some(after) = run.auto_pick_after() {
+                if game.since_choice > after {
+                    let _ = run.auto_choose();
+                    game.since_choice = 0.0;
+                    game.dirty = true;
+                    game.cues.push(Cue::Level);
+                }
+            }
+        }
         // The bots choose after a beat during autoplay, so it can be seen.
         let wait = if matches!(run.phase, Phase::Chest(_)) { 3.2 } else { 0.5 };
         if bot && game.since_choice > wait {

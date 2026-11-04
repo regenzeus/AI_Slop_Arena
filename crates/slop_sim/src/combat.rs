@@ -35,6 +35,9 @@ const VERIFIED: f32 = 0.5;
 const BARRIER_SPEED: f32 = 1.6;
 /// How far your Alt Account stands from you.
 const ALT_DISTANCE: f32 = 120.0;
+/// What an Agent adds to damage and attack rate (AUTO-02).
+const AGENT_DAMAGE: f32 = 1.6;
+const AGENT_RATE: f32 = 1.25;
 /// Ticks before Echo Chamber repeats an attack.
 const ECHO_TICKS: u16 = 18;
 /// Fire burns slop inside this often.
@@ -79,6 +82,9 @@ impl World {
         }
         if self.player.god > 0 {
             mult *= 1.5;
+        }
+        if self.player.autopilot && perks.autopilot_bonus > 0.0 {
+            mult *= 1.0 + perks.autopilot_bonus;
         }
         if perks.speed_damage {
             mult *= stats.speed.max(1.0);
@@ -185,6 +191,19 @@ impl World {
         }
     }
 
+    /// The slop with the most HP within `range` of `at`.
+    fn biggest_slop(&self, at: V2, range: f32) -> Option<usize> {
+        let mut best: Option<(usize, f32)> = None;
+        self.grid.for_each_near(at, range + 40.0, |j| {
+            let s = &self.slop[j];
+            let reach = range + s.radius;
+            if s.hp > 0.0 && s.pos.distance_sq(at) <= reach * reach && best.is_none_or(|(_, b)| s.max_hp > b) {
+                best = Some((j, s.max_hp));
+            }
+        });
+        best.map(|(j, _)| j)
+    }
+
     /// Every slop within `radius` of `at`.
     fn around(&self, at: V2, radius: f32) -> Vec<usize> {
         let mut out = Vec::new();
@@ -255,8 +274,10 @@ impl World {
             let def = &WEAPONS[def_index];
             let (_, area, haste) = level_extra(level);
             let range = def.range * (1.0 + stats.reach) * area;
-            let damage = def.damage * LEVEL_DAMAGE[level as usize - 1];
-            let mut rate = (1.0 + stats.focus) / haste;
+            // An Agent fires harder and faster (AUTO-02).
+            let agent = self.player.weapons[wi].agent;
+            let damage = def.damage * LEVEL_DAMAGE[level as usize - 1] * if agent { AGENT_DAMAGE } else { 1.0 };
+            let mut rate = (1.0 + stats.focus) / haste * if agent { AGENT_RATE } else { 1.0 };
             if matches!(def.pattern, Pattern::Aura) {
                 let crowd = self.around(at, range).len().min(10);
                 rate *= 1.0 + 0.1 * crowd as f32;
@@ -364,7 +385,8 @@ impl World {
             }
             _ => {}
         }
-        let target = nearest_slop(&self.grid, &self.slop, at, range, None)?;
+        // Smart targeting prefers the biggest thing in range, not the nearest.
+        let target = if self.player.perks.smart_targeting { self.biggest_slop(at, range) } else { nearest_slop(&self.grid, &self.slop, at, range, None) }?;
         let goal = self.slop[target].pos;
         let aim = (goal - at).normalized();
         let life = |speed: f32| (range / speed * TICK_RATE as f32 * 1.15) as u16 + 4;

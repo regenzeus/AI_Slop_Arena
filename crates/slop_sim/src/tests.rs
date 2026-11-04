@@ -681,7 +681,7 @@ fn zones_have_shapes() {
 fn higher_levels_hit_harder_and_throw_more() {
     let rock = weapon("Rock");
     let shots = |level: u8| {
-        let mut w = World::new(3, WaveSetup::sandbox(), &Loadout { weapons: vec![(rock, level)], stats: Default::default(), perks: Default::default() });
+        let mut w = World::new(3, WaveSetup::sandbox(), &Loadout { weapons: vec![(rock, level)], agents: Vec::new(), stats: Default::default(), perks: Default::default() });
         dummy(&mut w, 200.0);
         run(&mut w, 1);
         (w.projectiles.len(), w.projectiles.first().map_or(0.0, |p| p.damage))

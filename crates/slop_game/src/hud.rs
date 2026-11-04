@@ -89,6 +89,10 @@ struct LiveText;
 struct ChestArrow;
 #[derive(Component)]
 struct ModelText;
+#[derive(Component)]
+struct CapText;
+#[derive(Component)]
+struct ResourceLabel;
 
 const SHIELD: Color = Color::srgb(0.31, 0.72, 0.91);
 /// Off-screen chests shown at the screen's edge, at most.
@@ -103,7 +107,7 @@ fn extras(
     art: Res<Art>,
     mut bars: Query<&mut Node, (With<ShieldFill>, Without<ShieldBack>, Without<ChestArrow>)>,
     mut backs: Query<&mut Visibility, (With<ShieldBack>, Without<ShieldFill>, Without<ChestArrow>)>,
-    mut texts: ParamSet<(Query<&mut Text, With<DashText>>, Query<&mut Text, With<KeysHint>>, Query<&mut Text, With<Reversed>>, Query<&mut Text, With<LiveText>>, Query<&mut Text, With<ModelText>>)>,
+    mut texts: ParamSet<(Query<&mut Text, With<DashText>>, Query<&mut Text, With<KeysHint>>, Query<&mut Text, With<Reversed>>, Query<&mut Text, With<LiveText>>, Query<&mut Text, With<ModelText>>, Query<&mut Text, With<CapText>>, Query<&mut Text, With<ResourceLabel>>)>,
     mut arrows: Query<(&mut Node, &mut Visibility, &mut ImageNode), (With<ChestArrow>, Without<ShieldFill>, Without<ShieldBack>)>,
 ) {
     let Some(run) = game.run.as_ref().filter(|_| game.screen == Screen::Run) else { return };
@@ -143,6 +147,16 @@ fn extras(
         let low = (0..4).min_by(|&a, &b| m[a].total_cmp(&m[b])).unwrap_or(0);
         let name = |k: usize| slop_sim::DamageType::ALL[k].name();
         **t = if m[high] > 0.02 { format!("Model resists {} {:.0}%, weak to {}", name(high), m[high] * 100.0, name(low)) } else { "Model: still learning you".into() };
+    }
+    if let Ok(mut t) = texts.p5().single_mut() {
+        let driving = if run.autopilot_now() { "   AUTOPILOT: the model is driving" } else { "" };
+        **t = format!("{}   Automation {}%{driving}", run.version(), run.automation);
+    }
+    if let Ok(mut t) = texts.p6().single_mut() {
+        let want = run.chapter.def().resource.to_uppercase();
+        if **t != want {
+            **t = want;
+        }
     }
     // Arrows to chests off screen, nearest first.
     let me = p.pos;
@@ -232,7 +246,7 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                 w.spawn((node, bg)).with_children(|p| {
                     p.spawn(Node { column_gap: Val::Px(8.0), align_items: AlignItems::Center, ..default() }).with_children(|r| {
                         r.spawn((ImageNode::new(art.brain.clone()), Node { width: Val::Px(24.0), height: Val::Px(24.0), ..default() }));
-                        label(r, "MENTAL HEALTH", 14.0, theme::QUIET);
+                        r.spawn((ResourceLabel, Text::new("MENTAL HEALTH"), TextFont { font_size: 14.0, ..default() }, TextColor(theme::QUIET)));
                     });
                     p.spawn((Node { width: Val::Px(BAR_W), height: Val::Px(16.0), ..default() }, BackgroundColor(Color::srgb(0.25, 0.25, 0.3))))
                         .with_children(|b| {
@@ -261,6 +275,8 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                                 b.spawn((Progress, Node { width: Val::Px(0.0), height: Val::Percent(100.0), ..default() }, BackgroundColor(theme::PLAYER_RED)));
                             });
                         p.spawn((TimeText, Text::new(""), TextFont { font_size: 15.0, ..default() }, TextColor(theme::PAPER)));
+                        // How good the AI is, and how much of you is left (CAP-01, AUTO-01).
+                        p.spawn((CapText, Text::new(""), TextFont { font_size: 13.0, ..default() }, TextColor(Color::srgb(0.55, 0.75, 1.0))));
                     });
                 });
             // Clout and level.
@@ -364,7 +380,9 @@ fn update(
 
     if let Ok((mut node, mut bg)) = nodes.p0().single_mut() {
         node.width = Val::Px(BAR_W * share);
-        bg.0 = theme::mental_health_color(share);
+        // The chapter's colour, towards red as it drains (CH-01).
+        let c = run.chapter.def().color;
+        bg.0 = Color::srgb(c[0], c[1], c[2]).mix(&theme::DANGER, (1.0 - share) * 0.8);
     }
     let boss = world.boss.as_ref().and_then(|b| world.boss_health().map(|h| (b.kind, h)));
     if let Ok(mut node) = nodes.p1().single_mut() {

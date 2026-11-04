@@ -76,6 +76,8 @@ pub struct Memory {
     pub killer_look: Option<SlopLook>,
     /// Times this same thing has deleted you.
     pub killer_count: u32,
+    /// The best score (END-01).
+    pub best_score: u32,
 }
 
 impl Memory {
@@ -94,7 +96,11 @@ impl Memory {
 
     /// As text, for the file.
     pub fn to_text(&self) -> String {
-        let mut out = format!("runs={}\nbest={}\ncount={}\n", self.runs, self.best_seconds, self.killer_count);
+        let mut out = format!("runs={}
+best={}
+count={}
+score={}
+", self.runs, self.best_seconds, self.killer_count, self.best_score);
         if let Some(f) = self.favourite {
             out += &format!("favourite={f}\n");
         }
@@ -118,6 +124,7 @@ impl Memory {
                 "runs" => m.runs = value.parse().unwrap_or(0),
                 "best" => m.best_seconds = value.parse().unwrap_or(0),
                 "count" => m.killer_count = value.parse().unwrap_or(0),
+                "score" => m.best_score = value.parse().unwrap_or(0),
                 "favourite" => m.favourite = value.parse().ok().filter(|f| *f < 4),
                 "killer" => m.killer = Some(value.to_string()),
                 "look" => m.killer_look = parse_look(value),
@@ -157,6 +164,7 @@ mod tests {
             killer: Some("Glass Fruit".into()),
             killer_look: Some(SlopLook::Archetype(Archetype::GlassFruit)),
             killer_count: 2,
+            best_score: 1234,
         };
         assert_eq!(Memory::from_text(&m.to_text()), m);
         let rot = Memory { killer: Some("X".into()), killer_look: Some(SlopLook::Brainrot { body: Body::Frog, object: Object::Cactus, accessory: Accessory::Crown }), ..Memory::default() };

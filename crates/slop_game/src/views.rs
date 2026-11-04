@@ -574,6 +574,9 @@ fn sync(
         tf.scale = Vec3::splat(pulse);
         sprite.color = if p.god > 0 {
             Color::srgba(1.0, 0.85, 0.3, 0.9)
+        } else if p.autopilot {
+            // The model is driving (AUTO-03).
+            Color::srgba(0.35, 0.9, 1.0, 0.85)
         } else if p.charged > 0 {
             Color::srgba(0.5, 0.9, 1.0, 0.45 + 0.3 * (t * 14.0).sin().abs())
         } else if p.status.brainrot > 0 || p.status.doomscroll > 0 || p.status.popup > 0 {

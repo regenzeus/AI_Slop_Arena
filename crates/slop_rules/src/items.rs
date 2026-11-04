@@ -208,6 +208,8 @@ pub enum Mod {
     WeaponSlots(i8),
     /// Elites drop one more chest.
     EliteChests,
+    /// Raises Automation by this much (AUTO-01).
+    Automate(u32),
 }
 
 /// What kind of coping mechanism an item is.

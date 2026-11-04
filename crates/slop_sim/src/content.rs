@@ -411,11 +411,54 @@ pub struct ArchetypeDef {
     pub contact: f32,
     pub likes: u32,
     pub blurb: &'static str,
+    /// One line on how not to die to it (LESSON-01).
+    pub lesson: &'static str,
 }
 
 #[allow(clippy::too_many_arguments)]
 const fn arch(name: &'static str, role: Role, hp: f32, speed: f32, radius: f32, contact: f32, likes: u32, blurb: &'static str) -> ArchetypeDef {
-    ArchetypeDef { name, role, hp, speed, radius, contact, likes, blurb }
+    ArchetypeDef { name, role, hp, speed, radius, contact, likes, blurb, lesson: "" }
+}
+
+/// The lesson of each archetype, in `Archetype` order (LESSON-01).
+const LESSONS: [&str; 29] = [
+    "Its bubbles are slow. Walk between them, or shoot them down.",
+    "It aims before it throws. Step off the line.",
+    "Kill the Yes-Bot first: everything near it hits harder.",
+    "Its glitching Likes are fake. Do not walk into them.",
+    "Delete number 1 and the pack scatters.",
+    "It never moves. Do not fight next to it.",
+    "It heals the slop around it. Delete the cake first.",
+    "Hands let go when you dash.",
+    "Its posts slow you. Keep moving between them.",
+    "It splits once when hit. Finish both.",
+    "Its arrows slow you. Dodge sideways.",
+    "It blocks the way. Go around, or dash through.",
+    "It comes back once, weaker. Expect it.",
+    "It grows with every kill nearby. Delete it early.",
+    "Its filter blocks the front. Flank it, or use Fact.",
+    "It hatches drones. Delete the egg first.",
+    "The bonk hits a ring around it. Step out before the swing.",
+    "It aims, then sprints. Sidestep the line.",
+    "Its bombs are marked. Leave the circle.",
+    "The spin hurts up close. Keep your distance.",
+    "Needles come in rings. Step between them.",
+    "Its roots slow you. Walk around the ring.",
+    "Peels slow you. Step aside.",
+    "It marks a spot behind you, then appears. Watch your back.",
+    "It explodes on you. Shoot it before it arrives.",
+    "They come in swarms. Let them pass, or dash through.",
+    "Its shards fly out when it dies. Kill it at range.",
+    "It buffs the slop near it. Delete the tripod.",
+    "It runs. It was never going to hurt you.",
+];
+
+impl ArchetypeDef {
+    /// One line on how not to die to it.
+    pub fn lesson(&self) -> &'static str {
+        let i = ARCHETYPES.iter().position(|a| a.name == self.name).unwrap_or(0);
+        LESSONS[i]
+    }
 }
 
 /// In `Archetype` order.

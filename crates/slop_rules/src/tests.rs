@@ -62,7 +62,7 @@ fn likes_level_you_up_and_every_choice_is_valid() {
     }
     // Full weapon slots: no new weapons; maxed weapons: no levels for them.
     let six: Vec<usize> = (0..WEAPONS.len()).filter(|&d| !WEAPONS[d].evolved).take(WEAPON_SLOTS).collect();
-    run.weapons = six.iter().map(|&def| OwnedWeapon { def, level: MAX_LEVEL }).collect();
+    run.weapons = six.iter().map(|&def| OwnedWeapon { def, level: MAX_LEVEL, agent: false }).collect();
     for _ in 0..30 {
         run.reroll_free_for_test();
         let Phase::LevelUp(choices) = run.phase.clone() else { panic!() };
@@ -91,7 +91,7 @@ fn a_choice_changes_the_world_at_once() {
 fn chests_merge_two_max_weapons_into_one() {
     let mut run = Run::new(4, Hero::Boomer);
     let (rock, sling, meteor) = (weapon_index("Rock").unwrap(), weapon_index("Slingshot").unwrap(), weapon_index("Meteor Shower").unwrap());
-    run.weapons = vec![OwnedWeapon { def: rock, level: MAX_LEVEL }, OwnedWeapon { def: sling, level: MAX_LEVEL }];
+    run.weapons = vec![OwnedWeapon { def: rock, level: MAX_LEVEL, agent: false }, OwnedWeapon { def: sling, level: MAX_LEVEL, agent: false }];
     run.world.as_mut().unwrap().chests.push(1);
     run.step(Default::default());
     let Phase::Chest(reward) = run.phase.clone() else { panic!("the chest opens") };
@@ -101,7 +101,7 @@ fn chests_merge_two_max_weapons_into_one() {
     assert!(run.world.as_ref().unwrap().player.weapons.iter().any(|w| w.def == meteor));
     run.close().unwrap();
     // Without a merge, a chest levels what you have.
-    run.weapons = vec![OwnedWeapon { def: rock, level: 2 }];
+    run.weapons = vec![OwnedWeapon { def: rock, level: 2, agent: false }];
     run.world.as_mut().unwrap().chests.push(1);
     run.step(Default::default());
     let Phase::Chest(reward) = run.phase.clone() else { panic!() };

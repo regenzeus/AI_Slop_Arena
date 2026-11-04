@@ -5,6 +5,8 @@
 
 use bevy::prelude::*;
 use slop_rules::memory::Temperature;
+use slop_rules::chapters::Chapter;
+use slop_rules::run::Delegate;
 use slop_rules::items::{ItemKind, StatKind, BLESSINGS, GLITCHES, ITEMS};
 use slop_rules::run::{Choice, Reward};
 use slop_rules::{Hero, Phase, Run};
@@ -172,6 +174,8 @@ const MERGE: Color = Color::srgb(1.0, 0.78, 0.25);
 pub const LEGENDARY: Color = Color::srgb(1.0, 0.72, 0.12);
 /// Glitches: a glitchy cyan.
 pub const GLITCH: Color = Color::srgb(0.25, 0.95, 0.9);
+/// The easy option: a cold, helpful blue (AUTO-01).
+pub const DELEGATE: Color = Color::srgb(0.55, 0.75, 1.0);
 const GOOD: Color = Color::srgb(0.45, 0.88, 0.45);
 const BAD: Color = Color::srgb(1.0, 0.42, 0.42);
 
@@ -301,6 +305,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
                     Phase::Shrine { offers, .. } => shrine(p, offers, &art, pad),
                     Phase::Glitch(offers) => glitch_pick(p, run, offers, &art, pad),
                     Phase::Recycle { items, .. } => recycle(p, run, items, &art, pad),
+                    Phase::ChapterCard(c) => chapter_card(p, run, *c, &art, pad),
                     Phase::Over { victory } if game.since_end > END_PAUSE => over(p, run, *victory, &art, pad),
                     _ => {}
                 }
@@ -591,6 +596,17 @@ fn describe(run: &Run, c: Choice, art: &Art) -> (Handle<Image>, String, String, 
             let d = &GLITCHES[g];
             (art.glitch_icons[g].clone(), d.name.to_string(), "GLITCH: changes your run".into(), format!("{}.\n\"{}\"", d.effect, d.flavour), GLITCH)
         }
+        // The easy option (AUTO-01): what it gives, and what it costs, in red.
+        Choice::Delegate(d) => {
+            let image = match d {
+                Delegate::Agent(w) => art.weapon_icons[w].clone(),
+                _ => art.delegate.clone(),
+            };
+            let words = format!("{}
+
++{} Automation. The AI learns from you.", d.effect(), d.cost());
+            (image, d.name(), format!("{}: +{} AUTOMATION", run.chapter.def().delegate.to_uppercase(), d.cost()), words, DELEGATE)
+        }
         Choice::Stat(up) => {
             let grade = ["Stat", "Good stat", "Great stat"][up.tier as usize - 1];
             (art.stat_icons[&up.stat].clone(), up.describe(), grade.to_string(), up.stat.explain(&run.stats()), tier_color(up.tier + 1))
@@ -606,13 +622,16 @@ fn capital(s: &str) -> String {
 }
 
 /// A wide card for a choice; `action` takes it.
-fn choice_card(p: &mut ChildSpawnerCommands, run: &Run, c: Choice, art: &Art, k: u32, action: UiAction, price: Option<u32>) {
+#[allow(clippy::too_many_arguments)]
+fn choice_card(p: &mut ChildSpawnerCommands, run: &Run, c: Choice, art: &Art, k: u32, action: UiAction, price: Option<u32>, focus_key: u32) {
     let (image, name, tag, words, color) = describe(run, c, art);
     let merge = matches!(c, Choice::WeaponLevel(d) | Choice::NewWeapon(d) if merge_of(d).is_some_and(|(o, _)| run.weapons.iter().any(|x| x.def == o)));
     // Rare things get a frame in their rarity's colour, and the rarest shine.
     let rarity = c.rarity();
     let border = if matches!(c, Choice::Glitch(_)) {
         GLITCH
+    } else if matches!(c, Choice::Delegate(_)) {
+        DELEGATE
     } else if rarity >= 2 && matches!(c, Choice::NewItem(_) | Choice::ItemLevel(_)) {
         rarity_color(rarity)
     } else if merge {
@@ -626,12 +645,13 @@ fn choice_card(p: &mut ChildSpawnerCommands, run: &Run, c: Choice, art: &Art, k:
     if rarity >= 4 {
         e.insert(Shine(border));
     }
-    if k == key::CHOICE {
+    if k == focus_key {
         e.insert(DefaultFocus);
     }
+    let suggested = run.suggested.is_some_and(|s| key::CHOICE + s as u32 == k) && matches!(action, UiAction::Choose(_));
     e.with_children(|c| {
         c.spawn(Node { justify_content: JustifyContent::SpaceBetween, ..default() }).with_children(|h| {
-            label(h, format!("{}", k - key::CHOICE + 1), 16.0, theme::QUIET);
+            label(h, if suggested { format!("{}  suggested", k - key::CHOICE + 1) } else { format!("{}", k - key::CHOICE + 1) }, 16.0, if suggested { DELEGATE } else { theme::QUIET });
             label(h, tag, 15.0, if rarity >= 3 { border } else { color });
         });
         c.spawn(Node { justify_content: JustifyContent::Center, padding: UiRect::vertical(Val::Px(6.0)), ..default() }).with_children(|m| icon(m, &image, 96.0));
@@ -709,7 +729,7 @@ fn level_up(p: &mut ChildSpawnerCommands, run: &Run, choices: &[Choice], art: &A
     label(p, if more > 0 { format!("Pick one. {more} more level-ups after this.") } else { "Pick one.".to_string() }, 18.0, theme::QUIET);
     p.spawn(Node { column_gap: Val::Px(16.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }).with_children(|r| {
         for (i, c) in choices.iter().enumerate() {
-            choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Choose(i), None);
+            choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Choose(i), None, key::CHOICE + run.suggested.unwrap_or(0) as u32);
         }
     });
     build_strip(p, run, art, false);
@@ -876,7 +896,7 @@ fn glitch_pick(p: &mut ChildSpawnerCommands, run: &Run, offers: &[usize], art: &
     label(p, "The boss left a hole in the algorithm. Pick one glitch: it changes how this run plays.", 18.0, theme::QUIET);
     p.spawn(Node { column_gap: Val::Px(16.0), margin: UiRect::vertical(Val::Px(8.0)), ..default() }).with_children(|r| {
         for (i, &g) in offers.iter().enumerate() {
-            choice_card(r, run, Choice::Glitch(g), art, key::CHOICE + i as u32, UiAction::Glitch(i), None);
+            choice_card(r, run, Choice::Glitch(g), art, key::CHOICE + i as u32, UiAction::Glitch(i), None, key::CHOICE);
         }
     });
     build_strip(p, run, art, false);
@@ -896,7 +916,7 @@ fn vending(p: &mut ChildSpawnerCommands, run: &Run, offers: &[(Choice, u32)], ar
     }
     p.spawn(Node { column_gap: Val::Px(16.0), ..default() }).with_children(|r| {
         for (i, (c, price)) in offers.iter().enumerate() {
-            choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Buy(i), Some(*price));
+            choice_card(r, run, *c, art, key::CHOICE + i as u32, UiAction::Buy(i), Some(*price), key::CHOICE);
         }
     });
     p.spawn(row(14.0)).with_children(|r| {
@@ -976,18 +996,15 @@ fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
     hints(p, pad, &[("Arrows", "Stick", "inspect"), ("P/Esc", "Start/B", "resume")]);
 }
 
-fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art, pad: bool) {
+fn over(p: &mut ChildSpawnerCommands, run: &Run, _victory: bool, art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.07, 0.07, 0.1, 0.9));
-    let (title, sub, color) = if victory {
-        ("YOU BEAT THE FEED", "The Model collapsed. Then the Feed kept going, and so did you, for a while.", theme::mental_health_color(1.0))
-    } else {
-        ("BURNOUT", "Your account has been suspended.", theme::DANGER)
-    };
-    icon(p, &art.human[&run.hero][if victory { 0 } else { 3 }], 70.0);
+    // The end is always the same one (END-01).
+    let (title, sub, color) = ("AUTOMATED", "Your role has been automated. No human required.", DELEGATE);
+    icon(p, &art.human[&run.hero][3], 70.0);
     label(p, title, 58.0, color);
     label(p, sub, 22.0, theme::QUIET);
     let t = run.seconds() as u32;
-    label(p, format!("{} survived {}:{:02} - level {} - {} slop deleted - {} bosses", run.hero.def().name, t / 60, t % 60, run.level, run.kills(), run.bosses_beaten), 20.0, theme::PAPER);
+    label(p, format!("{} lasted {}:{:02} over {} of 5 chapters - {} slop deleted - humanity retained {}% - score {}", run.hero.def().name, t / 60, t % 60, run.chapters.len().max(1), run.total_kills(), run.humanity(), run.score), 18.0, theme::PAPER);
     let kills = run.kills_by_type();
     let total: u32 = kills.iter().sum::<u32>().max(1);
     p.spawn(row(18.0)).with_children(|r| {
@@ -1022,4 +1039,37 @@ fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art, pad: 
         button(r, "Quit", UiAction::Quit, BUTTON, key::BUTTON + 1);
     });
     hints(p, pad, &[("Space", "A", "new run")]);
+}
+
+/// Between chapters (CH-01): what you are now, what you protect, what you
+/// keep, and what the last chapter taught you.
+fn chapter_card(p: &mut ChildSpawnerCommands, run: &Run, c: Chapter, art: &Art, pad: bool) {
+    backdrop(p, Color::srgba(0.02, 0.02, 0.04, 0.94));
+    let d = c.def();
+    let color = Color::srgb(d.color[0], d.color[1], d.color[2]);
+    label(p, format!("CHAPTER {} OF 5", c.number()), 18.0, theme::QUIET);
+    label(p, d.name.to_uppercase(), 58.0, color);
+    icon(p, &art.human[&run.hero][0], 80.0);
+    p.spawn(Node { height: Val::Px(8.0), ..default() });
+    for line in d.card {
+        label(p, *line, 20.0, theme::PAPER);
+    }
+    p.spawn(Node { height: Val::Px(10.0), ..default() });
+    if let Some(last) = run.chapters.last() {
+        let m = last.seconds as u32;
+        let words = match &last.killer {
+            Some((name, lesson)) => format!("{}: {}:{:02}, {} by {}. {}", last.chapter.def().name, m / 60, m % 60, last.chapter.def().death.to_lowercase(), name, lesson),
+            None => format!("{}: {}:{:02}.", last.chapter.def().name, m / 60, m % 60),
+        };
+        label(p, words, 16.0, tier_color(3));
+    }
+    let agents = run.weapons.iter().filter(|w| w.agent).count();
+    let keep = format!("You keep: Automation {}%, {} agent{}, {} glitch{}. Everything else starts over.", run.automation, agents, if agents == 1 { "" } else { "s" }, run.glitches.len(), if run.glitches.len() == 1 { "" } else { "es" });
+    label(p, keep, 15.0, theme::QUIET);
+    if c == Chapter::Resistance && agents > 0 {
+        label(p, "Your agents have been reassigned. You will meet them.", 15.0, theme::DANGER);
+    }
+    p.spawn(Node { height: Val::Px(10.0), ..default() });
+    button(p, "Continue", UiAction::NextChapter, color, key::BUTTON).insert((Continue, DefaultFocus));
+    hints(p, pad, &[("Enter/Space", "A", "continue")]);
 }

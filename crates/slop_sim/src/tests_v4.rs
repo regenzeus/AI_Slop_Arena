@@ -420,3 +420,29 @@ fn a_nemesis_always_drops_a_golden_chest() {
     assert!(w.nemesis_down);
     assert!(w.pickups.iter().any(|p| p.kind == PickupKind::Chest && p.value == 3));
 }
+
+// REQ: AUTO-02
+#[test]
+fn agents_hit_harder_and_smart_targeting_prefers_the_biggest() {
+    let rock = weapon_index("Rock").unwrap();
+    let shot = |agent: bool| {
+        let mut l = Loadout::with_weapons(&[rock]);
+        if agent {
+            l.agents.push(rock);
+        }
+        let mut w = World::new(3, WaveSetup::sandbox(), &l);
+        w.spawn_archetype(Archetype::ChadGpt, w.player.pos + V2::new(200.0, 0.0));
+        w.step(Input::default());
+        w.projectiles.first().map_or(0.0, |p| p.damage)
+    };
+    assert!(shot(true) > shot(false) * 1.5);
+    let mut w = sandbox();
+    w.player.weapons.push(crate::world::Weapon::new(rock, 1));
+    w.player.perks.smart_targeting = true;
+    w.spawn_archetype(Archetype::ListicleDrone, w.player.pos + V2::new(150.0, 0.0));
+    let big = w.spawn_archetype(Archetype::SubscribePopup, w.player.pos + V2::new(-300.0, 0.0));
+    w.step(Input::default());
+    let p = w.projectiles.first().expect("fired");
+    let target = w.slop.iter().find(|s| s.id == big).unwrap().pos;
+    assert!(p.vel.dot(target - w.player.pos) > 0.0, "it aimed at the big one, not the near one");
+}

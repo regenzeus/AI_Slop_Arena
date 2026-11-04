@@ -166,7 +166,7 @@ fn the_director_sends_swarms_rings_and_livestreams() {
 fn a_ready_merge_is_announced_and_brings_a_chest_closer() {
     let mut run = Run::new(4, Hero::Boomer);
     let (rock, sling) = (weapon_index("Rock").unwrap(), weapon_index("Slingshot").unwrap());
-    run.weapons = vec![OwnedWeapon { def: rock, level: MAX_LEVEL }, OwnedWeapon { def: sling, level: MAX_LEVEL }];
+    run.weapons = vec![OwnedWeapon { def: rock, level: MAX_LEVEL, agent: false }, OwnedWeapon { def: sling, level: MAX_LEVEL, agent: false }];
     run.step(Default::default());
     assert!(run.toasts.iter().any(|t| t.starts_with("MERGE READY")));
     // Items in the data are sane: every mod with a number is positive where it must be.
@@ -223,7 +223,7 @@ fn a_maxed_build_gets_paid_instead_of_stopped() {
     let mut run = Run::new(4, Hero::Teacher);
     // Fill every slot with something at its maximum.
     // Merged weapons cannot level or merge any more.
-    run.weapons = (0..WEAPONS.len()).filter(|&d| WEAPONS[d].evolved).take(run.weapon_slots()).map(|d| OwnedWeapon { def: d, level: MAX_LEVEL }).collect();
+    run.weapons = (0..WEAPONS.len()).filter(|&d| WEAPONS[d].evolved).take(run.weapon_slots()).map(|d| OwnedWeapon { def: d, level: MAX_LEVEL, agent: false }).collect();
     run.items = ITEMS.iter().enumerate().filter(|(_, i)| i.max_level() == 1).take(crate::run::ITEM_SLOTS).map(|(k, _)| (k, 1)).collect();
     let clout = run.clout;
     run.world.as_mut().unwrap().chests.push(1);
@@ -275,4 +275,92 @@ fn temperature_sets_the_crowd_and_the_rewards() {
     let cold = Run::with(5, Hero::Boomer, Temperature::Low, Memory::default());
     assert!(hot.loadout().perks.like_bonus > cold.loadout().perks.like_bonus);
     assert!(hot.world.as_ref().unwrap().hallucinate > 0.0 && cold.world.as_ref().unwrap().hallucinate == 0.0);
+}
+
+// REQ: CH-01
+#[test]
+fn death_is_the_next_chapter_and_the_build_starts_over() {
+    use crate::chapters::Chapter;
+    let mut run = Run::new(12, Hero::Boomer);
+    run.weapons[0].agent = true;
+    run.automation = 20;
+    let before = run.seconds();
+    run.world.as_mut().unwrap().player.mental_health = 0.0;
+    for _ in 0..3 {
+        run.step(Default::default());
+    }
+    let Phase::ChapterCard(Chapter::Office) = run.phase else { panic!("the Office follows the Feed, got {:?}", std::mem::discriminant(&run.phase)) };
+    assert_eq!(run.chapters.len(), 1);
+    run.next_chapter().unwrap();
+    assert_eq!(run.chapter, Chapter::Office);
+    assert_eq!(WEAPONS[run.weapons[0].def].name, "Stapler");
+    assert!(run.weapons.iter().any(|w| w.agent), "agents come with you");
+    assert_eq!((run.level, run.automation), (1, 20));
+    assert!(run.seconds() >= before, "the clock carries on");
+    assert_eq!(run.world.as_ref().unwrap().player.mental_health, run.stats().max_mental_health);
+}
+
+// REQ: AUTO-01, AUTO-02, AUTO-03
+#[test]
+fn the_easy_option_costs_automation_and_takes_things_away() {
+    use crate::run::Delegate;
+    let mut run = Run::new(13, Hero::Boomer);
+    let def = run.weapons[0].def;
+    let choices = vec![Choice::WeaponLevel(def), Choice::Delegate(Delegate::Agent(def))];
+    assert_eq!(crate::bot::best(&run, &choices), 1, "the bot takes the easy option every time");
+    run.pending_levels = 1;
+    run.phase = Phase::LevelUp(choices);
+    run.choose(1).unwrap();
+    assert!(run.weapons[0].agent && run.automation == 8);
+    assert!(run.world.as_ref().unwrap().player.weapons[0].agent, "the world knows");
+    // An agent is no longer yours to level.
+    run.pending_levels = 1;
+    run.phase = Phase::Playing;
+    run.step(Default::default());
+    if let Phase::LevelUp(choices) = &run.phase {
+        assert!(!choices.contains(&Choice::WeaponLevel(def)));
+    }
+    // Thresholds.
+    run.phase = Phase::Playing;
+    run.pending_levels = 0;
+    run.automation = 30;
+    run.pending_levels = 1;
+    run.step(Default::default());
+    assert!(run.suggested.is_some(), "suggestions from 25");
+    assert_eq!(run.reroll(), Err(crate::run::RuleError::Automated));
+    run.automation = 50;
+    assert_eq!(run.auto_pick_after(), Some(2.0));
+    run.automation = 75;
+    run.chapter_since = run.seconds();
+    assert!(run.autopilot_now(), "autopilot from 75");
+}
+
+// REQ: END-01
+#[test]
+fn full_automation_ends_in_the_takeover() {
+    let mut run = Run::new(14, Hero::Boomer);
+    run.automation = 100;
+    run.phase = Phase::Playing;
+    run.step(Default::default());
+    assert!(matches!(run.phase, Phase::Takeover { .. }));
+    let mut ticks = 0;
+    while !run.is_over() && ticks < 60 * 25 {
+        run.step(Default::default());
+        ticks += 1;
+    }
+    assert!(run.is_over() && ticks >= 60 * 19, "the bot plays for 20 s, then it is over");
+    assert!(run.score > 0 && run.humanity() == 0);
+    let card = run.model_card().join("\n");
+    assert!(card.contains("Automation: 100%") && card.contains("Score:"), "{card}");
+}
+
+// REQ: AUTO-01
+#[test]
+fn a_luddite_never_automates_and_a_heuristic_always_does() {
+    use crate::bot::{play_run, Policy};
+    use crate::memory::Temperature;
+    let l = play_run(15, Hero::Zoomer, Policy::Luddite, 6.0, Temperature::Low);
+    assert_eq!(l.automation, 0);
+    let h = play_run(15, Hero::Zoomer, Policy::Heuristic, 6.0, Temperature::Low);
+    assert!(h.automation > 0, "the easy option, every time it is offered");
 }

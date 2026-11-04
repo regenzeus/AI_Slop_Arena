@@ -130,6 +130,9 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 Phase::Shrine { .. } => Some("shrine".into()),
                 Phase::Glitch(_) => Some("glitch".into()),
                 Phase::Recycle { .. } => Some("recycle".into()),
+                Phase::ChapterCard(_) => Some("chapter".into()),
+                Phase::Takeover { left } if *left < 15.0 && *left > 12.0 => Some("takeover".into()),
+                Phase::Takeover { .. } => None,
                 Phase::Over { .. } if settled => Some("over".into()),
                 Phase::Over { .. } => None,
             };

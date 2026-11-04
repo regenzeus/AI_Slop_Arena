@@ -15,6 +15,8 @@ pub enum Policy {
     Heuristic,
     /// Picks at random.
     Random,
+    /// The heuristic bot, but it never hands anything to the AI.
+    Luddite,
 }
 
 /// How a bot's run ended.
@@ -76,10 +78,13 @@ fn value(run: &Run, c: Choice) -> f32 {
         Choice::Heal => 2.0,
         Choice::Clout(_) => 1.0,
         Choice::Glitch(_) => 14.0,
+        // The easy option is always the best one right now (AUTO-01).
+        Choice::Delegate(_) => 20.0,
     }
 }
 
-fn best(run: &Run, choices: &[Choice]) -> usize {
+/// The card the bot would take: what Automation suggests (AUTO-03).
+pub fn best(run: &Run, choices: &[Choice]) -> usize {
     (0..choices.len()).max_by(|&a, &b| value(run, choices[a]).total_cmp(&value(run, choices[b]))).unwrap_or(0)
 }
 
@@ -90,8 +95,13 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
         Phase::LevelUp(choices) => {
             let pick = match policy {
                 Policy::Random => rng.below(choices.len() as u32) as usize,
-                Policy::Heuristic => {
-                    let i = best(run, &choices);
+                Policy::Heuristic | Policy::Luddite => {
+                    let i = if policy == Policy::Luddite {
+                        let human: Vec<usize> = (0..choices.len()).filter(|&k| !matches!(choices[k], Choice::Delegate(_))).collect();
+                        *human.iter().max_by(|&&a, &&b| value(run, choices[a]).total_cmp(&value(run, choices[b]))).unwrap_or(&0)
+                    } else {
+                        best(run, &choices)
+                    };
                     // Nothing worth it: one reroll if it is free.
                     if value(run, choices[i]) < 6.0 && run.reroll_cost() == 0 && run.reroll().is_ok() {
                         return true;
@@ -105,7 +115,7 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
             let affordable: Vec<usize> = (0..offers.len()).filter(|&i| offers[i].1 <= run.clout).collect();
             let pick = match policy {
                 Policy::Random => affordable.first().copied(),
-                Policy::Heuristic => affordable.into_iter().max_by(|&a, &b| value(run, offers[a].0).total_cmp(&value(run, offers[b].0))),
+                Policy::Heuristic | Policy::Luddite => affordable.into_iter().max_by(|&a, &b| value(run, offers[a].0).total_cmp(&value(run, offers[b].0))),
             };
             match pick {
                 Some(i) => run.buy(i).is_ok(),
@@ -117,6 +127,8 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
             run.bless(i).is_ok()
         }
         Phase::Chest(_) => run.close().is_ok(),
+        Phase::ChapterCard(_) => run.next_chapter().is_ok(),
+        Phase::Takeover { .. } => false,
         // The bots keep their items.
         Phase::Recycle { .. } => run.close().is_ok(),
         Phase::Glitch(offers) => run.take_glitch(rng.below(offers.len() as u32) as usize).is_ok(),
@@ -132,12 +144,25 @@ pub fn play(seed: u64, hero: Hero, policy: Policy, limit: f32) -> Summary {
 
 /// The same, at a Temperature, with no memory of earlier runs.
 pub fn play_at(seed: u64, hero: Hero, policy: Policy, limit: f32, temperature: crate::memory::Temperature) -> Summary {
+    let run = play_run(seed, hero, policy, limit, temperature);
+    Summary {
+        victory: run.model_beaten,
+        minutes: run.minutes(),
+        bosses: run.bosses_beaten,
+        level: run.level,
+        kills: run.kills(),
+        weapons: run.weapons.iter().map(|w| (WEAPONS[w.def].name.to_string(), w.level)).collect(),
+    }
+}
+
+/// Plays a whole run, chapters and all, and hands it back (END-01).
+pub fn play_run(seed: u64, hero: Hero, policy: Policy, limit: f32, temperature: crate::memory::Temperature) -> Run {
     let mut run = Run::with(seed, hero, temperature, crate::memory::Memory::default());
     let mut rng = Rng::new(seed, 11);
     loop {
         match run.phase {
             Phase::Over { .. } => break,
-            Phase::Playing => {
+            Phase::Playing | Phase::Takeover { .. } => {
                 if run.minutes() >= limit {
                     break;
                 }
@@ -149,12 +174,5 @@ pub fn play_at(seed: u64, hero: Hero, policy: Policy, limit: f32, temperature: c
             }
         }
     }
-    Summary {
-        victory: run.model_beaten,
-        minutes: run.minutes(),
-        bosses: run.bosses_beaten,
-        level: run.level,
-        kills: run.kills(),
-        weapons: run.weapons.iter().map(|w| (WEAPONS[w.def].name.to_string(), w.level)).collect(),
-    }
+    run
 }

@@ -6,6 +6,7 @@
 //! director in [`waves`] decides who spawns as time goes by.
 
 pub mod bot;
+pub mod chapters;
 pub mod heroes;
 pub mod items;
 pub mod levels;

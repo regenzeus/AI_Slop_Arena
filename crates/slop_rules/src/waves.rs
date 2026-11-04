@@ -9,14 +9,25 @@ use slop_sim::world::{ModelSetup, Spawn};
 use crate::training::Training;
 
 /// Seconds on a platform before its boss arrives.
-pub const BOSS_AFTER: f32 = 270.0;
+pub const BOSS_AFTER: f32 = 180.0;
 /// Seconds after the sixth boss before The Model arrives.
 pub const MODEL_AFTER: f32 = 90.0;
 
-/// How far into the old 20-wave curve `minutes` of the Feed are: wave 20's
-/// strength arrives around half an hour in, and it keeps climbing.
+/// Capability (CAP-01): how strong the AI is `minutes` into a chapter that
+/// started `head_start` minutes ahead, with `automation` feeding it. It
+/// never stops climbing, and it climbs faster the more you have handed over.
 pub fn stage(minutes: f32) -> f32 {
-    1.0 + minutes * 0.62
+    capability(minutes, 0.0, 0)
+}
+
+pub fn capability(minutes: f32, head_start: f32, automation: u32) -> f32 {
+    let learned = 1.0 + automation as f32 / 200.0;
+    1.0 + (head_start + minutes * learned) * 0.62
+}
+
+/// The version string on the HUD: it ticks up every 30 s.
+pub fn version(ai: &str, chapter: usize, minutes: f32) -> String {
+    format!("{ai} v{chapter}.{}", (minutes * 2.0) as u32)
 }
 
 /// HP, damage and speed multipliers of slop at `stage`.

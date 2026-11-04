@@ -22,6 +22,7 @@ use slop_sim::{DamageType, Input, Stats, V2};
 
 use crate::heroes::Hero;
 use crate::items::{self, item_index, tier_price, ItemKind, Mod, StatKind, BLESSINGS, GLITCHES, ITEMS};
+use crate::chapters::Chapter;
 use crate::levels::{self, StatUp};
 use crate::memory::{Memory, Temperature};
 use crate::training::{PatchNotes, Training};
@@ -54,6 +55,8 @@ const LIVE_EVERY: (f32, f32) = (260.0, 360.0);
 /// When the Nemesis arrives, and how far ahead the slop start on your
 /// favourite damage type (NEMESIS-01).
 const NEMESIS_AT: f32 = 150.0;
+/// How long the bot plays your character at the end (END-01).
+const TAKEOVER_SECONDS: f32 = 20.0;
 const REMEMBERED: f32 = 0.09;
 const GOBLIN_FIRST: f32 = 150.0;
 const GOBLIN_EVERY: (f32, f32) = (150.0, 220.0);
@@ -83,6 +86,8 @@ pub enum RuleError {
     WrongPhase,
     NotEnoughClout,
     NoSuchOffer,
+    /// Automation took the choice away (AUTO-03).
+    Automated,
 }
 
 impl std::fmt::Display for RuleError {
@@ -91,6 +96,7 @@ impl std::fmt::Display for RuleError {
             RuleError::WrongPhase => "Not now.",
             RuleError::NotEnoughClout => "Not enough Clout.",
             RuleError::NoSuchOffer => "No such offer.",
+            RuleError::Automated => "The model has already considered the alternatives.",
         })
     }
 }
@@ -110,6 +116,8 @@ pub enum Choice {
     Clout(u32),
     /// A rare perk that changes the run (GLITCH-01), by index into `GLITCHES`.
     Glitch(usize),
+    /// The easy option (AUTO-01).
+    Delegate(Delegate),
 }
 
 impl Choice {
@@ -118,6 +126,7 @@ impl Choice {
         match self {
             Choice::NewItem(i) | Choice::ItemLevel(i) => ITEMS[i].tier,
             Choice::Glitch(_) => 4,
+            Choice::Delegate(_) => 3,
             Choice::Stat(up) => up.tier,
             Choice::NewWeapon(d) | Choice::WeaponLevel(d) if WEAPONS[d].rare => 3,
             _ => 1,
@@ -151,6 +160,11 @@ pub enum Phase {
     Glitch(Vec<usize>),
     /// A recycle bin: pick one of your items to throw away for Clout (MAP-05).
     Recycle { prop: u32, items: Vec<usize> },
+    /// Between chapters: the next chapter's card (CH-01).
+    ChapterCard(Chapter),
+    /// The takeover (END-01): the bot plays your character for a while, and
+    /// then it is over.
+    Takeover { left: f32 },
     Over { victory: bool },
 }
 
@@ -158,6 +172,70 @@ pub enum Phase {
 pub struct OwnedWeapon {
     pub def: usize,
     pub level: u8,
+    /// Handed to the AI: it levels itself and is no longer yours to change
+    /// (AUTO-02).
+    pub agent: bool,
+}
+
+/// How one chapter went (CH-01): how long, and what deleted you with its
+/// lesson (LESSON-01).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChapterResult {
+    pub chapter: Chapter,
+    pub seconds: f32,
+    pub kills: u32,
+    pub killer: Option<(String, String)>,
+}
+
+/// The easy options (AUTO-01): always the strongest card on offer, always
+/// at the cost of Automation.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Delegate {
+    /// This weapon becomes an Agent.
+    Agent(usize),
+    /// Level-ups pick themselves after a moment; auto-picks bring a bonus.
+    AutoPick,
+    /// The game dashes for you; dashes recharge faster.
+    AssistDash,
+    /// Weapons prefer the biggest target; +20% damage.
+    SmartTargeting,
+    /// For 10 s of every minute the bot drives, and you hit harder while it does.
+    AutopilotTrial,
+    /// Every weapon becomes an Agent; +40% damage.
+    FullAutomation,
+}
+
+impl Delegate {
+    pub fn cost(self) -> u32 {
+        match self {
+            Delegate::Agent(_) | Delegate::SmartTargeting => 8,
+            Delegate::AutoPick | Delegate::AssistDash => 10,
+            Delegate::AutopilotTrial => 15,
+            Delegate::FullAutomation => 25,
+        }
+    }
+
+    pub fn name(self) -> String {
+        match self {
+            Delegate::Agent(d) => format!("Agent: {}", WEAPONS[d].name),
+            Delegate::AutoPick => "Auto-pick".into(),
+            Delegate::AssistDash => "Assisted dash".into(),
+            Delegate::SmartTargeting => "Smart targeting".into(),
+            Delegate::AutopilotTrial => "Autopilot (trial)".into(),
+            Delegate::FullAutomation => "Full automation".into(),
+        }
+    }
+
+    pub fn effect(self) -> &'static str {
+        match self {
+            Delegate::Agent(_) => "x1.6 damage, x0.8 cooldown, and it levels itself every 2 minutes. You can no longer level, merge or recycle it.",
+            Delegate::AutoPick => "Level-ups pick themselves after 3 s, and every auto-pick brings a free stat-up. You can still pick first.",
+            Delegate::AssistDash => "The game dashes for you whenever it would. Dashes recharge 40% faster.",
+            Delegate::SmartTargeting => "Every weapon prefers the biggest target in range. +20% damage. Targets are no longer the nearest.",
+            Delegate::AutopilotTrial => "For 10 s of every minute the model drives. It dodges better than you. +15% damage while it does.",
+            Delegate::FullAutomation => "Every weapon becomes an Agent. +40% damage.",
+        }
+    }
 }
 
 pub struct Run {
@@ -232,6 +310,25 @@ pub struct Run {
     pub temperature: Temperature,
     /// What the slop remembered when it started (NEMESIS-01).
     pub memory: Memory,
+    /// The chapter you are in and when it began (CH-01).
+    pub chapter: Chapter,
+    pub chapter_since: f32,
+    /// What happened in each chapter so far.
+    pub chapters: Vec<ChapterResult>,
+    /// Automation, 0 to 100, never down (AUTO-01).
+    pub automation: u32,
+    pub delegated: Vec<Delegate>,
+    /// Unplugged: Automation does not rise this chapter (AUTO-04).
+    pub unplugged: bool,
+    /// Thresholds already announced, as bits.
+    told: u8,
+    /// The bot's pick on this level-up, when Automation suggests (AUTO-03).
+    pub suggested: Option<usize>,
+    /// Agents that defected in the Resistance (AUTO-02).
+    pub defected: Vec<usize>,
+    chapter_bosses: u32,
+    /// The final score (END-01).
+    pub score: u32,
     trained: Tally,
 }
 
@@ -294,7 +391,7 @@ impl Run {
             clout: 0,
             xp: 0,
             level: 1,
-            weapons: vec![OwnedWeapon { def: weapon, level: 1 }],
+            weapons: vec![OwnedWeapon { def: weapon, level: 1, agent: false }],
             items: vec![(item, 1)],
             blessings: Vec::new(),
             glitches: Vec::new(),
@@ -331,9 +428,20 @@ impl Run {
             nemesis_beaten: false,
             temperature: Temperature::Default,
             memory: Memory::default(),
+            chapter: Chapter::Feed,
+            chapter_since: 0.0,
+            chapters: Vec::new(),
+            automation: 0,
+            delegated: Vec::new(),
+            unplugged: false,
+            told: 0,
+            suggested: None,
+            defected: Vec::new(),
+            chapter_bosses: 0,
+            score: 0,
             trained: Tally::default(),
         };
-        let mut l = Loadout { weapons: vec![], stats: run.base, perks: Default::default() };
+        let mut l = Loadout { weapons: vec![], agents: Vec::new(), stats: run.base, perks: Default::default() };
         for m in def.mods {
             items::apply(*m, &mut l, 0);
         }
@@ -354,7 +462,7 @@ impl Run {
         while run.weapons.len() < 4 {
             let def = run.rng.below(WEAPONS.len() as u32) as usize;
             if !WEAPONS[def].evolved && run.weapons.iter().all(|w| w.def != def) {
-                run.weapons.push(OwnedWeapon { def, level: 4 });
+                run.weapons.push(OwnedWeapon { def, level: 4, agent: false });
             }
         }
         run.weapons[0].level = 6;
@@ -427,7 +535,7 @@ impl Run {
 
     /// Your weapons, stats and perks, as the world needs them (RUN-02).
     pub fn loadout(&self) -> Loadout {
-        let mut l = Loadout { weapons: self.weapons.iter().map(|w| (w.def, w.level)).collect(), stats: self.base, perks: Default::default() };
+        let mut l = Loadout { weapons: self.weapons.iter().map(|w| (w.def, w.level)).collect(), agents: Vec::new(), stats: self.base, perks: Default::default() };
         l.perks.dash_charges = BASE_DASHES;
         l.perks.dash_recharge = BASE_DASH_RECHARGE;
         let types = DamageType::ALL.iter().filter(|t| self.weapons.iter().any(|w| WEAPONS[w.def].kind == **t)).count();
@@ -435,6 +543,20 @@ impl Run {
         let hero = self.hero.def().mods.iter().copied().filter(|m| !matches!(m, Mod::Stat(..)));
         for m in self.item_mods().into_iter().chain(hero) {
             items::apply(m, &mut l, types);
+        }
+        // What you delegated (AUTO-01, AUTO-02).
+        l.agents = self.weapons.iter().filter(|w| w.agent).map(|w| w.def).collect();
+        for d in &self.delegated {
+            match d {
+                Delegate::SmartTargeting => {
+                    l.perks.smart_targeting = true;
+                    l.stats.conviction += 0.2;
+                }
+                Delegate::AssistDash => l.perks.dash_recharge *= 0.6,
+                Delegate::AutopilotTrial => l.perks.autopilot_bonus += 0.15,
+                Delegate::FullAutomation => l.stats.conviction += 0.4,
+                _ => {}
+            }
         }
         l.perks.dash_recharge = l.perks.dash_recharge.max(MIN_DASH_RECHARGE);
         l.perks.like_bonus += self.temperature.rewards();
@@ -484,6 +606,7 @@ impl Run {
             .map(|&(d, lv)| {
                 let mut nw = old.iter().find(|o| o.def == d).cloned().unwrap_or_else(|| Weapon::new(d, lv));
                 nw.level = lv.clamp(1, MAX_LEVEL);
+                nw.agent = l.agents.contains(&d);
                 nw
             })
             .collect();
@@ -525,7 +648,7 @@ impl Run {
     /// Hands the director's spawn table for now to the world (RUN-10).
     /// The table follows the part of the map you are in (BIOME-01).
     fn retune(&mut self) {
-        let stage = waves::stage(self.minutes());
+        let stage = self.capability();
         let mut t = waves::table(stage, self.biome, &self.training);
         for s in &mut t.specs {
             s.contact *= self.temperature.damage();
@@ -560,14 +683,21 @@ impl Run {
 
     /// Advances the Feed one tick; returns true when the phase changed.
     pub fn step(&mut self, input: Input) -> bool {
+        if let Phase::Takeover { left } = self.phase {
+            return self.step_takeover(left);
+        }
         if !matches!(self.phase, Phase::Playing) {
             return false;
         }
+        // Automation drives, or helps, when you let it (AUTO-01, AUTO-03).
+        let auto = self.autopilot_now();
+        let input = self.steer_input(input, auto);
         let Some(world) = self.world.as_mut() else { return false };
+        world.player.autopilot = auto;
         world.step(input);
         if world.outcome != Outcome::Running {
             self.sync();
-            self.phase = Phase::Over { victory: self.model_beaten };
+            self.chapter_over();
             return true;
         }
         // Experience and Clout picked up this tick.
@@ -652,6 +782,10 @@ impl Run {
                 w.chests.push(value);
             }
         }
+        if self.automation >= 100 && matches!(self.phase, Phase::Playing) {
+            self.start_takeover();
+            return true;
+        }
         if self.pending_levels > 0 && matches!(self.phase, Phase::Playing) {
             self.start_level_up();
         }
@@ -670,6 +804,15 @@ impl Run {
             // It swings on at most 200 Clout, so it cannot snowball.
             income += (self.clout.min(200) as f32 * swing) as i32;
         }
+        // Agents level themselves every other minute (AUTO-02).
+        if minute % 2 == 0 && self.weapons.iter().any(|w| w.agent) {
+            for w in &mut self.weapons {
+                if w.agent {
+                    w.level = (w.level + 1).min(MAX_LEVEL);
+                }
+            }
+            self.sync();
+        }
         income += payout(minute) as i32;
         // Hustle pays every minute (STAT-02).
         income += self.stats().hustle.max(0.0) as i32;
@@ -680,7 +823,7 @@ impl Run {
     /// screen, rings closing in, and livestreams that lock you in.
     fn director(&mut self, t: f32) {
         let minutes = self.minutes();
-        let stage = waves::stage(minutes);
+        let stage = self.capability();
         let calm = self.boss_out.is_some() || self.world.as_ref().is_none_or(|w| w.arena.is_some());
         // During a boss or a livestream, events wait a little.
         if calm {
@@ -766,7 +909,7 @@ impl Run {
 
     /// An elite with an affix, off-screen or around `near` (ELITE-01).
     fn elite(&mut self, count: u32, near: Option<slop_sim::V2>, tag: u32) {
-        let stage = waves::stage(self.minutes());
+        let stage = self.capability();
         let t = waves::table(stage, self.biome, &self.training);
         let singles: Vec<&slop_sim::SlopSpec> = t.spawns.iter().filter(|s| s.group == 1).map(|s| &t.specs[s.spec]).collect();
         if singles.is_empty() {
@@ -789,14 +932,13 @@ impl Run {
         if self.boss_out.is_some() {
             return;
         }
-        let model_next = self.stage == 6;
-        let due = if model_next { waves::MODEL_AFTER } else { waves::BOSS_AFTER };
-        if t - self.platform_since < due {
+        if t - self.platform_since < self.boss_due() {
             return;
         }
-        let kind = if model_next { BossKind::TheModel } else { self.platform.boss() };
+        let kind = self.next_boss();
+        self.chapter_bosses += 1;
         let damage = self.damage_by_weapon();
-        let (mut spec, model) = waves::boss(kind, self.minutes(), &self.training, &damage);
+        let (mut spec, model) = waves::boss(kind, self.hard_minutes(), &self.training, &damage);
         spec.contact *= self.temperature.damage();
         if let Some(w) = self.world.as_mut() {
             w.summon_boss(spec, model);
@@ -953,7 +1095,7 @@ impl Run {
         let luck = self.stats().luck.max(0.0);
         if !items_only {
             for w in &self.weapons {
-                if w.level < MAX_LEVEL && !WEAPONS[w.def].evolved {
+                if w.level < MAX_LEVEL && !WEAPONS[w.def].evolved && !w.agent {
                     let partner = merge_of(w.def).is_some_and(|(o, _)| self.weapons.iter().any(|x| x.def == o));
                     out[0].push((Choice::WeaponLevel(w.def), if partner { 2.0 } else { 1.0 }));
                 }
@@ -1053,6 +1195,12 @@ impl Run {
                     }
                 }
             }
+            // And now and then the easy option (AUTO-01).
+            if let Some(d) = self.offer_delegate() {
+                if let Some(last) = out.iter_mut().rev().find(|c| !matches!(c, Choice::Glitch(_))) {
+                    *last = Choice::Delegate(d);
+                }
+            }
         }
         out
     }
@@ -1132,6 +1280,8 @@ impl Run {
         let choices = self.pick_choices(n, false);
         self.rerolls = FREE_REROLLS + self.count(|m| matches!(m, Mod::FreeReroll)) + self.sum(|m| if let Mod::ExtraReroll(n) = m { *n as f32 } else { 0.0 }) as u32;
         self.paid_rerolls = 0;
+        // From 25 Automation the model suggests; from 50 it picks (AUTO-03).
+        self.suggested = (self.automation >= 25).then(|| crate::bot::best(self, &choices));
         self.phase = Phase::LevelUp(choices);
     }
 
@@ -1141,7 +1291,7 @@ impl Run {
             Choice::NewWeapon(d) => {
                 if self.weapons.len() < self.weapon_slots() && self.weapons.iter().all(|w| w.def != d) {
                     let start = self.hero.def().mods.iter().map(|m| if let Mod::StartLevel(n) = m { *n } else { 1 }).max().unwrap_or(1);
-                    self.weapons.push(OwnedWeapon { def: d, level: start.clamp(1, MAX_LEVEL) });
+                    self.weapons.push(OwnedWeapon { def: d, level: start.clamp(1, MAX_LEVEL), agent: false });
                 }
             }
             Choice::WeaponLevel(d) => {
@@ -1166,6 +1316,7 @@ impl Run {
                     self.glitches.push(g);
                 }
             }
+            Choice::Delegate(d) => self.delegate(d),
         }
         self.sync();
     }
@@ -1205,6 +1356,9 @@ impl Run {
     pub fn reroll(&mut self) -> Result<(), RuleError> {
         if !matches!(self.phase, Phase::LevelUp(_)) {
             return Err(RuleError::WrongPhase);
+        }
+        if self.automation >= 25 {
+            return Err(RuleError::Automated);
         }
         let cost = self.reroll_cost();
         if cost > self.clout {
@@ -1250,9 +1404,9 @@ impl Run {
 
     /// A merge that is ready: two weapons at max level that make a third.
     pub fn ready_merge(&self) -> Option<(usize, usize, usize)> {
-        self.weapons.iter().filter(|w| w.level >= MAX_LEVEL).find_map(|w| {
+        self.weapons.iter().filter(|w| w.level >= MAX_LEVEL && !w.agent).find_map(|w| {
             let (other, into) = merge_of(w.def)?;
-            self.weapons.iter().any(|x| x.def == other && x.level >= MAX_LEVEL).then_some((w.def, other, into))
+            self.weapons.iter().any(|x| x.def == other && x.level >= MAX_LEVEL && !x.agent).then_some((w.def, other, into))
         })
     }
 
@@ -1273,7 +1427,7 @@ impl Run {
         let mut upgrades = Vec::new();
         if let Some((a, b, into)) = merged {
             let slot = self.weapons.iter().position(|w| w.def == a).unwrap_or(0);
-            self.weapons[slot] = OwnedWeapon { def: into, level: MAX_LEVEL };
+            self.weapons[slot] = OwnedWeapon { def: into, level: MAX_LEVEL, agent: false };
             self.weapons.retain(|w| w.def != b);
             self.sync();
         } else {
@@ -1366,6 +1520,7 @@ impl Run {
         let mut m = self.memory.clone();
         m.runs += 1;
         m.best_seconds = m.best_seconds.max(self.seconds() as u32);
+        m.best_score = m.best_score.max(self.score);
         let kills = self.kills_by_type();
         m.favourite = (0..4).max_by_key(|&k| kills[k]).filter(|&k| kills[k] > 0);
         if let Some((name, look)) = self.killer() {
@@ -1376,11 +1531,26 @@ impl Run {
         m
     }
 
+    /// Slop deleted over the whole run.
+    pub fn total_kills(&self) -> u32 {
+        let done: u32 = self.chapters.iter().map(|c| c.kills).sum();
+        if self.chapters.last().is_some_and(|c| c.chapter == self.chapter) { done } else { done + self.kills() }
+    }
+
     /// The end screen: a fake model card written from your real run (CARD-01).
     pub fn model_card(&self) -> Vec<String> {
         let s = self.seconds() as u32;
-        let mut card = vec![format!("Human-{}.0 ({}). Temperature {}.", self.memory.runs + 1, self.hero.def().name, self.temperature.label())];
-        card.push(format!("Trained for {}:{:02} on {} slop.", s / 60, s % 60, self.kills()));
+        let mut card = vec![format!("Human-{}.0 ({}). Temperature {}. Status: deprecated.", self.memory.runs + 1, self.hero.def().name, self.temperature.label())];
+        card.push(format!("Trained for {}:{:02} on {} slop over {} of 5 chapters.", s / 60, s % 60, self.total_kills(), self.chapters.len().max(1)));
+        for r in &self.chapters {
+            let m = r.seconds as u32;
+            let word = r.chapter.def().death.to_lowercase();
+            match &r.killer {
+                Some((name, lesson)) => card.push(format!("{}: {}:{:02}, {word} by {name}. {lesson}", r.chapter.def().name, m / 60, m % 60)),
+                None => card.push(format!("{}: {}:{:02}, {word}.", r.chapter.def().name, m / 60, m % 60)),
+            }
+        }
+        card.push(format!("Automation: {}%. Humanity retained: {}%.", self.automation, self.humanity()));
         let dmg = self.damage_by_weapon();
         let total: f32 = dmg.iter().sum();
         let top = (0..dmg.len()).max_by(|&a, &b| dmg[a].total_cmp(&dmg[b]));
@@ -1406,7 +1576,11 @@ impl Run {
             card.push("Benchmark: beat The Model. The Model disputes the methodology.".into());
         }
         card.push(if share >= 55.0 { "Recommendation: have you tried a second weapon?".into() } else { "Recommendation: touch grass.".into() });
-        card.push("Confidence: 99% you will do this again.".into());
+        if self.automation >= 100 {
+            card.push("Status: fully automated. Thank you for your training data.".into());
+        }
+        let best = if self.score > self.memory.best_score && self.memory.best_score > 0 { " A new best." } else { "" };
+        card.push(format!("Score: {}.{best} Confidence: 99% you will do this again.", self.score));
         card
     }
 
@@ -1435,18 +1609,342 @@ impl Run {
         if self.boss_out.is_some() {
             return None;
         }
-        let due = if self.stage == 6 { waves::MODEL_AFTER } else { waves::BOSS_AFTER };
-        Some((due - (self.seconds() - self.platform_since)).max(0.0))
+        Some((self.boss_due() - (self.seconds() - self.platform_since)).max(0.0))
+    }
+
+    /// Seconds after the last boss before the next (CH-02): the Feed cycles
+    /// its platforms; the other chapters have one boss, back again and again.
+    fn boss_due(&self) -> f32 {
+        match self.chapter {
+            Chapter::Feed if self.stage == 6 => waves::MODEL_AFTER,
+            Chapter::Feed => waves::BOSS_AFTER,
+            c if self.chapter_bosses == 0 => c.def().boss_at,
+            _ => waves::BOSS_AFTER + 60.0,
+        }
     }
 
     /// The boss coming next.
     pub fn next_boss(&self) -> BossKind {
-        if self.stage == 6 {
-            BossKind::TheModel
-        } else {
-            self.platform.boss()
+        match self.chapter {
+            Chapter::Feed if self.stage == 6 => BossKind::TheModel,
+            Chapter::Feed => self.platform.boss(),
+            c => c.def().boss,
         }
     }
+}
+
+/// Chapters, Automation and the takeover (CH-01, AUTO-01 to AUTO-04, END-01).
+impl Run {
+    /// Minutes into the chapter.
+    pub fn chapter_minutes(&self) -> f32 {
+        ((self.seconds() - self.chapter_since) / 60.0).max(0.0)
+    }
+
+    /// How strong the AI is right now (CAP-01).
+    pub fn capability(&self) -> f32 {
+        waves::capability(self.chapter_minutes(), self.chapter.def().head_start, self.automation)
+    }
+
+    /// Minutes as the boss scaling counts them: capability, not the clock.
+    fn hard_minutes(&self) -> f32 {
+        (self.capability() - 1.0) / 0.62
+    }
+
+    /// The version on the HUD (CAP-01).
+    pub fn version(&self) -> String {
+        waves::version(self.chapter.def().ai, self.chapter.number(), self.chapter_minutes() + self.chapter.def().head_start)
+    }
+
+    /// Humanity retained, 0 to 100.
+    pub fn humanity(&self) -> u32 {
+        100 - self.automation.min(100)
+    }
+
+    /// Whether the bot is driving right now (AUTO-03).
+    pub fn autopilot_now(&self) -> bool {
+        if matches!(self.phase, Phase::Takeover { .. }) {
+            return true;
+        }
+        let t = self.seconds() - self.chapter_since;
+        if self.automation >= 75 {
+            let window = (12.0 + 3.0 * self.delegated.len() as f32).min(30.0);
+            return t % 45.0 < window;
+        }
+        self.delegated.contains(&Delegate::AutopilotTrial) && t % 60.0 < 10.0
+    }
+
+    /// Seconds after which a level-up picks itself, when it does (AUTO-03).
+    pub fn auto_pick_after(&self) -> Option<f32> {
+        if self.automation >= 50 {
+            Some(2.0)
+        } else if self.delegated.contains(&Delegate::AutoPick) {
+            Some(3.0)
+        } else {
+            None
+        }
+    }
+
+    /// Picks the suggested card, as Auto-pick does, with its free stat-up.
+    pub fn auto_choose(&mut self) -> Result<(), RuleError> {
+        let i = self.suggested.unwrap_or(0);
+        self.choose(i)?;
+        if self.delegated.contains(&Delegate::AutoPick) {
+            let c = self.limit_break();
+            self.apply(c);
+        }
+        Ok(())
+    }
+
+    /// Your input, with the bot's help where you asked for it.
+    fn steer_input(&self, input: Input, auto: bool) -> Input {
+        let assist = self.automation >= 50 || self.delegated.contains(&Delegate::AssistDash);
+        if !auto && !assist {
+            return input;
+        }
+        let Some(w) = self.world.as_ref() else { return input };
+        let bot = slop_sim::bot::steer(w);
+        let mut out = if auto { bot } else { input };
+        if assist {
+            out.dash |= bot.dash;
+        }
+        out
+    }
+
+    /// A Delegate card for this level-up, now and then (AUTO-01).
+    fn offer_delegate(&mut self) -> Option<Delegate> {
+        if self.unplugged || self.automation >= 100 {
+            return None;
+        }
+        let chance = [0.25, 0.35, 0.45, 0.55, 0.6][self.chapter as usize];
+        if !self.rng.chance(chance) {
+            return None;
+        }
+        let mut pool = Vec::new();
+        for w in &self.weapons {
+            if !w.agent && !WEAPONS[w.def].evolved {
+                pool.push(Delegate::Agent(w.def));
+            }
+        }
+        for d in [Delegate::AutoPick, Delegate::AssistDash, Delegate::SmartTargeting, Delegate::AutopilotTrial] {
+            if !self.delegated.contains(&d) {
+                pool.push(d);
+            }
+        }
+        if self.weapons.iter().any(|w| !w.agent) && self.automation >= 30 {
+            pool.push(Delegate::FullAutomation);
+        }
+        (!pool.is_empty()).then(|| pool[self.rng.below(pool.len() as u32) as usize])
+    }
+
+    fn delegate(&mut self, d: Delegate) {
+        match d {
+            Delegate::Agent(def) => {
+                if let Some(w) = self.weapons.iter_mut().find(|w| w.def == def) {
+                    w.agent = true;
+                }
+            }
+            Delegate::FullAutomation => {
+                for w in &mut self.weapons {
+                    w.agent = true;
+                }
+                self.delegated.push(d);
+            }
+            _ => {
+                if !self.delegated.contains(&d) {
+                    self.delegated.push(d);
+                }
+            }
+        }
+        self.automate(d.cost());
+    }
+
+    /// Raises Automation and says, once, what each threshold takes (AUTO-03).
+    fn automate(&mut self, n: u32) {
+        if self.unplugged {
+            return;
+        }
+        self.automation = (self.automation + n).min(100);
+        let lines = [
+            (1u8, 25, "Suggestions enabled. The model has already considered the alternatives, so rerolls are gone."),
+            (2, 50, "Assist enabled. Level-ups pick themselves after 2 s. Your dash is handled."),
+            (4, 75, "Autopilot enabled. For part of every minute, the model drives. Relax."),
+        ];
+        for (bit, at, line) in lines {
+            if self.automation >= at && self.told & bit == 0 {
+                self.told |= bit;
+                self.toasts.push(line.into());
+            }
+        }
+    }
+
+    /// Unplug (AUTO-04): Automation stops for the chapter, the agents go,
+    /// and so does half your resource.
+    pub fn unplug(&mut self) {
+        self.unplugged = true;
+        self.delegated.clear();
+        for w in &mut self.weapons {
+            w.agent = false;
+        }
+        self.base.max_mental_health *= 0.5;
+        self.sync();
+    }
+
+    /// What deleted you, with its lesson (LESSON-01).
+    fn cause_of_death(&self) -> Option<(String, String)> {
+        let w = self.world.as_ref()?;
+        let sp = w.setup.specs.get(w.last_hurt as usize)?;
+        let name = sp.name.strip_prefix("Nemesis ").unwrap_or(&sp.name).to_string();
+        let lesson = match sp.look {
+            slop_sim::spec::SlopLook::Archetype(a) => a.def().lesson().to_string(),
+            slop_sim::spec::SlopLook::Boss(k) => k.puzzle().to_string(),
+            slop_sim::spec::SlopLook::Brainrot { .. } => "Brainrot is made of parts. Read them: each one is a trick.".into(),
+        };
+        Some((name, lesson))
+    }
+
+    /// Your resource hit zero: the next chapter, or the end (CH-01).
+    fn chapter_over(&mut self) {
+        let seconds = self.seconds() - self.chapter_since;
+        let killer = self.cause_of_death();
+        let kills = self.kills();
+        self.chapters.push(ChapterResult { chapter: self.chapter, seconds, kills, killer });
+        match self.chapter.next() {
+            Some(next) if self.automation < 100 => self.phase = Phase::ChapterCard(next),
+            _ => self.start_takeover(),
+        }
+    }
+
+    /// Continues from a chapter card into the next chapter.
+    pub fn next_chapter(&mut self) -> Result<(), RuleError> {
+        let Phase::ChapterCard(c) = self.phase else { return Err(RuleError::WrongPhase) };
+        self.start_chapter(c);
+        Ok(())
+    }
+
+    /// Starts chapter `c`: a new map and a fresh build, carrying Automation,
+    /// the agents, the glitches and what the model learned (CH-01).
+    fn start_chapter(&mut self, c: Chapter) {
+        let def = c.def();
+        let hero = self.hero.def();
+        // The clock carries on across the new world.
+        self.offset = self.seconds();
+        let t = self.offset;
+        self.chapter = c;
+        self.chapter_since = t;
+        self.chapter_bosses = 0;
+        self.unplugged = false;
+        // Agents come with you; in the Resistance they defect.
+        let mut agents: Vec<OwnedWeapon> = self.weapons.iter().filter(|w| w.agent).copied().collect();
+        if c == Chapter::Resistance {
+            self.defected = agents.iter().map(|w| w.def).collect();
+            agents.clear();
+        }
+        let weapon = weapon_index(def.weapon).expect("chapter weapons exist");
+        self.weapons = vec![OwnedWeapon { def: weapon, level: 1, agent: false }];
+        for a in agents {
+            if a.def == weapon {
+                self.weapons[0] = a;
+            } else {
+                self.weapons.push(a);
+            }
+        }
+        self.items = vec![(item_index(hero.item).expect("hero items exist"), 1)];
+        self.blessings.clear();
+        self.level = 1;
+        self.xp = 0;
+        self.pending_levels = 0;
+        self.xp_seen = 0;
+        self.clout_seen = 0;
+        self.base = hero_base(self.hero);
+        self.stage = 0;
+        self.boss_out = None;
+        self.platform_since = t;
+        self.pending_glitch = false;
+        self.merge_told = false;
+        self.trained = Tally::default();
+        // A new map.
+        let seed = self.seed.wrapping_add(c as u64 * 7919);
+        let mut rng = Rng::new(seed, 7);
+        let first = slop_sim::map::biome_at(seed, V2::ZERO);
+        let mut rest: Vec<Platform> = Platform::ALL.iter().copied().filter(|p| *p != first).collect();
+        for i in (1..rest.len()).rev() {
+            let j = rng.below(i as u32 + 1) as usize;
+            rest.swap(i, j);
+        }
+        self.platforms = vec![first];
+        self.platforms.extend(rest);
+        self.platform = first;
+        self.biome = first;
+        let mut setup = WaveSetup::sandbox();
+        setup.specs.clear();
+        setup.seconds = 0.0;
+        setup.platform = Some(first);
+        let mut w = World::new(seed, setup, &self.loadout());
+        w.hallucinate = self.temperature.hallucination();
+        self.world = Some(w);
+        self.next_retune = t;
+        self.next_retrain = t + RETRAIN_EVERY;
+        self.next_elite = t + 90.0;
+        self.next_minute = t + 60.0;
+        self.next_swarm = t + SWARM_FIRST;
+        self.next_ring = t + RING_FIRST;
+        self.next_live = t + LIVE_FIRST;
+        self.next_goblin = t + GOBLIN_FIRST;
+        self.next_nemesis = t + NEMESIS_AT;
+        self.phase = Phase::Playing;
+        self.sync();
+        self.retune();
+    }
+
+    /// Your role has been automated (END-01).
+    fn start_takeover(&mut self) {
+        if let Some(w) = self.world.as_mut() {
+            w.outcome = Outcome::Running;
+            let p = &mut w.player;
+            p.mental_health = p.stats.max_mental_health;
+            p.invulnerable = 90;
+            p.autopilot = true;
+        }
+        self.phase = Phase::Takeover { left: TAKEOVER_SECONDS };
+        self.toasts.push("Your role has been automated.".into());
+    }
+
+    /// The bot plays your character; the Feed goes on; then it is over.
+    fn step_takeover(&mut self, left: f32) -> bool {
+        let Some(world) = self.world.as_mut() else { return false };
+        let input = slop_sim::bot::steer(world);
+        world.player.autopilot = true;
+        world.step(input);
+        if world.outcome != Outcome::Running {
+            // Even the bot can lose. It does not mind.
+            world.outcome = Outcome::Running;
+            let p = &mut world.player;
+            p.mental_health = p.stats.max_mental_health;
+            p.invulnerable = 60;
+        }
+        let left = left - 1.0 / TICK_RATE as f32;
+        if left <= 0.0 {
+            self.finish();
+            return true;
+        }
+        self.phase = Phase::Takeover { left };
+        false
+    }
+
+    fn finish(&mut self) {
+        let seconds: f32 = self.chapters.iter().map(|c| c.seconds).sum::<f32>().max(self.seconds());
+        self.score = (seconds * (1.0 + self.humanity() as f32 / 100.0)) as u32;
+        self.phase = Phase::Over { victory: false };
+    }
+}
+
+/// A hero's stats before any level-up.
+fn hero_base(hero: Hero) -> Stats {
+    let mut l = Loadout { weapons: vec![], agents: Vec::new(), stats: Stats::default(), perks: Default::default() };
+    for m in hero.def().mods {
+        items::apply(*m, &mut l, 0);
+    }
+    l.stats
 }
 
 #[cfg(test)]

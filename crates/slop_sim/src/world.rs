@@ -102,6 +102,9 @@ pub struct Weapon {
     pub def: usize,
     /// Level 1 to `MAX_LEVEL`.
     pub level: u8,
+    /// An Agent: it fires harder and faster and is no longer yours to
+    /// change (AUTO-02).
+    pub agent: bool,
     /// Ticks until it may attack again.
     pub cooldown: f32,
     /// Weapons can be switched off for testing.
@@ -112,7 +115,7 @@ pub struct Weapon {
 
 impl Weapon {
     pub fn new(def: usize, level: u8) -> Weapon {
-        Weapon { def, level: level.clamp(1, MAX_LEVEL), cooldown: 0.0, enabled: true, phase: 0.0 }
+        Weapon { def, level: level.clamp(1, MAX_LEVEL), agent: false, cooldown: 0.0, enabled: true, phase: 0.0 }
     }
 
     pub fn def(&self) -> &'static WeaponDef {
@@ -232,6 +235,10 @@ pub struct Perks {
     pub speed_damage: bool,
     /// Elites drop this many more chests (the Teacher grades them).
     pub elite_chests: u8,
+    /// Smart targeting: weapons prefer the biggest target, not the nearest.
+    pub smart_targeting: bool,
+    /// Damage bonus while the autopilot drives (AUTO-01).
+    pub autopilot_bonus: f32,
 }
 
 /// What you bring into a wave.
@@ -239,6 +246,8 @@ pub struct Perks {
 pub struct Loadout {
     /// Weapon index and level.
     pub weapons: Vec<(usize, u8)>,
+    /// Weapon indexes that are Agents (AUTO-02).
+    pub agents: Vec<usize>,
     pub stats: Stats,
     pub perks: Perks,
 }
@@ -246,7 +255,7 @@ pub struct Loadout {
 impl Loadout {
     /// Only these weapons, plain stats.
     pub fn with_weapons(weapons: &[usize]) -> Loadout {
-        Loadout { weapons: weapons.iter().map(|&w| (w, 1)).collect(), stats: Stats::default(), perks: Perks::default() }
+        Loadout { weapons: weapons.iter().map(|&w| (w, 1)).collect(), agents: Vec::new(), stats: Stats::default(), perks: Perks::default() }
     }
 }
 
@@ -311,6 +320,8 @@ pub struct Player {
     pub shield_wait: u16,
     /// Ticks of God Mode left.
     pub god: u16,
+    /// The bot is driving right now (AUTO-03); the client reads it.
+    pub autopilot: bool,
     pub(crate) trail_timer: u16,
     pub(crate) dnd_timer: u16,
     pub(crate) therapist_timer: u16,
@@ -332,7 +343,15 @@ impl Player {
             stats,
             perks: loadout.perks.clone(),
             invulnerable: 0,
-            weapons: loadout.weapons.iter().map(|&(d, t)| Weapon::new(d, t)).collect(),
+            weapons: loadout
+                .weapons
+                .iter()
+                .map(|&(d, t)| {
+                    let mut w = Weapon::new(d, t);
+                    w.agent = loadout.agents.contains(&d);
+                    w
+                })
+                .collect(),
             grabbed: 0,
             status: Status::default(),
             active_cooldown: vec![0.0; loadout.perks.actives.len()],
@@ -350,6 +369,7 @@ impl Player {
             shield: stats.boundaries,
             shield_wait: 0,
             god: 0,
+            autopilot: false,
             trail_timer: 0,
             dnd_timer: 0,
             therapist_timer: 0,
