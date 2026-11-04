@@ -340,12 +340,15 @@ fn spawn_slop(commands: &mut Commands, art: &Art, world: &World, s: &Slop) -> Sl
     // a ring around them and their affix above (ELITE-02).
     let mut aura = None;
     if spec.elite {
-        let affix = spec.name.split_whitespace().next().unwrap_or("ELITE").to_uppercase();
+        // A Nemesis wears its whole name: it is personal (NEMESIS-01).
+        let nemesis = spec.traits.has(Traits::NEMESIS);
+        let affix = if nemesis { "NEMESIS".to_string() } else { spec.name.split_whitespace().next().unwrap_or("ELITE").to_uppercase() };
         let color = affix_color(&affix);
         let glow = commands.spawn((Sprite { image: art.ball.clone(), custom_size: Some(Vec2::splat(spec.radius * 4.2)), color: color.with_alpha(0.35), ..default() }, Transform::from_xyz(0.0, 0.0, -0.08), ChildOf(root))).id();
         commands.spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(spec.radius * 3.0)), color: color.with_alpha(0.9), ..default() }, Transform::from_xyz(0.0, -spec.radius * 0.3, -0.07), ChildOf(glow)));
         aura = Some(glow);
-        text(commands, affix, 14.0, color, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
+        let words = if nemesis { spec.name.clone() } else { affix };
+        text(commands, words, 14.0, color, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
     }
     if s.reposted {
         text(commands, "[repost]", 12.0, theme::QUIET, Vec3::new(0.0, bar_y + 26.0, 0.12), root);
@@ -736,7 +739,10 @@ fn sync(
                 if sprite.image != *image {
                     sprite.image = image.clone();
                 }
-                let tint = if world.freeze > 0 {
+                // Injected slop are visibly not themselves (INJECT-01).
+                let tint = if world.injection > 0 && s.confused > 0 {
+                    Color::srgb(0.55, 1.0, 0.6)
+                } else if world.freeze > 0 {
                     Color::srgb(0.6, 0.85, 1.0)
                 } else if s.rooted > 0 {
                     Color::srgb(0.7, 1.0, 0.65)
@@ -964,7 +970,7 @@ fn sync(
     // A livestream's ring (EVENT-02): blinking red while it closes, solid
     // with LIVE when it holds you.
     if views.arena.is_none() {
-        let ring = commands.spawn((Root, Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(10.0)), color: Color::NONE, ..default() }, Transform::default())).id();
+        let ring = commands.spawn((Root, Sprite { image: art.thin_ring.clone(), custom_size: Some(Vec2::splat(10.0)), color: Color::NONE, ..default() }, Transform::default())).id();
         let label = text(&mut commands, "", 22.0, Color::srgb(1.0, 0.3, 0.3), Vec3::new(0.0, 0.0, 0.1), ring);
         views.arena = Some((ring, label));
     }
@@ -1366,6 +1372,7 @@ fn affix_color(affix: &str) -> Color {
         "TOXIC" => Color::srgb(0.72, 0.35, 1.0),
         "SUMMONER" => Color::srgb(0.3, 0.95, 0.95),
         "HULKING" => Color::srgb(1.0, 0.25, 0.25),
+        "NEMESIS" => Color::srgb(1.0, 1.0, 1.0),
         _ => Color::WHITE,
     }
 }

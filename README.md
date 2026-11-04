@@ -19,6 +19,12 @@ defence, rare loot, glitches, rule-bending heroes, biomes, events and the brainr
 
 ## The game
 
+The enemy is a model being trained on you: see the [direction](docs/direction.md).
+
+- **Temperature** is the difficulty. 0.2 is a calm first run; 1.5 is unhinged.
+- **The model learns you.** The HUD and level-up cards show what it resists. The end
+  screen is a model card about your run, and what deleted you comes back by name.
+- **Prompt Injection** turns the slop on each other.
 - **One endless run on an endless map.** The map is a patchwork of the six parody
   platforms (FaceSlop, LinkedOut, MeTube, Thredd, InstaSlop, ClockTok): walk into a square
   and its floor, slop and hazard take over. Bosses come in order, about 4:30 apart; after
@@ -104,6 +110,7 @@ sh tools/check.sh
 
 ## Docs
 
+- [Direction](docs/direction.md)
 - [Version 4 design](docs/design-v4.md)
 - [Version 3 design](docs/design-v3.md)
 - [Requirements](docs/requirements.md)

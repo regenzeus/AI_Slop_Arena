@@ -231,3 +231,48 @@ fn a_maxed_build_gets_paid_instead_of_stopped() {
     assert!(matches!(run.phase, Phase::Playing), "no chest screen when nothing can be upgraded");
     assert!(run.clout > clout);
 }
+
+// REQ: NEMESIS-01, CARD-01
+#[test]
+fn what_killed_you_comes_back_and_the_card_tells_the_truth() {
+    use crate::memory::{Memory, Temperature};
+    use slop_sim::content::Archetype;
+    use slop_sim::spec::SlopLook;
+    let memory = Memory { runs: 3, favourite: Some(0), killer: Some("Glass Fruit".into()), killer_look: Some(SlopLook::Archetype(Archetype::GlassFruit)), killer_count: 1, ..Memory::default() };
+    let mut run = Run::with(21, Hero::Boomer, Temperature::Default, memory);
+    assert!(run.training.model[0] > 0.05, "it starts ahead on your favourite damage type");
+    // Survive to the Nemesis.
+    run.base.max_mental_health = 1e7;
+    run.world.as_mut().unwrap().player.stats.max_mental_health = 1e7;
+    run.world.as_mut().unwrap().player.mental_health = 1e7;
+    let mut rng = slop_sim::rng::Rng::new(1, 1);
+    let mut seen = false;
+    while run.seconds() < 170.0 && !seen {
+        if matches!(run.phase, Phase::Playing) {
+            run.step(Default::default());
+            let w = run.world.as_ref().unwrap();
+            seen = w.setup.specs.iter().any(|s| s.name == "Nemesis Glass Fruit" && s.elite);
+        } else {
+            crate::bot::decide(&mut run, crate::bot::Policy::Heuristic, &mut rng);
+        }
+    }
+    assert!(seen, "the thing that deleted you is back, by name");
+    // The card and the next memory come from what really happened.
+    let w = run.world.as_mut().unwrap();
+    let spec = w.setup.specs.iter().position(|s| s.name == "Nemesis Glass Fruit").unwrap();
+    w.last_hurt = spec as u16;
+    let card = run.model_card().join("\n");
+    assert!(card.contains("Human-4.0") && card.contains("Glass Fruit, 2 times"), "{card}");
+    let next = run.remembered();
+    assert_eq!((next.runs, next.killer_count, next.killer.as_deref()), (4, 2, Some("Glass Fruit")));
+}
+
+// REQ: TEMP-01
+#[test]
+fn temperature_sets_the_crowd_and_the_rewards() {
+    use crate::memory::{Memory, Temperature};
+    let hot = Run::with(5, Hero::Boomer, Temperature::Unhinged, Memory::default());
+    let cold = Run::with(5, Hero::Boomer, Temperature::Low, Memory::default());
+    assert!(hot.loadout().perks.like_bonus > cold.loadout().perks.like_bonus);
+    assert!(hot.world.as_ref().unwrap().hallucinate > 0.0 && cold.world.as_ref().unwrap().hallucinate == 0.0);
+}

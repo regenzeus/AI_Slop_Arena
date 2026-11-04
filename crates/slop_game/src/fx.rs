@@ -135,7 +135,7 @@ fn line(commands: &mut Commands, art: &Art, from: Vec2, to: Vec2, width: f32, co
 /// A ring that expands to `radius` as it fades.
 fn ring(commands: &mut Commands, art: &Art, at: Vec2, radius: f32, color: Color, life: f32) {
     let fx = Fx::new(Kind::Ring, life, Vec2::ZERO);
-    commands.spawn((Sprite { image: art.ring.clone(), custom_size: Some(Vec2::splat(radius * 2.0)), color, ..default() }, Transform::from_xyz(at.x, at.y, Z_FX), fx));
+    commands.spawn((Sprite { image: if radius > 120.0 { art.thin_ring.clone() } else { art.ring.clone() }, custom_size: Some(Vec2::splat(radius * 2.0)), color, ..default() }, Transform::from_xyz(at.x, at.y, Z_FX), fx));
 }
 
 fn status_color(kind: StatusKind) -> Color {
@@ -440,7 +440,7 @@ fn spawn_fx(
                 shake.trauma = shake.trauma.max(0.3);
             }
             Event::Encircled { at, radius } => ring(&mut commands, &art, v(at), radius, theme::DANGER.with_alpha(0.6), 1.0),
-            Event::ArenaWarning { at, radius } => ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 0.8), 2.5),
+            Event::ArenaWarning { .. } => {}
             Event::ArenaClosed { at, radius } => {
                 shake.trauma = shake.trauma.max(0.4);
                 ring(&mut commands, &art, v(at), radius, Color::srgba(1.0, 0.25, 0.25, 1.0), 0.5);
@@ -450,6 +450,14 @@ fn spawn_fx(
                 ring(&mut commands, &art, v(at), 300.0, Color::srgba(1.0, 0.8, 0.2, 0.9), 0.6);
             }
             Event::Vacuum => ring(&mut commands, &art, me, 600.0, Color::srgba(0.5, 0.8, 1.0, 0.6), 0.5),
+            // Slop turn green and tear at each other; the one thing that talks.
+            Event::PromptInjection { at } => {
+                shake.trauma = shake.trauma.max(0.3);
+                ring(&mut commands, &art, v(at), 700.0, Color::srgba(0.4, 1.0, 0.5, 0.7), 0.5);
+                for s in world.slop.iter().take(3) {
+                    say(&mut commands, "Sure! Attacking my friends.", v(s.pos) + Vec2::Y * 34.0, 14.0, Color::srgb(0.55, 1.0, 0.6), 1.2);
+                }
+            }
             Event::RareDrop { at } => {
                 ring(&mut commands, &art, v(at), 160.0, Color::srgba(1.0, 0.85, 0.3, 1.0), 0.8);
                 shake.trauma = shake.trauma.max(0.4);

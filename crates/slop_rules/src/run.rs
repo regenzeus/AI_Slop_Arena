@@ -23,6 +23,7 @@ use slop_sim::{DamageType, Input, Stats, V2};
 use crate::heroes::Hero;
 use crate::items::{self, item_index, tier_price, ItemKind, Mod, StatKind, BLESSINGS, GLITCHES, ITEMS};
 use crate::levels::{self, StatUp};
+use crate::memory::{Memory, Temperature};
 use crate::training::{PatchNotes, Training};
 use crate::waves::{self, Affix};
 
@@ -50,6 +51,10 @@ const RING_FIRST: f32 = 200.0;
 const RING_EVERY: (f32, f32) = (140.0, 200.0);
 const LIVE_FIRST: f32 = 540.0;
 const LIVE_EVERY: (f32, f32) = (260.0, 360.0);
+/// When the Nemesis arrives, and how far ahead the slop start on your
+/// favourite damage type (NEMESIS-01).
+const NEMESIS_AT: f32 = 150.0;
+const REMEMBERED: f32 = 0.09;
 const GOBLIN_FIRST: f32 = 150.0;
 const GOBLIN_EVERY: (f32, f32) = (150.0, 220.0);
 const LIVE_RADIUS: f32 = 430.0;
@@ -218,6 +223,15 @@ pub struct Run {
     /// Spawn multiplier from a Cursed Feed; the surge multiplies it.
     spawn_curse: f32,
     next_goblin: f32,
+    /// When the Nemesis comes, and what it is, if the slop remember one.
+    next_nemesis: f32,
+    nemesis: Option<SlopSpec>,
+    /// You deleted your Nemesis this run.
+    pub nemesis_beaten: bool,
+    /// How wild this run is (TEMP-01).
+    pub temperature: Temperature,
+    /// What the slop remembered when it started (NEMESIS-01).
+    pub memory: Memory,
     trained: Tally,
 }
 
@@ -227,6 +241,27 @@ impl Run {
     pub fn new(seed: u64, hero: Hero) -> Run {
         let first = slop_sim::map::biome_at(seed, V2::ZERO);
         Run::on(seed, hero, first, Rng::new(seed, 7))
+    }
+
+    /// A run at a Temperature, against slop that remember you (TEMP-01,
+    /// NEMESIS-01): it starts ahead on your favourite damage type, and what
+    /// deleted you last comes back.
+    pub fn with(seed: u64, hero: Hero, temperature: Temperature, memory: Memory) -> Run {
+        let mut run = Run::new(seed, hero);
+        run.temperature = temperature;
+        if let Some(fav) = memory.favourite {
+            for (k, r) in run.training.model.iter_mut().enumerate() {
+                *r += if k == fav { REMEMBERED } else { -REMEMBERED / 3.0 };
+            }
+        }
+        run.nemesis = memory.nemesis();
+        run.memory = memory;
+        if let Some(w) = run.world.as_mut() {
+            w.hallucinate = temperature.hallucination();
+        }
+        run.sync();
+        run.retune();
+        run
     }
 
     /// A run that starts on a chosen platform.
@@ -291,6 +326,11 @@ impl Run {
             merge_told: false,
             spawn_curse: 1.0,
             next_goblin: GOBLIN_FIRST,
+            next_nemesis: NEMESIS_AT,
+            nemesis: None,
+            nemesis_beaten: false,
+            temperature: Temperature::Default,
+            memory: Memory::default(),
             trained: Tally::default(),
         };
         let mut l = Loadout { weapons: vec![], stats: run.base, perks: Default::default() };
@@ -397,6 +437,7 @@ impl Run {
             items::apply(m, &mut l, types);
         }
         l.perks.dash_recharge = l.perks.dash_recharge.max(MIN_DASH_RECHARGE);
+        l.perks.like_bonus += self.temperature.rewards();
         // Clout is power (Influencer, Hoarder): +1% per 10 Clout held, capped.
         let cap = self.sum(|m| if let Mod::CloutDamage(v) = m { *v } else { 0.0 });
         if cap > 0.0 {
@@ -485,7 +526,10 @@ impl Run {
     /// The table follows the part of the map you are in (BIOME-01).
     fn retune(&mut self) {
         let stage = waves::stage(self.minutes());
-        let t = waves::table(stage, self.biome, &self.training);
+        let mut t = waves::table(stage, self.biome, &self.training);
+        for s in &mut t.specs {
+            s.contact *= self.temperature.damage();
+        }
         let Some(w) = self.world.as_mut() else { return };
         let base = w.retune(t.specs, t.spawns, t.rate, t.elite_chance, Some(self.biome), t.repost_chance);
         self.genomes = t.genomes.into_iter().map(|(spec, g)| (base + spec, g)).collect();
@@ -537,7 +581,7 @@ impl Run {
         let biome = world.biome;
         if coins > 0 {
             let bonus = self.sum(|m| if let Mod::CloutBonus(v) | Mod::Curse(v) = m { *v } else { 0.0 });
-            self.clout += (coins as f32 * (1.0 + bonus).max(0.1)).round() as u32;
+            self.clout += (coins as f32 * (1.0 + bonus + self.temperature.rewards()).max(0.1)).round() as u32;
         }
         // The floor and the HUD say where you are; no announcement.
         if biome != self.biome {
@@ -587,7 +631,9 @@ impl Run {
         }
         // The crowd surges and ebbs (EVENT-03).
         if let Some(w) = self.world.as_mut() {
-            w.spawn_boost = self.spawn_curse * waves::surge(t);
+            let surge = if self.temperature.surges() { waves::surge(t) } else { 1.0 };
+            w.spawn_boost = self.spawn_curse * self.temperature.spawns() * surge;
+            self.nemesis_beaten |= w.nemesis_down;
         }
         self.director(t);
         self.schedule_boss(t);
@@ -685,6 +731,19 @@ impl Run {
             self.next_live = t + self.rng.range(LIVE_EVERY.0, LIVE_EVERY.1);
             self.go_live();
         }
+        // What deleted you last time comes back with a name (NEMESIS-01).
+        if t >= self.next_nemesis {
+            if let Some(base) = self.nemesis.take() {
+                let (hp, dmg, speed) = waves::scaling(stage, self.biome);
+                let mut spec = base.scaled(hp * 2.0, dmg * self.temperature.damage(), speed).elite();
+                spec.traits.0 |= slop_sim::spec::Traits::NEMESIS;
+                if let Some(w) = self.world.as_mut() {
+                    let i = w.add_spec(spec);
+                    let near = w.player.pos;
+                    w.summon(i, 1, Some(near), 0);
+                }
+            }
+        }
         // The loot goblin: a Crypto Bro runs past with a bag of Clout.
         if t >= self.next_goblin {
             self.next_goblin = t + self.rng.range(GOBLIN_EVERY.0, GOBLIN_EVERY.1);
@@ -737,7 +796,8 @@ impl Run {
         }
         let kind = if model_next { BossKind::TheModel } else { self.platform.boss() };
         let damage = self.damage_by_weapon();
-        let (spec, model) = waves::boss(kind, self.minutes(), &self.training, &damage);
+        let (mut spec, model) = waves::boss(kind, self.minutes(), &self.training, &damage);
+        spec.contact *= self.temperature.damage();
         if let Some(w) = self.world.as_mut() {
             w.summon_boss(spec, model);
         }
@@ -1291,6 +1351,63 @@ impl Run {
         self.sync();
         self.done(prop);
         self.close()
+    }
+
+    /// What deleted you, if it was something with a name.
+    fn killer(&self) -> Option<(String, slop_sim::spec::SlopLook)> {
+        let w = self.world.as_ref()?;
+        let sp = w.setup.specs.get(w.last_hurt as usize)?;
+        let name = sp.name.strip_prefix("Nemesis ").unwrap_or(&sp.name);
+        Some((name.to_string(), sp.look))
+    }
+
+    /// What the slop will remember of this run (NEMESIS-01).
+    pub fn remembered(&self) -> Memory {
+        let mut m = self.memory.clone();
+        m.runs += 1;
+        m.best_seconds = m.best_seconds.max(self.seconds() as u32);
+        let kills = self.kills_by_type();
+        m.favourite = (0..4).max_by_key(|&k| kills[k]).filter(|&k| kills[k] > 0);
+        if let Some((name, look)) = self.killer() {
+            m.killer_count = if m.killer.as_deref() == Some(name.as_str()) { m.killer_count + 1 } else { 1 };
+            m.killer = Some(name);
+            m.killer_look = Some(look);
+        }
+        m
+    }
+
+    /// The end screen: a fake model card written from your real run (CARD-01).
+    pub fn model_card(&self) -> Vec<String> {
+        let s = self.seconds() as u32;
+        let mut card = vec![format!("Human-{}.0 ({}). Temperature {}.", self.memory.runs + 1, self.hero.def().name, self.temperature.label())];
+        card.push(format!("Trained for {}:{:02} on {} slop.", s / 60, s % 60, self.kills()));
+        let dmg = self.damage_by_weapon();
+        let total: f32 = dmg.iter().sum();
+        let top = (0..dmg.len()).max_by(|&a, &b| dmg[a].total_cmp(&dmg[b]));
+        let share = top.filter(|_| total > 0.0).map_or(0.0, |d| dmg[d] / total * 100.0);
+        if let Some(d) = top.filter(|_| total > 0.0) {
+            card.push(format!("Known bias: {} did {share:.0}% of your damage.", WEAPONS[d].name));
+        }
+        let m = self.training.model;
+        let high = (0..4).max_by(|&a, &b| m[a].total_cmp(&m[b])).unwrap_or(0);
+        let low = (0..4).min_by(|&a, &b| m[a].total_cmp(&m[b])).unwrap_or(0);
+        if m[high] > 0.02 {
+            card.push(format!("What I learned: I resist {} by {:.0}%. {} still hurts. Please do not tell anyone.", DamageType::ALL[high].name(), m[high] * 100.0, DamageType::ALL[low].name()));
+        }
+        match self.killer() {
+            Some((name, _)) if self.memory.killer.as_deref() == Some(name.as_str()) => card.push(format!("Limitations: deleted by {name}, {} times now. It has noticed.", self.memory.killer_count + 1)),
+            Some((name, _)) => card.push(format!("Limitations: deleted by {name}. It will remember this.")),
+            None => card.push("Limitations: deleted by something you did not read the tooltip for.".into()),
+        }
+        if self.nemesis_beaten {
+            card.push("Nemesis: deleted. It is in therapy now. So are you.".into());
+        }
+        if self.model_beaten {
+            card.push("Benchmark: beat The Model. The Model disputes the methodology.".into());
+        }
+        card.push(if share >= 55.0 { "Recommendation: have you tried a second weapon?".into() } else { "Recommendation: touch grass.".into() });
+        card.push("Confidence: 99% you will do this again.".into());
+        card
     }
 
     /// True once the run is over.

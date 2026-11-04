@@ -378,3 +378,45 @@ fn a_power_outlet_refills_dashes_and_speeds_you_up() {
     assert_eq!(w.player.dashes, w.player.perks.dash_charges);
     assert!(w.player.charged > 0);
 }
+
+// REQ: INJECT-01
+#[test]
+fn a_prompt_injection_turns_the_slop_on_each_other() {
+    let mut w = sandbox();
+    let me = w.player.pos;
+    let j = put(&mut w, Archetype::ChadGpt, V2::new(100.0, 0.0));
+    let id = w.slop[j].id;
+    w.slop[j].hp = 100.0;
+    w.slop[j].max_hp = 100.0;
+    w.drop_pickup(PickupKind::Inject, me, 0);
+    let events = run(&mut w, 40);
+    assert!(events.iter().any(|e| matches!(e, Event::PromptInjection { .. })));
+    let s = w.slop.iter().find(|s| s.id == id).unwrap();
+    assert!(s.hp < 100.0 && s.confused > 0, "it stopped attacking and is being torn at");
+    assert_eq!(w.player.mental_health, w.player.stats.max_mental_health, "and it leaves you alone");
+}
+
+// REQ: TEMP-01
+#[test]
+fn hallucinated_likes_are_fakes() {
+    let mut w = sandbox();
+    w.hallucinate = 1.0;
+    let id = w.spawn_archetype(Archetype::ChadGpt, w.player.pos + V2::new(600.0, 0.0));
+    w.slop.iter_mut().find(|s| s.id == id).unwrap().hp = 0.0;
+    run(&mut w, 1);
+    assert!(!w.likes.is_empty() && w.likes.iter().all(|l| l.fake));
+}
+
+// REQ: NEMESIS-01
+#[test]
+fn a_nemesis_always_drops_a_golden_chest() {
+    let mut w = sandbox();
+    let mut spec = SlopSpec::archetype(Archetype::GlassFruit);
+    spec.traits.0 |= crate::spec::Traits::NEMESIS;
+    let i = w.add_spec(spec);
+    let id = w.place(i, w.player.pos + V2::new(600.0, 0.0), 0, 1);
+    w.slop.iter_mut().find(|s| s.id == id).unwrap().hp = 0.0;
+    run(&mut w, 1);
+    assert!(w.nemesis_down);
+    assert!(w.pickups.iter().any(|p| p.kind == PickupKind::Chest && p.value == 3));
+}

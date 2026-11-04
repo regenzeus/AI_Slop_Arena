@@ -1,4 +1,4 @@
-# Verification: version 4.1, "The Algorithm Update"
+# Verification: version 5, "You are the training data"
 
 Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 
@@ -7,10 +7,10 @@ Checked on 2026-11-03 with Rust 1.88 and Bevy 0.17.3 on Windows 10.
 | Check | Result |
 | --- | --- |
 | `cargo clippy --workspace --all-targets -- -D warnings` | Clean |
-| `cargo test --workspace` | 104 passed, 0 failed (64 simulation, 33 rules, 7 client), 1 ignored (the icon sheet) |
+| `cargo test --workspace` | 111 passed, 0 failed (67 simulation, 37 rules, 7 client), 1 ignored (the icon sheet) |
 | `slop_lab determinism` | Six minutes of a run, played twice by the bots: identical checksums over 21,600 ticks |
 | `slop_lab bench` | 600 slop, up to 409 projectiles, six max-level weapons: 1.18 ms per tick (budget 2 ms) |
-| `slop_lab balance 16 40` | Heuristic bot: median 9.2 minutes, The Model beaten in 1 of 16 runs. Random bot: median 9.1 minutes. Harder than 4.0 on purpose (denser hordes); see below |
+| `slop_lab balance 16 40 [temperature]` | Temperature 0.7: heuristic bot median 8.6 minutes (mean 15.1), The Model beaten 3 of 16; random bot median 8.8. Temperature 0.2: heuristic bot median 26.0, The Model beaten 4 of 16; random bot median 9.3 |
 | Autoplay at 1600 x 900 (seed 6) and 1920 x 1080 (seed 11) | Title, the eight heroes, the Feed from 0:30 to 27:00 with biome seams, barriers and icons, level-up, the chest reveal, a merge, the glitch pick, pause and the end screen render without overlap |
 
 Requirement-to-test mapping: [traceability.md](traceability.md).
@@ -80,3 +80,13 @@ is the first thing to tune from the next playtest.
 
 Not verified by a person: XInput in the background and the Print Screen fix were built
 against the Windows API without a controller or a key press here.
+
+## Version 5
+
+The direction is in [direction.md](direction.md). At Temperature 0.2 the heuristic bot now
+meets BAL-01's range and picks matter (median 26.0 minutes against 9.3 for random). At the
+default 0.7, BAL-01 and BAL-02 are not met: runs split between about 8 minutes and very
+long ones, and picks barely matter. Tuning 0.7 is the next job.
+
+Not verified by a person: everything in this version. The Nemesis across real runs and
+the memory file were tested in code only, because autoplay never touches the file.

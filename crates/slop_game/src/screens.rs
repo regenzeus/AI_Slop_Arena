@@ -4,6 +4,7 @@
 //! something changes, and every one works by keyboard and gamepad (`ui`).
 
 use bevy::prelude::*;
+use slop_rules::memory::Temperature;
 use slop_rules::items::{ItemKind, StatKind, BLESSINGS, GLITCHES, ITEMS};
 use slop_rules::run::{Choice, Reward};
 use slop_rules::{Hero, Phase, Run};
@@ -44,6 +45,7 @@ pub mod key {
     pub const STAT: u32 = 500;
     pub const RESIST: u32 = 520;
     pub const GLITCH: u32 = 600;
+    pub const TEMPERATURE: u32 = 700;
 }
 
 /// Seconds after a chest opens before its first upgrade lands, and between
@@ -287,7 +289,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
     let pad = controls.pad;
     let root = commands.spawn((ScreenRoot, full(), GlobalZIndex(20))).id();
     commands.entity(root).with_children(|p| match game.screen {
-        Screen::Title => title(p, &art, pad),
+        Screen::Title => title(p, game, &art, pad),
         Screen::Heroes => heroes(p, game, &art, pad),
         Screen::Run => {
             if let Some(run) = &game.run {
@@ -313,7 +315,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
     }
 }
 
-fn title(p: &mut ChildSpawnerCommands, art: &Art, pad: bool) {
+fn title(p: &mut ChildSpawnerCommands, game: &Game, art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.07, 0.07, 0.11, 0.55));
     p.spawn(row(18.0)).with_children(|r| {
         for (i, h) in Hero::ALL.iter().enumerate() {
@@ -330,6 +332,12 @@ fn title(p: &mut ChildSpawnerCommands, art: &Art, pad: bool) {
         "The slop retrains on how you kill it. Adapt, or get fine-tuned.",
     ] {
         label(p, line, 19.0, theme::PAPER);
+    }
+    // It remembers you (NEMESIS-01).
+    if let Some(k) = &game.memory.killer {
+        let n = game.memory.killer_count;
+        let times = if n > 1 { format!(" ({n} times)") } else { String::new() };
+        label(p, format!("Welcome back. Last time: deleted by {k}{times}. It remembers."), 18.0, tier_color(3));
     }
     p.spawn(Node { height: Val::Px(20.0), ..default() });
     p.spawn(row(14.0)).with_children(|r| {
@@ -425,7 +433,7 @@ fn glitch_tip(g: usize) -> Tip {
 
 fn heroes(p: &mut ChildSpawnerCommands, game: &Game, art: &Art, pad: bool) {
     backdrop(p, BACKDROP);
-    label(p, "CHOOSE YOUR HUMAN", 46.0, theme::PAPER);
+    label(p, "CHOOSE YOUR HUMAN", 36.0, theme::PAPER);
     label(p, "Same human, different baggage. Every hero bends the rules: read the fine print.", 17.0, theme::QUIET);
     // Two rows of four (HERO-02).
     for half in Hero::ALL.chunks(4).enumerate() {
@@ -438,7 +446,7 @@ fn heroes(p: &mut ChildSpawnerCommands, game: &Game, art: &Art, pad: bool) {
                 let mut e = r.spawn((
                     focusable(key::HERO + i as u32, CARD),
                     Act(UiAction::StartAs(i)),
-                    Node { min_height: Val::Px(330.0), ..card(300.0) },
+                    Node { min_height: Val::Px(300.0), ..card(300.0) },
                     BorderColor::all(theme::type_color(WEAPONS[w].kind)),
                 ));
                 if i == game.hero {
@@ -474,6 +482,16 @@ fn heroes(p: &mut ChildSpawnerCommands, game: &Game, art: &Art, pad: bool) {
             }
         });
     }
+    // The difficulty, in the model's own words (TEMP-01).
+    p.spawn(row(10.0)).with_children(|r| {
+        label(r, "Temperature", 16.0, theme::QUIET);
+        for (i, t) in Temperature::ALL.iter().enumerate() {
+            let on = *t == game.temperature;
+            let color = if on { theme::PLAYER_RED } else { BUTTON };
+            button(r, t.label(), UiAction::SetTemperature(i), color, key::TEMPERATURE + i as u32);
+        }
+        label(r, game.temperature.blurb(), 15.0, theme::PAPER);
+    });
     hints(p, pad, &[("Arrows", "Stick", "choose"), ("1-8", "", "jump to a hero"), ("Enter", "A", "start"), ("Esc", "B", "back")]);
 }
 
@@ -540,6 +558,17 @@ fn describe(run: &Run, c: Choice, art: &Art) -> (Handle<Image>, String, String, 
             let w = &WEAPONS[d];
             let (from, to) = run.levels_of(c).unwrap_or((0, 1));
             let tag = if from == 0 { format!("NEW {} weapon", w.kind.name()) } else { format!("Level {from} -> {to}") };
+            // What the model has learned decides what is worth picking (MODEL-01).
+            let r = run.training.model[w.kind as usize];
+            let read = if r > 0.03 {
+                format!("The model resists this: -{:.0}% damage.
+", r * 100.0)
+            } else if r < -0.03 {
+                format!("The model is weak to this: +{:.0}% damage!
+", -r * 100.0)
+            } else {
+                String::new()
+            };
             let mut words = if from == 0 {
                 format!("{}.\n{:.0} damage every {:.2} s.\n{}", capital(pattern_words(w.pattern)), w.damage, w.cooldown, type_effect(w.kind))
             } else {
@@ -549,7 +578,7 @@ fn describe(run: &Run, c: Choice, art: &Art) -> (Handle<Image>, String, String, 
                 let owned = run.weapons.iter().any(|x| x.def == other);
                 words = format!("{words}\n\n{}Merges with {} into {}.", if owned { "You have its partner! " } else { "" }, WEAPONS[other].name, WEAPONS[into].name);
             }
-            (art.weapon_icons[d].clone(), w.name.to_string(), tag, words, theme::type_color(w.kind))
+            (art.weapon_icons[d].clone(), w.name.to_string(), tag, format!("{read}{words}"), theme::type_color(w.kind))
         }
         Choice::NewItem(i) | Choice::ItemLevel(i) => {
             let d = &ITEMS[i];
@@ -954,8 +983,8 @@ fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art, pad: 
     } else {
         ("BURNOUT", "Your account has been suspended.", theme::DANGER)
     };
-    icon(p, &art.human[&run.hero][if victory { 0 } else { 3 }], 110.0);
-    label(p, title, 80.0, color);
+    icon(p, &art.human[&run.hero][if victory { 0 } else { 3 }], 70.0);
+    label(p, title, 58.0, color);
     label(p, sub, 22.0, theme::QUIET);
     let t = run.seconds() as u32;
     label(p, format!("{} survived {}:{:02} - level {} - {} slop deleted - {} bosses", run.hero.def().name, t / 60, t % 60, run.level, run.kills(), run.bosses_beaten), 20.0, theme::PAPER);
@@ -967,6 +996,13 @@ fn over(p: &mut ChildSpawnerCommands, run: &Run, victory: bool, art: &Art, pad: 
                 icon(k, &art.type_icons[t as usize], 26.0);
                 label(k, format!("{} {:.0}%", t.name(), 100.0 * kills[t as usize] as f32 / total as f32), 17.0, theme::type_color(t));
             });
+        }
+    });
+    // The model card: written from what really happened (CARD-01).
+    p.spawn((Node { flex_direction: FlexDirection::Column, row_gap: Val::Px(3.0), padding: UiRect::all(Val::Px(14.0)), width: Val::Px(820.0), border: UiRect::all(Val::Px(2.0)), ..default() }, BorderColor::all(theme::QUIET), BackgroundColor(Color::srgb(0.1, 0.1, 0.14)))).with_children(|c| {
+        label(c, "MODEL CARD", 15.0, theme::QUIET);
+        for line in run.model_card() {
+            label(c, line, 16.0, theme::PAPER);
         }
     });
     let dmg = run.damage_by_weapon();

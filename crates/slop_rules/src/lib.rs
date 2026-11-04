@@ -9,6 +9,7 @@ pub mod bot;
 pub mod heroes;
 pub mod items;
 pub mod levels;
+pub mod memory;
 pub mod run;
 pub mod training;
 pub mod waves;

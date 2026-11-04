@@ -21,6 +21,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | BRAIN-01 | `brainrot_parts_shape_the_spec` | crates/slop_sim/src/tests.rs |
 | BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
+| CARD-01 | `what_killed_you_comes_back_and_the_card_tells_the_truth` | crates/slop_rules/src/tests_v4.rs |
 | CHEST-01 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
 | CHEST-02 | `a_maxed_build_gets_paid_instead_of_stopped` | crates/slop_rules/src/tests_v4.rs |
 | CHEST-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
@@ -59,6 +60,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | HERO-02 | `heroes_bend_the_rules` | crates/slop_rules/src/tests_v4.rs |
 | HERO-02 | `heroes_start_with_real_weapons_and_items_and_list_their_rules` | crates/slop_rules/src/heroes.rs |
 | ICON-01 | `brainrot_icons_each_have_their_trick` | crates/slop_sim/src/tests_v4.rs |
+| INJECT-01 | `a_prompt_injection_turns_the_slop_on_each_other` | crates/slop_sim/src/tests_v4.rs |
 | ITEM-01 | `an_items_drawback_counts_once` | crates/slop_rules/src/tests.rs |
 | ITEM-01 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
 | ITEM-01 | `items_level_up_to_their_max_and_six_fit` | crates/slop_rules/src/tests.rs |
@@ -86,6 +88,9 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | MAP-04 | `maintenance_closes_a_block_after_a_warning_never_on_you` | crates/slop_sim/src/tests.rs |
 | MAP-05 | `a_power_outlet_refills_dashes_and_speeds_you_up` | crates/slop_sim/src/tests_v4.rs |
 | MAP-05 | `recycle_bins_fine_tuning_and_data_brokers` | crates/slop_rules/src/tests_v4.rs |
+| NEMESIS-01 | `a_nemesis_always_drops_a_golden_chest` | crates/slop_sim/src/tests_v4.rs |
+| NEMESIS-01 | `memory_survives_the_file_and_nonsense_is_ignored` | crates/slop_rules/src/memory.rs |
+| NEMESIS-01 | `what_killed_you_comes_back_and_the_card_tells_the_truth` | crates/slop_rules/src/tests_v4.rs |
 | PLAT-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
 | PLAT-02 | `every_platform_has_its_hazard` | crates/slop_sim/src/tests.rs |
 | RUN-01 | `a_run_starts_with_the_heroes_loadout_on_one_of_six_platforms` | crates/slop_rules/src/tests.rs |
@@ -109,6 +114,9 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | STAT-02 | `hustle_pays_every_minute` | crates/slop_rules/src/tests_v4.rs |
 | STATUS-01 | `statuses_hurt_slow_and_can_be_prevented` | crates/slop_sim/src/tests.rs |
 | STATUS-02 | `a_brainrot_zone_flips_you_only_if_you_stay_for_the_drop` | crates/slop_sim/src/tests_v4.rs |
+| TEMP-01 | `hallucinated_likes_are_fakes` | crates/slop_sim/src/tests_v4.rs |
+| TEMP-01 | `hotter_means_more_slop_and_more_loot` | crates/slop_rules/src/memory.rs |
+| TEMP-01 | `temperature_sets_the_crowd_and_the_rewards` | crates/slop_rules/src/tests_v4.rs |
 | UI-08 | `actions_walk_from_title_into_the_feed_and_report_rule_errors` | crates/slop_game/src/state.rs |
 | UI-13 | `a_ready_merge_is_announced_and_brings_a_chest_closer` | crates/slop_rules/src/tests_v4.rs |
 | UI-13 | `every_stat_explains_its_current_effect` | crates/slop_rules/src/items.rs |
@@ -142,6 +150,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - FEEL-01
 - FEEL-04
 - ICON-02
+- MODEL-01
 - SIM-04
 - UI-01
 - UI-02

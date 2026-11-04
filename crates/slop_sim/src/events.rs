@@ -146,6 +146,8 @@ pub enum Event {
     Encircled { at: V2, radius: f32 },
     /// Algorithm Boost: everything on the floor flies to you.
     Vacuum,
+    /// "Ignore previous instructions": the slop turned on each other.
+    PromptInjection { at: V2 },
     /// A rare drop landed: a golden chest (LOOT-02).
     RareDrop { at: V2 },
     WaveCleared,

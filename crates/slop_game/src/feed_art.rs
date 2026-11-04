@@ -20,6 +20,14 @@ const ORANGE: u32 = 0xF28C38;
 pub fn pickup(kind: PickupKind) -> Canvas {
     let mut p = Pen::new(64.0);
     match kind {
+        // Ignore Previous Instructions: a terminal prompt with a syringe of text.
+        PickupKind::Inject => {
+            p.rect(50.0, 50.0, 38.0, 30.0, 6.0, hex(0x12261A));
+            p.line(24.0, 38.0, 34.0, 46.0, 2.5, hex(0x5DFF8A));
+            p.line(34.0, 46.0, 24.0, 54.0, 2.5, hex(0x5DFF8A));
+            p.rect(56.0, 56.0, 14.0, 3.0, 1.0, hex(0x5DFF8A));
+            p.dot(80.0, 22.0, 7.0, hex(0x5DFF8A));
+        }
         // Touch Grass: a tuft in a pot.
         PickupKind::Food => {
             p.rect(50.0, 74.0, 22.0, 16.0, 5.0, hex(0xC0714A));
@@ -339,7 +347,7 @@ mod tests {
         for k in PropKind::ALL {
             assert!(opaque(&prop(k)) > 600, "{k:?}");
         }
-        for k in [PickupKind::Food, PickupKind::Magnet, PickupKind::Bomb, PickupKind::Freeze, PickupKind::Clout, PickupKind::Chest] {
+        for k in [PickupKind::Food, PickupKind::Magnet, PickupKind::Bomb, PickupKind::Freeze, PickupKind::Clout, PickupKind::Chest, PickupKind::Inject] {
             assert!(opaque(&pickup(k)) > 300, "{k:?}");
         }
         let prints: Vec<u64> = (0..DECOR).map(|i| decor(i).fingerprint()).collect();

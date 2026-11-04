@@ -76,7 +76,15 @@ fn main() {
     let clock_seed = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(1, |d| d.as_secs() % 1_000_000);
-    let game = Game::new(args.seed.unwrap_or(clock_seed));
+    let mut game = Game::new(args.seed.unwrap_or(clock_seed));
+    // Autoplay plays against a blank memory and never writes to it.
+    if !args.autoplay {
+        game.memory = state::load_memory();
+        // A first run starts calm; after that the choice is yours (TEMP-01).
+        if game.memory.runs == 0 {
+            game.temperature = slop_rules::memory::Temperature::Low;
+        }
+    }
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins.set(WindowPlugin {

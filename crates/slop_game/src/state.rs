@@ -1,6 +1,7 @@
 //! The client's state: which screen is up and the run being played.
 
 use bevy::prelude::*;
+use slop_rules::memory::{Memory, Temperature};
 use slop_rules::run::RuleError;
 use slop_rules::{Hero, Phase, Run};
 use slop_sim::world::World;
@@ -35,6 +36,8 @@ pub enum UiAction {
     Glitch(usize),
     /// Throw item offer `i` of a recycle bin away.
     Recycle(usize),
+    /// Choose Temperature `i` on the hero screen (TEMP-01).
+    SetTemperature(usize),
     Resume,
     NewRun,
     Quit,
@@ -93,6 +96,12 @@ pub struct Game {
     pub cues: Vec<Cue>,
     /// The run the bots play behind the title and hero screens.
     pub demo: Option<Run>,
+    /// The Temperature chosen on the hero screen (TEMP-01).
+    pub temperature: Temperature,
+    /// What the slop remember about you between runs (NEMESIS-01).
+    pub memory: Memory,
+    /// The run on screen was already written to memory.
+    pub remembered: bool,
     /// A dash pressed since the last tick (DASH-01).
     pub dash_queued: bool,
     /// Seconds since a chest opened, for its reveal (LOOT-02).
@@ -123,6 +132,9 @@ impl Game {
             level_flash: false,
             cues: Vec::new(),
             demo: None,
+            temperature: Temperature::Default,
+            memory: Memory::default(),
+            remembered: false,
             dash_queued: false,
             chest_opened: 10.0,
         }
@@ -142,7 +154,8 @@ impl Game {
 
     pub fn start_run(&mut self) {
         let hero = Hero::ALL[self.hero.min(Hero::ALL.len() - 1)];
-        let run = Run::new(self.seed, hero);
+        let run = Run::with(self.seed, hero, self.temperature, self.memory.clone());
+        self.remembered = false;
         self.seed += 1;
         self.demo = None;
         let platform = run.platform;
@@ -195,6 +208,10 @@ impl Game {
                 self.hero = i.min(Hero::ALL.len() - 1);
                 self.dirty = true;
             }
+            UiAction::SetTemperature(i) => {
+                self.temperature = Temperature::ALL[i.min(Temperature::ALL.len() - 1)];
+                self.dirty = true;
+            }
             UiAction::StartRun => self.start_run(),
             UiAction::StartAs(i) => {
                 self.hero = i.min(Hero::ALL.len() - 1);
@@ -232,6 +249,28 @@ impl Game {
     /// The run is waiting for a choice (an overlay is up).
     pub fn choosing(&self) -> bool {
         self.run.as_ref().is_some_and(|r| matches!(r.phase, Phase::LevelUp(_) | Phase::Chest(_) | Phase::Vending { .. } | Phase::Shrine { .. } | Phase::Glitch(_) | Phase::Recycle { .. }))
+    }
+}
+
+/// Where the slop keep what they remember about you.
+fn memory_path() -> Option<std::path::PathBuf> {
+    let base = std::env::var_os("APPDATA").or_else(|| std::env::var_os("HOME"))?;
+    Some(std::path::PathBuf::from(base).join("AI Slop Arena").join("memory.txt"))
+}
+
+/// Reads what the slop remember; nothing there means a first run.
+pub fn load_memory() -> Memory {
+    memory_path().and_then(|p| std::fs::read_to_string(p).ok()).map_or_else(Memory::default, |t| Memory::from_text(&t))
+}
+
+/// Writes what the slop remember. Losing it only costs a grudge.
+pub fn save_memory(memory: &Memory) {
+    let Some(path) = memory_path() else { return };
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Err(e) = std::fs::write(&path, memory.to_text()) {
+        eprintln!("cannot save {}: {e}", path.display());
     }
 }
 

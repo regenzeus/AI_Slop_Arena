@@ -297,7 +297,7 @@ fn play(mut commands: Commands, mut game: ResMut<Game>, nav: Res<Nav>, sounds: R
             Event::ShieldBroke | Event::Deflected { .. } => Sound::Shield,
             Event::Swarm { .. } | Event::Encircled { .. } | Event::ArenaWarning { .. } => Sound::Swarm,
             Event::RareDrop { .. } | Event::GodMode => Sound::Fanfare,
-            Event::ArenaCleared { .. } | Event::Vacuum => Sound::Cleared,
+            Event::ArenaCleared { .. } | Event::Vacuum | Event::PromptInjection { .. } => Sound::Cleared,
             Event::Biome { .. } | Event::DashReady => Sound::Tick,
             Event::Shock { .. } | Event::DoNotDisturb { .. } => Sound::Thud,
             _ => continue,

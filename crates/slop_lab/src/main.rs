@@ -26,10 +26,10 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("bench") => bench(),
         Some("determinism") => determinism(),
-        Some("balance") => balance(n(1, 30), n(2, 45) as f32),
+        Some("balance") => balance(n(1, 30), n(2, 45) as f32, slop_rules::memory::Temperature::ALL[(n(3, 1) as usize).min(3)]),
         Some("progress") => progress(n(1, 8)),
         Some("deaths") => deaths(n(1, 8)),
-        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes]|progress [runs]>"),
+        _ => eprintln!("usage: slop_lab <bench|determinism|balance [runs] [minutes] [temperature 0-3]|progress [runs]>"),
     }
 }
 
@@ -104,7 +104,8 @@ fn determinism() {
     }
 }
 
-fn balance(runs: u64, limit: f32) {
+fn balance(runs: u64, limit: f32, temperature: slop_rules::memory::Temperature) {
+    println!("Temperature {}", temperature.label());
     let start = Instant::now();
     for policy in [Policy::Heuristic, Policy::Random] {
         let mut minutes = Vec::new();
@@ -114,7 +115,7 @@ fn balance(runs: u64, limit: f32) {
         let mut weapon_use: BTreeMap<String, u32> = BTreeMap::new();
         for seed in 1..=runs {
             let hero = Hero::ALL[(seed % Hero::ALL.len() as u64) as usize];
-            let s = bot::play(seed, hero, policy, limit);
+            let s = bot::play_at(seed, hero, policy, limit, temperature);
             minutes.push(s.minutes);
             *bosses.entry(s.bosses).or_default() += 1;
             by_hero.entry(hero.def().name).or_default().push(s.minutes);

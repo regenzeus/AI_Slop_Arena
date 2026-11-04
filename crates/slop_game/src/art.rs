@@ -377,6 +377,8 @@ pub struct Art {
     pub fire: Handle<Image>,
     pub brainrot_zone: Handle<Image>,
     pub roots: Handle<Image>,
+    /// A fine line for big circles.
+    pub thin_ring: Handle<Image>,
 }
 
 impl Art {
@@ -433,7 +435,7 @@ impl Art {
             bomb: add(draw::bomb_marker()),
             downvote: add(draw::downvote()),
             filter: add(draw::filter()),
-            pickups: [PickupKind::Food, PickupKind::Magnet, PickupKind::Bomb, PickupKind::Freeze, PickupKind::Clout, PickupKind::Chest].iter().map(|&k| (k, add(feed_art::pickup(k)))).collect(),
+            pickups: [PickupKind::Food, PickupKind::Magnet, PickupKind::Bomb, PickupKind::Freeze, PickupKind::Clout, PickupKind::Chest, PickupKind::Inject].iter().map(|&k| (k, add(feed_art::pickup(k)))).collect(),
             props: PropKind::ALL.iter().map(|&k| (k, add(feed_art::prop(k)))).collect(),
             walls: [WallKind::ServerRack, WallKind::Billboard, WallKind::Desk, WallKind::Fence].iter().map(|&k| (k, add(feed_art::wall(k)))).collect(),
             decor: (0..feed_art::DECOR).map(|i| add(feed_art::decor(i))).collect(),
@@ -448,6 +450,7 @@ impl Art {
             fire: add(draw::fire()),
             brainrot_zone: add(draw::brainrot_zone()),
             roots: add(draw::roots()),
+            thin_ring: add(draw::thin_ring()),
         }
     }
 }

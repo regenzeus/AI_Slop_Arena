@@ -67,6 +67,11 @@ const GOLDEN_MAX: f32 = 0.12;
 const ELITE_CHEST: f32 = 0.45;
 /// Ticks a Power Outlet's charge lasts after you step out.
 const CHARGED_TICKS: u16 = 600;
+/// Ticks a Prompt Injection lasts, how often it bites, and the share of a
+/// slop's HP each bite takes (INJECT-01).
+const INJECTION_TICKS: u16 = 360;
+const INJECTION_EVERY: u16 = 30;
+const INJECTION_BITE: f32 = 0.1;
 /// Ticks a loot goblin runs before he gets away.
 pub const GOBLIN_TICKS: i32 = 60 * 22;
 const REPOST_HP: f32 = 0.6;
@@ -603,6 +608,8 @@ pub enum PickupKind {
     Clout,
     /// A chest: an upgrade, or a merge.
     Chest,
+    /// "Ignore previous instructions": the slop on screen turn on each other.
+    Inject,
 }
 
 #[derive(Clone, Debug)]
@@ -802,6 +809,14 @@ pub struct World {
     pub arena: Option<Arena>,
     /// Spawn rate multiplier the rules set for events (a livestream).
     pub spawn_boost: f32,
+    /// Ticks of a Prompt Injection left: the slop fight each other (INJECT-01).
+    pub injection: u16,
+    /// Share of dropped Likes that are hallucinated fakes (high Temperature).
+    pub hallucinate: f32,
+    /// Spec of whatever hit you last, for the model card (CARD-01).
+    pub last_hurt: u16,
+    /// The Nemesis was deleted.
+    pub nemesis_down: bool,
     pub(crate) next_id: u32,
     pub(crate) next_pack: u32,
     pub(crate) spawn_credit: f32,
@@ -866,6 +881,10 @@ impl World {
             biome: crate::map::biome_at(seed, V2::ZERO),
             arena: None,
             spawn_boost: 1.0,
+            injection: 0,
+            hallucinate: 0.0,
+            last_hurt: NO_SPEC,
+            nemesis_down: false,
             next_id: 1,
             next_pack: 1,
             spawn_credit: 0.0,
@@ -1096,6 +1115,33 @@ impl World {
         self.events.push(Event::ArenaWarning { at: centre, radius });
     }
 
+    /// A Prompt Injection: slop on screen stop attacking you and tear at each
+    /// other (INJECT-01). Bosses are not fooled.
+    fn tick_injection(&mut self) {
+        if self.injection == 0 {
+            return;
+        }
+        self.injection -= 1;
+        let me = self.player.pos;
+        let bite = self.injection % INJECTION_EVERY == 0;
+        for j in 0..self.slop.len() {
+            let s = &self.slop[j];
+            let d = s.pos - me;
+            let boss = matches!(self.setup.specs[s.spec as usize].movement, Movement::Boss(_));
+            if boss || d.x.abs() > 900.0 || d.y.abs() > 520.0 || s.hp <= 0.0 {
+                continue;
+            }
+            let s = &mut self.slop[j];
+            s.confused = s.confused.max(30);
+            if bite {
+                let hit = s.max_hp * INJECTION_BITE;
+                s.hp -= hit;
+                s.flash = FLASH_TICKS;
+                s.last_type = crate::stats::DamageType::Sarcasm as u8;
+            }
+        }
+    }
+
     /// The livestream counts down; when it ends it pays a chest.
     fn tick_arena(&mut self) {
         let Some(a) = self.arena.as_mut() else { return };
@@ -1143,6 +1189,7 @@ impl World {
             self.events.push(Event::Biome { platform: biome });
         }
         self.tick_arena();
+        self.tick_injection();
         self.move_player(input);
         self.tick_status();
         self.tick_defence();
@@ -1437,6 +1484,12 @@ impl World {
                         loot.push((PickupKind::Chest, s.pos, 1));
                     }
                 }
+                // A Nemesis pays for what it did to you (NEMESIS-01).
+                if sp.traits.has(Traits::NEMESIS) {
+                    loot.push((PickupKind::Chest, s.pos, 3));
+                    self.nemesis_down = true;
+                    self.events.push(Event::RareDrop { at: s.pos });
+                }
                 // The loot goblin (a Crypto Bro) pays out if you catch him.
                 if matches!(sp.look, SlopLook::Archetype(Archetype::LootGoblin)) {
                     for _ in 0..6 {
@@ -1468,6 +1521,8 @@ impl World {
                         loot.push((PickupKind::Food, s.pos, 0));
                     } else if roll < coin_chance + 5 {
                         loot.push((PickupKind::Magnet, s.pos, 0));
+                    } else if roll < coin_chance + 6 {
+                        loot.push((PickupKind::Inject, s.pos, 0));
                     }
                 }
                 if sp.traits.has(Traits::SHARDS) {
@@ -1507,7 +1562,8 @@ impl World {
             let bonus = self.player.perks.like_bonus;
             let value = (value as f32 * (1.0 + bonus)).round().max(1.0) as u32;
             let id = self.id();
-            self.likes.push(Like { id, pos: at + jitter, value, pulled: false, fake: false });
+            let fake = self.hallucinate > 0.0 && self.rng_combat.chance(self.hallucinate);
+            self.likes.push(Like { id, pos: at + jitter, value, pulled: false, fake });
         }
         for (kind, at, value) in loot {
             self.drop_pickup(kind, at, value);
@@ -1660,6 +1716,10 @@ impl World {
                     self.events.push(Event::Vacuum);
                 }
                 PickupKind::Bomb => self.mass_report(),
+                PickupKind::Inject => {
+                    self.injection = INJECTION_TICKS;
+                    self.events.push(Event::PromptInjection { at: me });
+                }
                 PickupKind::Freeze => self.freeze = FREEZE_TICKS,
                 PickupKind::Clout => self.clout += value,
                 PickupKind::Chest => self.chests.push(value),

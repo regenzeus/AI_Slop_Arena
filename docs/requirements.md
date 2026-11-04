@@ -141,6 +141,18 @@ version 3 is in [design-v3.md](design-v3.md), version 4 in [design-v4.md](design
 | MAP-05 | One or two things to use per chunk; new: recycle bins (throw an item away for Clout), fine-tuning stations (buy a weapon level), data brokers (sell Mental Health for a rare item), power outlets (dashes refill, run faster). | T, D |
 | LOOT-04 | The loot goblin: now and then a Crypto Bro runs off with a bag of Clout; catch him for coins and a chest, or he gets away. | T, D |
 
+## Version 5: "You are the training data"
+
+The direction is in [direction.md](direction.md).
+
+| ID | Requirement | Verified by |
+| --- | --- | --- |
+| MODEL-01 | What the model has learned is visible: the HUD says what it resists and what it is weak to, and weapon cards on level-ups say what that means for that weapon. | D |
+| TEMP-01 | Temperature is the difficulty, chosen on the hero screen (0.2 for a first run): 0.2 is calm with no surges; hotter means more slop that hits harder, more Likes and Clout, and hallucinated Likes. | T, D |
+| INJECT-01 | Prompt Injection: a rare pickup; for 6 s the slop on screen stop attacking you and tear at each other. Bosses are not fooled. | T, D |
+| CARD-01 | The end screen is a model card written from the run: biases, what the model learned, what deleted you. | T, D |
+| NEMESIS-01 | Between runs the slop remember you: the next run starts ahead on your favourite damage type, and what deleted you comes back by name as an elite that drops a golden chest. Memory is kept in a small text file; autoplay and the lab never touch it. | T, D |
+
 ## Client
 
 | ID | Requirement | Verified by |

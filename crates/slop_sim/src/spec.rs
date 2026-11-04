@@ -46,6 +46,8 @@ impl Traits {
     pub const ICON: u64 = 1 << 31;
     /// Elite affix: calls in minions now and then.
     pub const SUMMONER: u64 = 1 << 32;
+    /// What killed you last run, back with a name (NEMESIS-01).
+    pub const NEMESIS: u64 = 1 << 33;
 
     pub fn has(self, flag: u64) -> bool {
         self.0 & flag != 0

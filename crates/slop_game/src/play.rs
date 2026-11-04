@@ -148,6 +148,14 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
     }
     let bot = game.bot;
     if run.is_over() {
+        // The slop remember this run (NEMESIS-01).
+        if !game.remembered {
+            game.remembered = true;
+            game.memory = run.remembered();
+            if !bot {
+                crate::state::save_memory(&game.memory);
+            }
+        }
         game.since_end += time.delta_secs();
         return;
     }

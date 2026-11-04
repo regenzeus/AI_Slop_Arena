@@ -87,6 +87,8 @@ struct Reversed;
 struct LiveText;
 #[derive(Component)]
 struct ChestArrow;
+#[derive(Component)]
+struct ModelText;
 
 const SHIELD: Color = Color::srgb(0.31, 0.72, 0.91);
 /// Off-screen chests shown at the screen's edge, at most.
@@ -101,7 +103,7 @@ fn extras(
     art: Res<Art>,
     mut bars: Query<&mut Node, (With<ShieldFill>, Without<ShieldBack>, Without<ChestArrow>)>,
     mut backs: Query<&mut Visibility, (With<ShieldBack>, Without<ShieldFill>, Without<ChestArrow>)>,
-    mut texts: ParamSet<(Query<&mut Text, With<DashText>>, Query<&mut Text, With<KeysHint>>, Query<&mut Text, With<Reversed>>, Query<&mut Text, With<LiveText>>)>,
+    mut texts: ParamSet<(Query<&mut Text, With<DashText>>, Query<&mut Text, With<KeysHint>>, Query<&mut Text, With<Reversed>>, Query<&mut Text, With<LiveText>>, Query<&mut Text, With<ModelText>>)>,
     mut arrows: Query<(&mut Node, &mut Visibility, &mut ImageNode), (With<ChestArrow>, Without<ShieldFill>, Without<ShieldBack>)>,
 ) {
     let Some(run) = game.run.as_ref().filter(|_| game.screen == Screen::Run) else { return };
@@ -134,6 +136,13 @@ fn extras(
             Some(_) => "GOING LIVE...".into(),
             None => String::new(),
         };
+    }
+    if let Ok(mut t) = texts.p4().single_mut() {
+        let m = run.training.model;
+        let high = (0..4).max_by(|&a, &b| m[a].total_cmp(&m[b])).unwrap_or(0);
+        let low = (0..4).min_by(|&a, &b| m[a].total_cmp(&m[b])).unwrap_or(0);
+        let name = |k: usize| slop_sim::DamageType::ALL[k].name();
+        **t = if m[high] > 0.02 { format!("Model resists {} {:.0}%, weak to {}", name(high), m[high] * 100.0, name(low)) } else { "Model: still learning you".into() };
     }
     // Arrows to chests off screen, nearest first.
     let me = p.pos;
@@ -264,6 +273,8 @@ fn setup(mut commands: Commands, art: Res<Art>) {
                         label(r, "Clout", 14.0, theme::QUIET);
                     });
                     p.spawn((LevelText, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(theme::QUIET)));
+                    // What the model has learned about you (MODEL-01).
+                    p.spawn((ModelText, Text::new(""), TextFont { font_size: 14.0, ..default() }, TextColor(Color::srgb(0.95, 0.75, 0.45))));
                 });
             });
             // Experience: a bar across the whole top edge.
@@ -284,7 +295,7 @@ fn setup(mut commands: Commands, art: Res<Art>) {
             });
             // A livestream's clock (EVENT-02).
             root.spawn((Node { position_type: PositionType::Absolute, top: Val::Px(196.0), width: Val::Percent(100.0), justify_content: JustifyContent::Center, ..default() },)).with_children(|r| {
-                r.spawn((LiveText, Text::new(""), TextFont { font_size: 28.0, ..default() }, TextColor(Color::srgb(1.0, 0.3, 0.3))));
+                r.spawn((LiveText, Text::new(""), TextFont { font_size: 16.0, ..default() }, TextColor(Color::srgb(1.0, 0.3, 0.3))));
             });
             // Chests off screen: an icon at the edge pointing the way (LOOT-02).
             for _ in 0..CHEST_ARROWS {

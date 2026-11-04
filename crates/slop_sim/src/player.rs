@@ -263,6 +263,7 @@ impl World {
         if self.player.perks.hot_take {
             amount *= 1.1;
         }
+        self.last_hurt = spec;
         let amount = self.absorb(amount);
         self.player.mental_health -= amount;
         self.player.invulnerable = HIT_INVULNERABLE;

@@ -127,7 +127,12 @@ pub fn decide(run: &mut Run, policy: Policy, rng: &mut Rng) -> bool {
 /// Plays a whole run with the movement bot and `policy`, up to `limit`
 /// minutes.
 pub fn play(seed: u64, hero: Hero, policy: Policy, limit: f32) -> Summary {
-    let mut run = Run::new(seed, hero);
+    play_at(seed, hero, policy, limit, crate::memory::Temperature::Default)
+}
+
+/// The same, at a Temperature, with no memory of earlier runs.
+pub fn play_at(seed: u64, hero: Hero, policy: Policy, limit: f32, temperature: crate::memory::Temperature) -> Summary {
+    let mut run = Run::with(seed, hero, temperature, crate::memory::Memory::default());
     let mut rng = Rng::new(seed, 11);
     loop {
         match run.phase {

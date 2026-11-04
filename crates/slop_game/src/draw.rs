@@ -1260,3 +1260,11 @@ pub fn filter() -> Canvas {
     });
     c
 }
+
+/// A thin ring for big circles: rings scale their line with their size, so
+/// a big one needs a fine line, or it would cover the Feed (FAIR-05).
+pub fn thin_ring() -> Canvas {
+    let mut c = Canvas::new(1024, 1024);
+    c.fill(|x, y| circle(x, y, 512.0, 512.0, 506.0).abs() - 2.5, WHITE);
+    c
+}

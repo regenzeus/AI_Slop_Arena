@@ -24,7 +24,7 @@ pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
     let w = (stage - 1.0).max(0.0);
     // Fragile, like a horde should be: many weak slop rather than a few
     // strong ones, and steep later.
-    let hp = 0.7 * (0.3 + 0.14 * w + 0.065 * w * w + 0.008 * w * w * w);
+    let hp = 0.7 * (0.3 + 0.14 * w + 0.05 * w * w + 0.007 * w * w * w);
     let damage = 0.55 + 0.14 * w + 0.008 * w * w;
     let mut speed = 1.0 + 0.01 * w.min(30.0);
     if platform == Platform::LinkedOut {
@@ -253,7 +253,7 @@ pub fn boss(kind: BossKind, minutes: f32, training: &Training, damage: &[f32]) -
         }
     }
     let (base_hp, _, _) = kind.base();
-    let k = if kind == BossKind::TheModel { 0.45 + 0.05 * minutes } else { 0.3 + 0.09 * minutes };
+    let k = if kind == BossKind::TheModel { 0.45 + 0.05 * minutes } else { 0.14 + 0.1 * minutes };
     let (_, dmg, _) = scaling(stage(minutes), Platform::FaceSlop);
     let mut spec = SlopSpec::boss(kind, base_hp * k).scaled(1.0, dmg.min(3.0), 1.0);
     spec.resist = training.model.map(|r| r * 0.5);
