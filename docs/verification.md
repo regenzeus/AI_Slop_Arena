@@ -90,3 +90,21 @@ long ones, and picks barely matter. Tuning 0.7 is the next job.
 
 Not verified by a person: everything in this version. The Nemesis across real runs and
 the memory file were tested in code only, because autoplay never touches the file.
+
+## Version 6: "Automated"
+
+Built in one go from [design-v6.md](design-v6.md) and [plan-v6.md](plan-v6.md), before
+anyone played it. Every requirement CH-01 to ASSET-01 has a test (`tools/trace.sh` lists
+them), the lab's `story` command plays whole five-chapter runs with three bots, and
+autoplay screenshots every chapter, the takeover and the model card.
+
+Story runs at Temperature 0.7 (see the tuning notes at the end of this file for the
+numbers of the build you are reading): the heuristic bot takes every Delegate card and
+ends automated; the Luddite bot never does and reaches the Resistance; the random bot
+dies sooner in every chapter. The target of 8 to 14 minutes per chapter is a heuristic,
+not a promise: the later chapters start with a head start of capability, so a fresh
+level-1 build meets slop that is already strong.
+
+Not verified by a person: everything in this version, in particular the feel of the
+takeover, the death hold, the music, and whether the later chapters read as their
+settings rather than as reskins. That is what the sixth playtest is for.

@@ -15,6 +15,7 @@
 //! screenshot.
 
 mod art;
+mod assets;
 mod audio;
 mod autoplay;
 mod controls;
@@ -24,6 +25,7 @@ mod feed_art;
 mod fx;
 mod hud;
 mod icons;
+mod music;
 mod play;
 mod screens;
 mod state;
@@ -102,7 +104,9 @@ fn main() {
     .insert_resource(bevy::winit::WinitSettings { focused_mode: bevy::winit::UpdateMode::Continuous, unfocused_mode: bevy::winit::UpdateMode::Continuous })
     .insert_resource(ClearColor(theme::VOID))
     .insert_resource(game)
-    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin, display::DisplayPlugin, controls::ControlsPlugin));
+    // Files in assets/ replace drawn art, generated music and synthesised sounds (ASSET-01).
+    .insert_resource(assets::Overrides::find())
+    .add_plugins((play::PlayPlugin, views::ViewsPlugin, fx::FxPlugin, hud::HudPlugin, screens::ScreensPlugin, ui::UiKitPlugin, audio::AudioFxPlugin, music::MusicPlugin, display::DisplayPlugin, controls::ControlsPlugin));
 
     if args.autoplay {
         if let Some(dir) = &args.screenshots {

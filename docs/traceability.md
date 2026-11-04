@@ -11,6 +11,13 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | ART-02 | `every_character_is_drawn_and_not_empty` | crates/slop_game/src/art.rs |
 | ART-04 | `every_weapon_item_and_stat_has_a_distinct_icon` | crates/slop_game/src/icons.rs |
 | ART-06 | `the_feed_has_a_picture_for_everything_on_the_map` | crates/slop_game/src/feed_art.rs |
+| ASSET-01 | `files_replace_drawn_art_and_nothing_is_required` | crates/slop_game/src/assets.rs |
+| AUTO-01 | `a_luddite_never_automates_and_a_heuristic_always_does` | crates/slop_rules/src/tests_v4.rs |
+| AUTO-01 | `the_easy_option_costs_automation_and_takes_things_away` | crates/slop_rules/src/tests_v4.rs |
+| AUTO-02 | `agents_hit_harder_and_smart_targeting_prefers_the_biggest` | crates/slop_sim/src/tests_v4.rs |
+| AUTO-02 | `the_easy_option_costs_automation_and_takes_things_away` | crates/slop_rules/src/tests_v4.rs |
+| AUTO-03 | `the_easy_option_costs_automation_and_takes_things_away` | crates/slop_rules/src/tests_v4.rs |
+| AUTO-04 | `unplug_stops_automation_fires_the_agents_and_costs_half_your_health` | crates/slop_rules/src/tests_v4.rs |
 | BAL-02 | `the_same_seed_plays_the_same_run` | crates/slop_rules/src/tests.rs |
 | BIOME-01 | `the_map_is_a_patchwork_of_platforms` | crates/slop_sim/src/tests_v4.rs |
 | BIOME-01 | `the_spawns_follow_the_biome_you_are_in` | crates/slop_rules/src/tests_v4.rs |
@@ -22,6 +29,11 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
 | CARD-01 | `what_killed_you_comes_back_and_the_card_tells_the_truth` | crates/slop_rules/src/tests_v4.rs |
+| CH-01 | `death_is_the_next_chapter_and_the_build_starts_over` | crates/slop_rules/src/tests_v4.rs |
+| CH-02 | `every_chapter_is_complete_and_in_order` | crates/slop_rules/src/chapters.rs |
+| CH-02 | `later_chapters_have_their_own_rosters_and_bosses` | crates/slop_rules/src/tests_v4.rs |
+| CH-02 | `the_later_bosses_pose_their_puzzles` | crates/slop_sim/src/tests_v4.rs |
+| CH-02 | `the_later_chapters_slop_wander_copy_your_weapons_and_pack_like_the_feeds` | crates/slop_sim/src/tests_v4.rs |
 | CHEST-01 | `chests_merge_two_max_weapons_into_one` | crates/slop_rules/src/tests.rs |
 | CHEST-02 | `a_maxed_build_gets_paid_instead_of_stopped` | crates/slop_rules/src/tests_v4.rs |
 | CHEST-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
@@ -37,6 +49,8 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | ELITE-01 | `elites_carry_their_affix` | crates/slop_rules/src/waves.rs |
 | ELITE-01 | `fact_cuts_through_verified` | crates/slop_sim/src/tests.rs |
 | ELITE-02 | `summoners_call_minions_and_split_copies_carry_no_chests` | crates/slop_sim/src/tests_v4.rs |
+| END-01 | `full_automation_ends_in_the_takeover` | crates/slop_rules/src/tests_v4.rs |
+| END-01 | `the_title_replays_your_build_and_a_takeover_closes_the_chapter` | crates/slop_rules/src/tests_v4.rs |
 | EVENT-01 | `a_swarm_crosses_the_screen_and_is_gone` | crates/slop_sim/src/tests_v4.rs |
 | EVENT-01 | `the_director_sends_swarms_rings_and_livestreams` | crates/slop_rules/src/tests_v4.rs |
 | EVENT-02 | `a_livestream_holds_you_in_and_pays_a_chest` | crates/slop_sim/src/tests_v4.rs |
@@ -68,6 +82,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | ITEM-03 | `golden_chests_hold_a_legendary_and_rarer_things_are_offered_less` | crates/slop_rules/src/tests_v4.rs |
 | ITEM-03 | `items_cover_every_kind_and_describe_themselves` | crates/slop_rules/src/items.rs |
 | ITEM-03 | `legendaries_break_the_rules` | crates/slop_sim/src/tests_v4.rs |
+| LESSON-01 | `the_title_replays_your_build_and_a_takeover_closes_the_chapter` | crates/slop_rules/src/tests_v4.rs |
 | LEVEL-01 | `four_different_offers_and_luck_helps` | crates/slop_rules/src/levels.rs |
 | LEVEL-01 | `likes_level_you_up_and_every_choice_is_valid` | crates/slop_rules/src/tests.rs |
 | LEVEL-02 | `a_choice_changes_the_world_at_once` | crates/slop_rules/src/tests.rs |
@@ -88,6 +103,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | MAP-04 | `maintenance_closes_a_block_after_a_warning_never_on_you` | crates/slop_sim/src/tests.rs |
 | MAP-05 | `a_power_outlet_refills_dashes_and_speeds_you_up` | crates/slop_sim/src/tests_v4.rs |
 | MAP-05 | `recycle_bins_fine_tuning_and_data_brokers` | crates/slop_rules/src/tests_v4.rs |
+| MUSIC-01 | `every_chapter_has_its_own_loop_and_automation_quantizes_it` | crates/slop_game/src/music.rs |
 | NEMESIS-01 | `a_nemesis_always_drops_a_golden_chest` | crates/slop_sim/src/tests_v4.rs |
 | NEMESIS-01 | `memory_survives_the_file_and_nonsense_is_ignored` | crates/slop_rules/src/memory.rs |
 | NEMESIS-01 | `what_killed_you_comes_back_and_the_card_tells_the_truth` | crates/slop_rules/src/tests_v4.rs |
@@ -145,6 +161,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - ART-05
 - BAL-01
 - BRAIN-03
+- CAP-01
 - EVENT-03
 - FAIR-04
 - FEEL-01

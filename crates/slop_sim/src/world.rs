@@ -592,11 +592,13 @@ pub struct Zone {
     pub vel: V2,
     pub damage: f32,
     pub spec: u16,
+    /// The words written on a banner.
+    pub words: &'static str,
 }
 
 impl Zone {
     pub fn new(id: u32, kind: ZoneKind, pos: V2, radius: f32, ticks: u16) -> Zone {
-        Zone { id, kind, pos, radius, shape: Shape::Circle, ticks, max_ticks: ticks, vel: V2::ZERO, damage: 0.0, spec: NO_SPEC }
+        Zone { id, kind, pos, radius, shape: Shape::Circle, ticks, max_ticks: ticks, vel: V2::ZERO, damage: 0.0, spec: NO_SPEC, words: "" }
     }
 
     /// Whether `p` is inside, with `margin` of slack.
@@ -699,6 +701,8 @@ pub struct WaveSetup {
     /// Seconds to survive; 0 means it lasts until the boss dies.
     pub seconds: f32,
     pub platform: Option<Platform>,
+    /// The biomes the map is made of (BIOME-01).
+    pub biomes: Vec<Platform>,
     pub specs: Vec<SlopSpec>,
     pub spawns: Vec<Spawn>,
     /// Spawn credits per second at the start and the end of the wave.
@@ -718,6 +722,7 @@ impl WaveSetup {
             number: 1,
             seconds: 3600.0,
             platform: None,
+            biomes: Platform::ALL.to_vec(),
             specs: Archetype::ALL.iter().map(|&a| SlopSpec::archetype(a)).collect(),
             spawns: Vec::new(),
             rate: (0.0, 0.0),
@@ -898,7 +903,7 @@ impl World {
             hustle: 1.0,
             ad_break: 0,
             beat: 0,
-            biome: crate::map::biome_at(seed, V2::ZERO),
+            biome: crate::map::biome_at(seed, V2::ZERO, &setup.biomes),
             arena: None,
             spawn_boost: 1.0,
             injection: 0,
@@ -1071,6 +1076,12 @@ impl World {
         self.setup.specs.len() - 1
     }
 
+    /// The swarm of the chapter you are in: what hatches and what summoners
+    /// call (CH-02).
+    pub(crate) fn swarm(&self) -> Archetype {
+        Archetype::SWARMS[self.setup.platform.map_or(0, |p| p.chapter())]
+    }
+
     /// Brings a boss in now, near you (RUN-11).
     pub fn summon_boss(&mut self, spec: SlopSpec, model: ModelSetup) {
         self.setup.model = model;
@@ -1202,7 +1213,7 @@ impl World {
         self.map.tick_fences(self.player.pos, PLAYER_RADIUS);
         // A crossing counts once you are properly in, so walking along a
         // seam does not flicker between platforms.
-        let biome = crate::map::biome_settled(self.seed, self.player.pos, 160.0).unwrap_or(self.biome);
+        let biome = crate::map::biome_settled(self.seed, self.player.pos, 160.0, &self.setup.biomes).unwrap_or(self.biome);
         if biome != self.biome {
             self.biome = biome;
             self.hazard_timer = self.hazard_timer.max(240);
@@ -1511,7 +1522,7 @@ impl World {
                     self.events.push(Event::RareDrop { at: s.pos });
                 }
                 // The loot goblin (a Crypto Bro) pays out if you catch him.
-                if matches!(sp.look, SlopLook::Archetype(Archetype::LootGoblin)) {
+                if matches!(sp.look, SlopLook::Archetype(a) if a.is_goblin()) {
                     for _ in 0..6 {
                         loot.push((PickupKind::Clout, s.pos, 12));
                     }
@@ -1568,7 +1579,7 @@ impl World {
             if sp.traits.has(Traits::EXPLODE) {
                 blasts.push(s.pos);
             }
-            if matches!(sp.look, SlopLook::Archetype(Archetype::ListicleDrone)) && s.number == 1 && s.pack > 0 {
+            if sp.movement == Movement::Pack && s.number == 1 && s.pack > 0 {
                 scatter.push((s.pack, s.pos));
             }
             let boss = matches!(sp.movement, Movement::Boss(_));

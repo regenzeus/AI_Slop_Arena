@@ -108,8 +108,20 @@ pub struct Table {
     pub genomes: Vec<(usize, usize)>,
 }
 
+/// Each later chapter's roster (CH-02): who is there from the start, and who
+/// joins at which stage. The locals of each biome come on top.
+const ROSTERS: [&[(Archetype, f32, u8)]; 4] = [
+    &[(Archetype::Copilot, 0.0, 1), (Archetype::Ticket, 0.0, 5), (Archetype::SlackPing, 1.6, 1), (Archetype::MeetingInvite, 2.4, 1), (Archetype::ReplyAll, 3.2, 1), (Archetype::PerformanceReview, 4.2, 1), (Archetype::KpiDashboard, 5.4, 1)],
+    &[(Archetype::Analyst, 0.0, 1), (Archetype::DiligenceDrone, 0.0, 5), (Archetype::Consultant, 2.0, 1), (Archetype::ActivistInvestor, 3.0, 1), (Archetype::QuarterlyReport, 4.4, 1)],
+    &[(Archetype::Pollster, 0.0, 1), (Archetype::Voter, 0.0, 4), (Archetype::AttackAd, 2.2, 1), (Archetype::SuperPac, 3.4, 1), (Archetype::FactChecker, 4.4, 1), (Archetype::Deepfake, 5.6, 1)],
+    &[(Archetype::Drone, 0.0, 1), (Archetype::Citizen, 0.0, 4), (Archetype::ComplianceUnit, 2.0, 1), (Archetype::YourAgent, 3.0, 1), (Archetype::FormerExec, 4.2, 1), (Archetype::Camera, 5.0, 1)],
+];
+
 /// Who spawns on `platform` at `stage`, against the current training.
 pub fn table(stage: f32, platform: Platform, training: &Training) -> Table {
+    if platform.chapter() > 0 {
+        return chapter_table(stage, platform, training);
+    }
     let (hp, dmg, speed) = scaling(stage, platform);
     let mut specs = Vec::new();
     let mut spawns = Vec::new();
@@ -188,6 +200,64 @@ pub fn table(stage: f32, platform: Platform, training: &Training) -> Table {
     }
 }
 
+/// The spawn table of a later chapter's biome: its roster by stage, its
+/// locals, and in the Old Feed the Feed's own slop and the brainrot that
+/// did best against you.
+fn chapter_table(stage: f32, platform: Platform, training: &Training) -> Table {
+    let (hp, dmg, speed) = scaling(stage, platform);
+    let mut specs = Vec::new();
+    let mut spawns = Vec::new();
+    let mut genomes = Vec::new();
+    let mut add = |spec: SlopSpec, w: u32, group: u8| -> usize {
+        let cost = spec.hp / hp * group as f32 / 20.0;
+        specs.push(spec);
+        spawns.push(Spawn { spec: specs.len() - 1, weight: w, from: 0.0, group, cost });
+        specs.len() - 1
+    };
+    let archetype = |a: Archetype| {
+        let mut s = SlopSpec::archetype(a).scaled(hp, dmg, speed);
+        s.resist = training.model;
+        s
+    };
+    let roster = ROSTERS[platform.chapter() - 1];
+    let mut present: Vec<(Archetype, usize)> = Vec::new();
+    for &(a, from, group) in roster {
+        if stage >= from {
+            let w = if group > 1 { 8 } else { 4 };
+            let i = add(archetype(a), w, group);
+            present.push((a, i));
+        }
+    }
+    // The biome's locals: more of them where they are already in the
+    // roster, and early where they are not yet.
+    let mut more = Vec::new();
+    for &a in platform.locals() {
+        match present.iter().find(|(r, _)| *r == a) {
+            Some((_, i)) => more.push(*i),
+            None => {
+                let i = add(archetype(a), 4, 1);
+                present.push((a, i));
+            }
+        }
+    }
+    if platform == Platform::OldFeed {
+        for &a in &[Archetype::ListicleDrone, Archetype::Tralalelo, Archetype::GlassFruit] {
+            add(archetype(a), 3, if a == Archetype::ListicleDrone { 5 } else { 1 });
+        }
+        for (g, genome) in training.pool.iter().enumerate().take(3) {
+            let spec = SlopSpec::brainrot(genome.name.clone(), genome.body, genome.object, genome.accessory, genome.toughness, genome.pace, genome.resist).scaled(hp, dmg, speed);
+            let index = add(spec, 2, 1);
+            genomes.push((index, g));
+        }
+    }
+    for i in more {
+        if let Some(s) = spawns.iter_mut().find(|s| s.spec == i) {
+            s.weight += 4;
+        }
+    }
+    Table { specs, spawns, rate: rate(stage), elite_chance: if stage >= 3.0 { 0.008 + 0.0012 * stage } else { 0.0 }, repost_chance: 0.0, genomes }
+}
+
 /// Elite affixes (ELITE-01).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Affix {
@@ -255,16 +325,20 @@ pub fn boss(kind: BossKind, minutes: f32, training: &Training, damage: &[f32]) -
     let mut model = ModelSetup::default();
     let best = training.best();
     model.parts = Some((best.body, best.object, best.accessory));
-    if kind == BossKind::TheModel {
-        model.collapse = crate::training::collapse(&training.kills);
+    let model_like = matches!(kind, BossKind::TheModel | BossKind::TheState);
+    if model_like || kind == BossKind::YourReplacement {
+        // It has your weapons (BOSS-07, CH-02).
         let mut order: Vec<usize> = (0..damage.len()).filter(|&d| damage[d] > 0.0).collect();
         order.sort_by(|&a, &b| damage[b].total_cmp(&damage[a]));
         for (k, d) in order.into_iter().take(3).enumerate() {
             model.copies[k] = Some(weapon_look(d));
         }
     }
+    if model_like {
+        model.collapse = crate::training::collapse(&training.kills);
+    }
     let (base_hp, _, _) = kind.base();
-    let k = if kind == BossKind::TheModel { 0.45 + 0.05 * minutes } else { 0.14 + 0.1 * minutes };
+    let k = if model_like { 0.45 + 0.05 * minutes } else { 0.14 + 0.1 * minutes };
     let (_, dmg, _) = scaling(stage(minutes), Platform::FaceSlop);
     let mut spec = SlopSpec::boss(kind, base_hp * k).scaled(1.0, dmg.min(3.0), 1.0);
     spec.resist = training.model.map(|r| r * 0.5);

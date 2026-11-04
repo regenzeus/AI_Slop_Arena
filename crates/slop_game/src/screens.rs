@@ -275,7 +275,8 @@ struct Shown {
 
 fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>, controls: Res<Controls>, art: Res<Art>, roots: Query<Entity, With<ScreenRoot>>, mut last: Local<Shown>) {
     let phase = game.run.as_ref().map_or(String::new(), |r| format!("{:?}", std::mem::discriminant(&r.phase)));
-    let shown = Shown { screen: Some(game.screen), phase, settled: game.since_end > END_PAUSE, paused: game.paused, pad: controls.pad };
+    let held = matches!(game.run.as_ref().map(|r| &r.phase), Some(Phase::ChapterCard(_))) && game.since_choice < DEATH_HOLD;
+    let shown = Shown { screen: Some(game.screen), phase, settled: game.since_end > END_PAUSE && !held, paused: game.paused, pad: controls.pad };
     if !game.dirty && *last == shown {
         return;
     }
@@ -305,6 +306,7 @@ fn rebuild(mut commands: Commands, mut game: ResMut<Game>, mut nav: ResMut<Nav>,
                     Phase::Shrine { offers, .. } => shrine(p, offers, &art, pad),
                     Phase::Glitch(offers) => glitch_pick(p, run, offers, &art, pad),
                     Phase::Recycle { items, .. } => recycle(p, run, items, &art, pad),
+                    Phase::ChapterCard(_) if held && !game.bot => death_hold(p, run),
                     Phase::ChapterCard(c) => chapter_card(p, run, *c, &art, pad),
                     Phase::Over { victory } if game.since_end > END_PAUSE => over(p, run, *victory, &art, pad),
                     _ => {}
@@ -1039,6 +1041,27 @@ fn over(p: &mut ChildSpawnerCommands, run: &Run, _victory: bool, art: &Art, pad:
         button(r, "Quit", UiAction::Quit, BUTTON, key::BUTTON + 1);
     });
     hints(p, pad, &[("Space", "A", "new run")]);
+}
+
+/// Seconds the last frame of a chapter holds, with what deleted you named
+/// (LESSON-01), before the next chapter's card.
+pub const DEATH_HOLD: f32 = 2.2;
+
+/// The last frame, held: the chapter's death word, what did it, and the
+/// one line that would have saved you. The Feed stays visible behind it.
+fn death_hold(p: &mut ChildSpawnerCommands, run: &Run) {
+    backdrop(p, Color::srgba(0.4, 0.0, 0.05, 0.35));
+    let Some(last) = run.chapters.last() else { return };
+    let d = last.chapter.def();
+    label(p, d.death, 72.0, theme::DANGER);
+    match &last.killer {
+        Some((name, lesson)) => {
+            label(p, format!("by {name}"), 26.0, theme::PAPER);
+            p.spawn(Node { height: Val::Px(10.0), ..default() });
+            label(p, lesson.clone(), 20.0, tier_color(3));
+        }
+        None => label(p, format!("{} ran out.", d.resource), 26.0, theme::PAPER),
+    }
 }
 
 /// Between chapters (CH-01): what you are now, what you protect, what you

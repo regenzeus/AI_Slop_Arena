@@ -19,8 +19,19 @@ defence, rare loot, glitches, rule-bending heroes, biomes, events and the brainr
 
 ## The game
 
-The enemy is a model being trained on you: see the [direction](docs/direction.md).
+The enemy is a model being trained on you: see the [direction](docs/direction.md) and the
+version 6 design, [Automated](docs/design-v6.md).
 
+- **Five chapters, one run.** You start on your phone in the Feed. When you burn out, you
+  are promoted: the Office (Job Security, a Copilot), the Boardroom (Shareholder
+  Confidence, the Algorithm), the Campaign (Approval, the Candidate), the Resistance
+  (Signal, the State). Each chapter has six biomes, its own slop and its own boss. You
+  always lose; the question is how much of you is left.
+- **Automation.** On level-ups the easy option is always the strongest: hand a weapon to
+  an agent, let the model pick, let it dash, let it drive. Every one raises Automation. At
+  25 it suggests; at 50 it picks for you; at 75 it drives for part of every minute; at 100
+  your role is automated and a bot plays out your last 20 seconds. In the Resistance your
+  agents work for the other side. The Unplug glitch stops it, for a price.
 - **Temperature** is the difficulty. 0.2 is a calm first run; 1.5 is unhinged.
 - **The model learns you.** The HUD and level-up cards show what it resists. The end
   screen is a model card about your run, and what deleted you comes back by name.
@@ -55,7 +66,10 @@ The enemy is a model being trained on you: see the [direction](docs/direction.md
   ring lights.
 - **The slop learns.** Every two minutes it retrains on what killed it, and the brainrot
   that hurt you breeds.
-- Every sprite, icon and sound is generated in code; the game ships no asset files.
+- **Music** is generated per chapter and quantized by Automation: at 0% a person plays
+  it, at 100% the grid does.
+- Every sprite, icon, loop and sound is generated in code; the game ships no asset files.
+  Drop files in `assets/` to replace any of them (see below).
 
 ## Play
 
@@ -97,7 +111,26 @@ sh tools/check.sh
   survived, bosses beaten and the weapons they ended with.
 - `slop_lab progress` prints level, kills, slop on the field, health and Clout minute by
   minute.
+- `slop_lab story` plays whole five-chapter runs with the heuristic, Luddite and random
+  bots and prints minutes per chapter, Automation at the end and what deleted them.
 - `tools/check.sh` runs clippy and every test, and regenerates the traceability table.
+
+## Your own art, music and sounds
+
+Nothing is required, but a file in an `assets/` folder next to the executable (or in the
+working directory) replaces what the game draws or synthesises:
+
+| Path | Replaces |
+| --- | --- |
+| `assets/sprites/slop_<name>.png` | A slop character, such as `slop_six_finger_hand.png` or `slop_tonk_tonk_tonk_sahur_0.png` for an animated icon's frame 0 to 3 |
+| `assets/sprites/boss_<name>.png` | A boss, such as `boss_the_board.png` |
+| `assets/sprites/hero_<name>_<0-3>.png` | A hero's four faces |
+| `assets/sprites/floor_<name>.png` | A biome's floor tile (256x256, tiled) |
+| `assets/music/chapter<1-5>.wav` or `.ogg` | A chapter's loop |
+| `assets/sfx/<sound>.wav` or `.ogg` | A sound: `hit`, `death`, `pop`, `hurt`, `like`, `swing`, `shoot`, `levelup`, `dash`, `fanfare`... |
+
+Names are lower case, with `_` for spaces and punctuation. Sprites are RGBA PNGs of any
+size; they are scaled to the character.
 
 ## Layout
 
@@ -111,6 +144,7 @@ sh tools/check.sh
 ## Docs
 
 - [Direction](docs/direction.md)
+- [Version 6 design: Automated](docs/design-v6.md) and its [plan](docs/plan-v6.md)
 - [Version 4 design](docs/design-v4.md)
 - [Version 3 design](docs/design-v3.md)
 - [Requirements](docs/requirements.md)

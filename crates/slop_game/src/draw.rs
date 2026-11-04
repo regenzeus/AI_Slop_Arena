@@ -4,7 +4,7 @@
 //! can be stacked into a creature.
 
 use slop_rules::Hero;
-use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Object, Platform};
+use slop_sim::content::{Accessory, Archetype, Body, BossKind, Look, Motif, Object, Platform};
 
 use crate::art::*;
 
@@ -289,6 +289,293 @@ pub fn archetype(a: Archetype) -> Canvas {
             p.rect(50.0, 46.0, 27.0, 4.0, 2.0, hex(0x6FA8FF));
             p.rect(50.0, 62.0, 28.0, 4.0, 2.0, hex(0xFF8FB8));
             p.dot(50.0, 32.0, 5.0, hex(0xFFD84A));
+        }
+        // The Office (CH-02).
+        Archetype::Copilot => {
+            // A helpful paperclip with a screen: it has a suggestion.
+            let blue = hex(0x6FA8DC);
+            p.ring(78.0, 30.0, 12.0, 3.5, hex(GREY));
+            p.ring(78.0, 36.0, 7.0, 3.0, hex(GREY));
+            p.line(50.0, 8.0, 50.0, 22.0, 2.0, INK);
+            p.dot(50.0, 8.0, 4.0, blue);
+            p.rect(50.0, 52.0, 32.0, 26.0, 10.0, blue);
+            p.rect(50.0, 50.0, 24.0, 16.0, 6.0, hex(0xEAF4FF));
+            p.dot(42.0, 48.0, 3.5, INK);
+            p.dot(58.0, 48.0, 3.5, INK);
+            p.smile(50.0, 54.0, 7.0, INK);
+            p.rect(50.0, 84.0, 14.0, 6.0, 3.0, blue);
+        }
+        Archetype::Ticket => {
+            // A sticky note with a priority stripe.
+            p.rect(50.0, 52.0, 30.0, 30.0, 3.0, hex(0xF2E36B));
+            p.rect(50.0, 28.0, 30.0, 6.0, 2.0, hex(0xE8835A));
+            for y in [44.0, 54.0, 64.0] {
+                p.line(30.0, y, 62.0, y, 1.5, alpha(INK, 0.35));
+            }
+            p.tri((66.0, 70.0), (80.0, 70.0), (80.0, 84.0), hex(0xD8C84A));
+        }
+        Archetype::SlackPing => {
+            // A red notification badge on legs.
+            p.stick(42.0, 72.0, 36.0, 92.0, 3.5, INK);
+            p.stick(58.0, 72.0, 64.0, 92.0, 3.5, INK);
+            p.circle(50.0, 50.0, 28.0, hex(RED));
+            p.rect(50.0, 44.0, 4.0, 13.0, 2.0, WHITE);
+            p.dot(50.0, 64.0, 4.5, WHITE);
+        }
+        Archetype::MeetingInvite => {
+            // A calendar page with a clock on it, reaching out.
+            p.rect(50.0, 54.0, 32.0, 34.0, 5.0, WHITE);
+            p.rect(50.0, 28.0, 32.0, 8.0, 4.0, hex(RED));
+            for x in [36.0, 64.0] {
+                p.rect(x, 20.0, 3.0, 8.0, 1.5, hex(GREY));
+            }
+            p.ring(50.0, 58.0, 14.0, 2.5, INK);
+            p.line(50.0, 58.0, 50.0, 48.0, 2.0, INK);
+            p.line(50.0, 58.0, 58.0, 62.0, 2.0, INK);
+            p.stick(18.0, 56.0, 6.0, 48.0, 3.5, hex(0xF0C9A0));
+            p.stick(82.0, 56.0, 94.0, 48.0, 3.5, hex(0xF0C9A0));
+        }
+        Archetype::KpiDashboard => {
+            // A monitor on a stand: every number is up and to the right.
+            p.rect(50.0, 86.0, 18.0, 4.0, 2.0, hex(GREY));
+            p.rect(50.0, 74.0, 5.0, 10.0, 2.0, hex(GREY));
+            p.rect(50.0, 46.0, 42.0, 30.0, 5.0, hex(0x24242E));
+            for (i, h) in [8.0, 14.0, 20.0, 27.0, 34.0].iter().enumerate() {
+                let x = 22.0 + i as f32 * 14.0;
+                p.rect(x, 70.0 - h / 2.0, 4.5, h / 2.0, 1.0, hex(if i % 2 == 0 { 0x5DBB4F } else { 0x3CC8B4 }));
+            }
+            p.line(14.0, 60.0, 84.0, 26.0, 1.8, hex(RED));
+            p.tri((84.0, 26.0), (76.0, 26.0), (84.0, 34.0), hex(RED));
+        }
+        Archetype::ReplyAll => {
+            // An envelope with two reply arrows.
+            p.rect(50.0, 56.0, 36.0, 24.0, 4.0, hex(0xF4F6FA));
+            p.line(14.0, 34.0, 50.0, 60.0, 2.0, INK);
+            p.line(86.0, 34.0, 50.0, 60.0, 2.0, INK);
+            let green = hex(0x4CC36B);
+            for (x, y) in [(22.0, 20.0), (34.0, 12.0)] {
+                p.stick(x, y, x + 24.0, y, 2.5, green);
+                p.tri((x, y), (x + 8.0, y - 7.0), (x + 8.0, y + 7.0), green);
+            }
+        }
+        Archetype::PerformanceReview => {
+            // A clipboard with a form and a red pen.
+            p.rect(50.0, 54.0, 28.0, 36.0, 4.0, hex(0x8A5A34));
+            p.rect(50.0, 56.0, 23.0, 30.0, 2.0, WHITE);
+            p.rect(50.0, 18.0, 10.0, 5.0, 2.0, hex(GREY));
+            for y in [38.0, 48.0, 58.0, 68.0] {
+                p.rect(34.0, y, 3.0, 3.0, 0.5, alpha(INK, 0.5));
+                p.line(42.0, y, 68.0, y, 1.5, alpha(INK, 0.35));
+            }
+            p.line(40.0, 76.0, 60.0, 78.0, 1.5, hex(RED));
+            p.stick(78.0, 30.0, 88.0, 70.0, 3.0, hex(RED));
+        }
+        // The Boardroom.
+        Archetype::Analyst => {
+            // Glasses, a tie, and a spreadsheet held up.
+            p.rect(50.0, 76.0, 26.0, 20.0, 10.0, hex(0xF4F6FA));
+            p.tri((47.0, 58.0), (53.0, 58.0), (50.0, 84.0), hex(NAVY));
+            p.circle(50.0, 36.0, 20.0, hex(SKIN));
+            p.rect(50.0, 18.0, 18.0, 5.0, 4.0, hex(0x3A2A1E));
+            for ex in [43.0, 57.0] {
+                p.ring(ex, 36.0, 6.5, 2.0, INK);
+            }
+            p.line(43.0, 44.0, 57.0, 44.0, 1.5, INK);
+            p.rect(84.0, 60.0, 14.0, 18.0, 2.0, hex(0xCFEAD0));
+            for y in [48.0, 56.0, 64.0, 72.0] {
+                p.line(72.0, y, 96.0, y, 1.0, alpha(INK, 0.4));
+            }
+        }
+        Archetype::Consultant => {
+            // A suit, a gold tie, a wide smile and a deck of slides.
+            p.rect(50.0, 76.0, 30.0, 20.0, 10.0, hex(0x2A2D38));
+            p.tri((40.0, 58.0), (60.0, 58.0), (50.0, 72.0), WHITE);
+            p.tri((47.0, 60.0), (53.0, 60.0), (50.0, 86.0), hex(GOLD));
+            p.circle(50.0, 36.0, 20.0, hex(SKIN));
+            p.rect(50.0, 18.0, 20.0, 6.0, 5.0, hex(0x1A1A1A));
+            p.dot(43.0, 35.0, 2.5, INK);
+            p.dot(57.0, 35.0, 2.5, INK);
+            p.rect(50.0, 44.0, 9.0, 3.0, 1.5, WHITE);
+            p.rect(84.0, 70.0, 12.0, 9.0, 2.0, hex(0x6FA8DC));
+        }
+        Archetype::DiligenceDrone => {
+            // A quadcopter with a lens.
+            p.stick(20.0, 20.0, 80.0, 80.0, 3.0, hex(GREY));
+            p.stick(80.0, 20.0, 20.0, 80.0, 3.0, hex(GREY));
+            for (x, y) in [(20.0, 20.0), (80.0, 20.0), (20.0, 80.0), (80.0, 80.0)] {
+                p.circle(x, y, 12.0, alpha(hex(0xD5D9E2), 0.7));
+            }
+            p.circle(50.0, 50.0, 16.0, hex(0x8A94B0));
+            p.dot(50.0, 50.0, 6.0, INK);
+            p.dot(52.0, 48.0, 2.0, WHITE);
+        }
+        Archetype::QuarterlyReport => {
+            // A thick binder with a chart going the wrong way.
+            p.rect(50.0, 52.0, 34.0, 42.0, 4.0, hex(0x24324F));
+            p.rect(22.0, 52.0, 6.0, 42.0, 2.0, hex(0x1A2238));
+            p.rect(54.0, 48.0, 24.0, 28.0, 2.0, WHITE);
+            for (i, h) in [26.0, 20.0, 13.0, 6.0].iter().enumerate() {
+                let x = 40.0 + i as f32 * 9.0;
+                p.rect(x, 70.0 - h / 2.0, 3.0, h / 2.0, 0.5, hex(RED));
+            }
+            p.rect(54.0, 28.0, 16.0, 3.0, 1.5, hex(GOLD));
+        }
+        Archetype::ActivistInvestor => {
+            // A red face, a megaphone and a letter to the board.
+            p.rect(50.0, 78.0, 26.0, 18.0, 9.0, hex(0x2A2D38));
+            p.circle(50.0, 40.0, 20.0, hex(0xF28C78));
+            p.line(40.0, 32.0, 46.0, 36.0, 2.0, INK);
+            p.line(60.0, 32.0, 54.0, 36.0, 2.0, INK);
+            p.dot(44.0, 40.0, 2.5, INK);
+            p.dot(56.0, 40.0, 2.5, INK);
+            p.ellipse(50.0, 50.0, 6.0, 4.0, INK);
+            p.tri((70.0, 34.0), (96.0, 22.0), (96.0, 50.0), hex(RED));
+            p.rect(18.0, 74.0, 11.0, 8.0, 1.5, WHITE);
+            p.rect(18.0, 73.0, 1.5, 4.0, 0.5, hex(RED));
+        }
+        Archetype::GoldenParachute => {
+            // A golden canopy, and a bag of severance under it.
+            p.sdf(|x, y| ellipse(x, y, 50.0, 30.0, 42.0, 24.0).max(y - 30.0), hex(GOLD));
+            for x in [22.0, 36.0, 50.0, 64.0, 78.0] {
+                p.line(x, 30.0, 50.0, 72.0, 1.2, alpha(INK, 0.5));
+            }
+            p.blob(&[(50.0, 80.0, 14.0), (50.0, 66.0, 6.0)], hex(0xC89A5A));
+            p.rect(50.0, 64.0, 7.0, 2.5, 1.0, hex(0x8A6236));
+            p.dot(50.0, 80.0, 5.0, hex(GOLD));
+        }
+        // The Campaign.
+        Archetype::Voter => {
+            // A small person with a sign and an open mind.
+            p.rect(50.0, 76.0, 20.0, 16.0, 8.0, hex(0x8CC8F2));
+            p.circle(50.0, 44.0, 17.0, hex(SKIN));
+            p.dot(44.0, 42.0, 2.5, INK);
+            p.dot(56.0, 42.0, 2.5, INK);
+            p.rect(50.0, 50.0, 4.0, 2.0, 1.0, INK);
+            p.stick(80.0, 50.0, 80.0, 90.0, 2.0, hex(0x8A5A34));
+            p.rect(80.0, 34.0, 16.0, 11.0, 2.0, WHITE);
+            p.rect(80.0, 34.0, 10.0, 2.0, 1.0, hex(RED));
+        }
+        Archetype::Pollster => {
+            // A clipboard and a bar chart that is within the margin of error.
+            p.rect(50.0, 78.0, 26.0, 18.0, 9.0, hex(0x2E3A59));
+            p.circle(50.0, 40.0, 20.0, hex(SKIN));
+            p.rect(50.0, 22.0, 18.0, 5.0, 4.0, hex(0x6B4A2E));
+            p.dot(44.0, 40.0, 2.5, INK);
+            p.dot(56.0, 40.0, 2.5, INK);
+            p.line(45.0, 48.0, 55.0, 48.0, 1.5, INK);
+            p.rect(84.0, 64.0, 14.0, 18.0, 2.0, WHITE);
+            for (i, h) in [8.0, 14.0, 11.0].iter().enumerate() {
+                let x = 76.0 + i as f32 * 8.0;
+                p.rect(x, 78.0 - h / 2.0, 2.5, h / 2.0, 0.5, hex(if i == 1 { 0xE23B3B } else { 0x6FA8DC }));
+            }
+        }
+        Archetype::AttackAd => {
+            // A television with a red arrow and a grainy face.
+            p.rect(50.0, 50.0, 40.0, 30.0, 5.0, hex(0x3A2A2A));
+            p.rect(50.0, 50.0, 34.0, 24.0, 3.0, hex(0x8A1E1E));
+            p.circle(40.0, 50.0, 10.0, alpha(hex(SKIN), 0.6));
+            p.stick(60.0, 40.0, 78.0, 58.0, 3.0, hex(RED));
+            p.tri((70.0, 38.0), (82.0, 62.0), (60.0, 64.0), hex(RED));
+            p.stick(30.0, 84.0, 70.0, 84.0, 3.0, hex(GREY));
+            p.stick(50.0, 80.0, 50.0, 84.0, 3.0, hex(GREY));
+        }
+        Archetype::Deepfake => {
+            // A face like yours, slipping sideways.
+            p.rect(50.0, 76.0, 29.0, 21.0, 15.0, hex(0x3A3D4D));
+            p.circle(50.0, 38.0, 27.0, hex(SKIN));
+            p.sdf_fill(|x, y| circle(x, y, 58.0, 44.0, 27.0).max(y - 44.0).max(44.0 - y - 14.0), alpha(hex(0x30E0FF), 0.35));
+            p.sdf_fill(|x, y| circle(x, y, 42.0, 30.0, 27.0).max(y - 30.0).max(30.0 - y - 10.0), alpha(hex(0xFF40C0), 0.35));
+            p.dot(39.0, 36.0, 4.0, INK);
+            p.dot(63.0, 38.0, 4.0, INK);
+            p.smile(50.0, 44.0, 9.0, INK);
+            p.line(24.0, 52.0, 76.0, 52.0, 1.2, alpha(WHITE, 0.6));
+        }
+        Archetype::FactChecker => {
+            // A clipboard held in front of a face. "Actually,"
+            p.rect(50.0, 80.0, 26.0, 16.0, 8.0, hex(0x4A6FB5));
+            p.circle(50.0, 42.0, 20.0, hex(SKIN));
+            p.rect(50.0, 24.0, 18.0, 5.0, 4.0, hex(0x7A4E2D));
+            p.rect(50.0, 56.0, 24.0, 22.0, 3.0, hex(0x8A5A34));
+            p.rect(50.0, 57.0, 20.0, 18.0, 2.0, WHITE);
+            for y in [48.0, 56.0, 64.0] {
+                p.line(34.0, y, 66.0, y, 1.3, alpha(INK, 0.35));
+            }
+            p.dot(38.0, 52.0, 2.0, hex(0x4CC36B));
+            p.dot(38.0, 60.0, 2.0, hex(RED));
+        }
+        Archetype::SuperPac => {
+            // A bag of money on legs. Unlimited.
+            p.stick(42.0, 80.0, 38.0, 94.0, 3.5, INK);
+            p.stick(58.0, 80.0, 62.0, 94.0, 3.5, INK);
+            p.blob(&[(50.0, 60.0, 30.0), (50.0, 30.0, 11.0)], hex(0x5DBB4F));
+            p.rect(50.0, 30.0, 13.0, 3.5, 1.5, hex(0x2E6B2A));
+            p.ring(50.0, 62.0, 9.0, 2.5, hex(GOLD));
+            p.line(50.0, 50.0, 50.0, 74.0, 2.5, hex(GOLD));
+        }
+        // The Resistance.
+        Archetype::Drone => {
+            // A black quadcopter with a red eye and something underneath.
+            p.stick(20.0, 24.0, 80.0, 76.0, 3.0, hex(0x2A2D38));
+            p.stick(80.0, 24.0, 20.0, 76.0, 3.0, hex(0x2A2D38));
+            for (x, y) in [(20.0, 24.0), (80.0, 24.0), (20.0, 76.0), (80.0, 76.0)] {
+                p.circle(x, y, 12.0, alpha(hex(0x5A5E6A), 0.7));
+            }
+            p.rect(50.0, 50.0, 16.0, 11.0, 4.0, hex(0x1A1A22));
+            p.dot(50.0, 48.0, 5.0, hex(RED));
+            p.circle(50.0, 72.0, 7.0, hex(0x3A3D4D));
+        }
+        Archetype::ComplianceUnit => {
+            // A riot shield with a smile painted on it.
+            p.rect(50.0, 52.0, 32.0, 42.0, 10.0, hex(0x3A3D4D));
+            p.rect(50.0, 52.0, 27.0, 37.0, 8.0, alpha(hex(0x6A7390), 0.8));
+            p.dot(41.0, 42.0, 4.0, hex(0xFFE066));
+            p.dot(59.0, 42.0, 4.0, hex(0xFFE066));
+            p.smile(50.0, 54.0, 12.0, hex(0xFFE066));
+            p.rect(50.0, 80.0, 20.0, 3.0, 1.5, hex(0xFF2E94));
+            p.stick(84.0, 60.0, 92.0, 94.0, 3.0, hex(0x2A2D38));
+        }
+        Archetype::Citizen => {
+            // A grey person holding up a phone. Reporting.
+            p.rect(50.0, 78.0, 22.0, 18.0, 9.0, hex(0x8A8E9A));
+            p.circle(50.0, 44.0, 17.0, hex(0xD8C8B8));
+            p.dot(44.0, 42.0, 2.5, INK);
+            p.dot(56.0, 42.0, 2.5, INK);
+            p.line(45.0, 50.0, 55.0, 50.0, 1.5, INK);
+            p.stick(70.0, 70.0, 82.0, 44.0, 3.5, hex(0xD8C8B8));
+            p.rect(84.0, 36.0, 6.0, 10.0, 2.0, hex(0x2A2240));
+            p.dot(84.0, 34.0, 2.0, hex(RED));
+        }
+        Archetype::YourAgent => {
+            // One of yours: your hoodie, a visor where the face was.
+            p.rect(50.0, 76.0, 29.0, 21.0, 15.0, hex(0x3A3D4D));
+            p.circle(50.0, 38.0, 33.0, hex(0x4A4E60));
+            p.circle(50.0, 38.0, 27.0, hex(0x24242E));
+            p.rect(50.0, 38.0, 20.0, 6.0, 3.0, hex(0x3CC8B4));
+            p.dot(50.0, 38.0, 3.0, WHITE);
+            p.line(50.0, 62.0, 50.0, 92.0, 1.5, alpha(WHITE, 0.35));
+        }
+        Archetype::FormerExec => {
+            // A suit, a tie askew, and a cardboard box of desk things.
+            p.rect(50.0, 76.0, 28.0, 20.0, 10.0, hex(0x2A2D38));
+            p.tri((41.0, 58.0), (59.0, 58.0), (50.0, 72.0), WHITE);
+            p.tri((46.0, 60.0), (52.0, 60.0), (56.0, 86.0), hex(RED));
+            p.circle(50.0, 36.0, 20.0, hex(SKIN));
+            p.dot(43.0, 35.0, 2.5, INK);
+            p.dot(57.0, 35.0, 2.5, INK);
+            p.line(44.0, 45.0, 56.0, 43.0, 1.5, INK);
+            p.line(36.0, 26.0, 44.0, 30.0, 1.8, INK);
+            p.line(64.0, 26.0, 56.0, 30.0, 1.8, INK);
+            p.rect(84.0, 76.0, 14.0, 10.0, 1.5, hex(0xC89A5A));
+            p.stick(84.0, 66.0, 84.0, 60.0, 3.0, hex(0x5DBB4F));
+        }
+        Archetype::Camera => {
+            // A camera on a stalk, watching.
+            p.rect(50.0, 92.0, 16.0, 4.0, 2.0, hex(GREY));
+            p.rect(50.0, 72.0, 4.0, 18.0, 2.0, hex(GREY));
+            p.rect(54.0, 44.0, 28.0, 14.0, 5.0, hex(0x2A2D38));
+            p.circle(78.0, 44.0, 10.0, hex(0x1A1A22));
+            p.dot(80.0, 44.0, 5.0, hex(0x30E0FF));
+            p.dot(30.0, 40.0, 2.5, hex(RED));
         }
         _ => return icon(a, 0),
     }
@@ -852,6 +1139,57 @@ pub fn boss(b: BossKind) -> Canvas {
                 p.dot(x, 46.0, 3.0, hex(RED));
             }
         }
+        BossKind::YourReplacement => {
+            // Your hoodie, in chrome, with a visor and a V2 badge.
+            p.rect(50.0, 76.0, 30.0, 22.0, 15.0, hex(0xB8BCC8));
+            p.circle(50.0, 38.0, 32.0, hex(0xD5D9E2));
+            p.circle(50.0, 38.0, 26.0, hex(0x24242E));
+            p.rect(50.0, 38.0, 20.0, 6.0, 3.0, hex(0x3CC8B4));
+            p.dot(50.0, 38.0, 3.0, WHITE);
+            p.rect(50.0, 80.0, 9.0, 5.0, 2.0, hex(0x3CC8B4));
+            for (x, y) in [(12.0, 20.0), (88.0, 16.0), (90.0, 74.0), (10.0, 78.0)] {
+                p.rect(x, y, 6.0, 6.0, 1.0, hex(0xF2E36B));
+            }
+        }
+        BossKind::TheBoard => {
+            // A long table, the seats around it, and a gavel.
+            p.ellipse(50.0, 56.0, 44.0, 24.0, hex(0x6B4A2E));
+            p.ellipse(50.0, 54.0, 38.0, 18.0, hex(0x8A6236));
+            for k in 0..6 {
+                let a = k as f32 * std::f32::consts::TAU / 6.0;
+                p.circle(50.0 + a.cos() * 42.0, 56.0 + a.sin() * 26.0, 7.0, hex(0x2A2D38));
+            }
+            p.stick(44.0, 50.0, 60.0, 60.0, 3.0, hex(0x3A2A1E));
+            p.rect(62.0, 61.0, 7.0, 5.0, 2.0, hex(0x3A2A1E));
+            p.rect(50.0, 44.0, 10.0, 3.0, 1.0, WHITE);
+        }
+        BossKind::TheCandidate => {
+            // A podium, a smile that never stops, and a ring of stars.
+            p.rect(50.0, 76.0, 28.0, 18.0, 4.0, hex(0x2E3A59));
+            p.rect(50.0, 60.0, 32.0, 4.0, 2.0, hex(0x1F2A44));
+            p.circle(50.0, 36.0, 22.0, hex(SKIN));
+            p.rect(50.0, 16.0, 20.0, 6.0, 5.0, hex(0x6B4A2E));
+            p.dot(42.0, 34.0, 3.0, INK);
+            p.dot(58.0, 34.0, 3.0, INK);
+            p.rect(50.0, 44.0, 12.0, 3.5, 1.5, WHITE);
+            for k in 0..7 {
+                let a = k as f32 * std::f32::consts::TAU / 7.0 - 1.57;
+                p.dot(50.0 + a.cos() * 44.0, 50.0 + a.sin() * 44.0, 3.5, hex(if k % 2 == 0 { 0xE23B3B } else { 0x6FA8DC }));
+            }
+            p.rect(50.0, 76.0, 10.0, 3.0, 1.0, hex(RED));
+        }
+        BossKind::TheState => {
+            // The Model, in a building: pillars, a window, one eye.
+            for x in [16.0, 34.0, 66.0, 84.0] {
+                p.rect(x, 64.0, 5.0, 28.0, 2.0, hex(0x8A94B0));
+            }
+            p.tri((6.0, 36.0), (94.0, 36.0), (50.0, 10.0), hex(0x6A7390));
+            p.rect(50.0, 92.0, 48.0, 4.0, 2.0, hex(0x8A94B0));
+            p.rect(50.0, 60.0, 22.0, 22.0, 4.0, hex(0x24242E));
+            p.circle(50.0, 60.0, 11.0, hex(0x7FE8FF));
+            p.dot(50.0, 60.0, 5.0, INK);
+            p.dot(52.0, 58.0, 1.5, WHITE);
+        }
         BossKind::TheModel => {
             p.rect(50.0, 52.0, 46.0, 38.0, 8.0, hex(0x24242E));
             p.rect(50.0, 20.0, 46.0, 6.0, 4.0, hex(0x3A3A48));
@@ -927,6 +1265,49 @@ pub fn floor(platform: Platform) -> Canvas {
             c.shape(|x, y| rbox(x, y, 128.0, 128.0, 56.0, 100.0, 18.0), alpha(WHITE, 0.03), alpha(WHITE, 0.1), 3.0);
             c.fill(|x, y| circle(x, y, 186.0, 200.0, 7.0), faint(0x25F4EE, 0.35));
             c.fill(|x, y| circle(x, y, 192.0, 196.0, 7.0), faint(0xFE2C55, 0.35));
+        }
+        // The later chapters' biomes are drawn from a palette and a motif.
+        _ => {
+            let p = platform.palette();
+            c.fill(|_, _| -1.0, hex(p.bg));
+            match p.motif {
+                Motif::Panels => {
+                    for (cx, cy) in [(64.0, 64.0), (192.0, 64.0), (64.0, 192.0), (192.0, 192.0)] {
+                        c.shape(|x, y| rbox(x, y, cx, cy, 52.0, 52.0, 6.0), hex(p.panel), faint(p.accent, 0.35), 2.0);
+                    }
+                    c.fill(|x, y| rbox(x, y, 64.0, 40.0, 40.0, 4.0, 2.0), faint(p.accent, 0.4));
+                }
+                Motif::Grid => {
+                    c.paint(|x, y| ((x as i32 % 32 == 0) || (y as i32 % 32 == 0)).then_some(faint(p.panel, 1.0)));
+                    c.fill(|x, y| rbox(x, y, 128.0, 128.0, 40.0, 24.0, 4.0), faint(p.panel, 0.9));
+                    c.fill(|x, y| rbox(x, y, 128.0, 120.0, 28.0, 3.0, 1.0), faint(p.accent, 0.5));
+                }
+                Motif::Tiles => {
+                    c.paint(|x, y| {
+                        let (i, j) = ((x / 64.0) as i32, (y / 64.0) as i32);
+                        ((i + j) % 2 == 0).then_some(faint(p.panel, 1.0))
+                    });
+                    c.fill(|x, y| circle(x, y, 96.0, 96.0, 10.0), faint(p.accent, 0.3));
+                }
+                Motif::Stripes => {
+                    c.paint(|x, y| (((x + y) / 24.0) as i32 % 2 == 0).then_some(faint(p.panel, 1.0)));
+                    c.fill(|x, y| rbox(x, y, 128.0, 128.0, 110.0, 6.0, 3.0), faint(p.accent, 0.35));
+                }
+                Motif::Dots => {
+                    for i in 0..4 {
+                        for j in 0..4 {
+                            c.fill(|x, y| circle(x, y, 32.0 + 64.0 * i as f32, 32.0 + 64.0 * j as f32, 5.0), faint(p.accent, 0.25));
+                        }
+                    }
+                    c.fill(|x, y| rbox(x, y, 128.0, 128.0, 60.0, 36.0, 8.0), faint(p.panel, 0.8));
+                }
+                Motif::Rings => {
+                    for r in [30.0, 60.0, 90.0] {
+                        c.fill(|x, y| circle(x, y, 128.0, 128.0, r).abs() - 2.0, faint(p.accent, 0.25));
+                    }
+                    c.fill(|x, y| circle(x, y, 128.0, 128.0, 12.0), faint(p.panel, 1.0));
+                }
+            }
         }
     }
     c

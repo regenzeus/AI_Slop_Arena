@@ -71,6 +71,14 @@ pub enum Event {
     Split { at: V2 },
     /// A Surprise Egg hatched.
     Hatched { at: V2 },
+    /// Your Replacement closed a ticket near it and healed (CH-02).
+    Closed { at: V2 },
+    /// The Board voted, with this many seats filled.
+    Vote { at: V2, seats: u8 },
+    /// The Candidate made a promise: it lands here.
+    Promise { at: V2 },
+    /// The Candidate held a rally around you.
+    Rally { at: V2 },
     /// A Six-Finger Hand grabbed you.
     Grabbed,
     /// Clawed is aiming from `from` along `dir`.

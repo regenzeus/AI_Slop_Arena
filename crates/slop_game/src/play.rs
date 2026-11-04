@@ -108,8 +108,12 @@ fn keys(mut controls: ResMut<Controls>, mut game: ResMut<Game>, mut nav: ResMut<
 fn demo(game: &mut Game, time: &Time, rng: &mut Rng) {
     let fresh = game.demo.as_ref().is_none_or(|r| r.is_over() || r.minutes() > 24.0);
     if fresh {
-        let hero = slop_rules::Hero::ALL[rng.below(5) as usize];
-        game.demo = Some(slop_rules::Run::showcase(game.seed.wrapping_add(rng.below(1000) as u64), hero, 4.0 + rng.below(12) as f32));
+        // Your last build plays behind the title; before a first run, a made-up one (END-01).
+        let hero = match game.memory.hero {
+            Some(h) if !game.memory.build.is_empty() => slop_rules::Hero::ALL[h.min(slop_rules::Hero::ALL.len() - 1)],
+            _ => slop_rules::Hero::ALL[rng.below(5) as usize],
+        };
+        game.demo = Some(slop_rules::Run::showcase_build(game.seed.wrapping_add(rng.below(1000) as u64), hero, 4.0 + rng.below(12) as f32, &game.memory.build));
         game.accumulator = 0.0;
     }
     let run = game.demo.as_mut().expect("just made");

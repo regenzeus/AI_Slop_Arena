@@ -364,3 +364,69 @@ fn a_luddite_never_automates_and_a_heuristic_always_does() {
     let h = play_run(15, Hero::Zoomer, Policy::Heuristic, 6.0, Temperature::Low);
     assert!(h.automation > 0, "the easy option, every time it is offered");
 }
+
+// REQ: CH-02
+#[test]
+fn later_chapters_have_their_own_rosters_and_bosses() {
+    use crate::chapters::Chapter;
+    use crate::training::Training;
+    use slop_sim::content::{Archetype, Platform};
+    use slop_sim::spec::SlopLook;
+    let mut rng = slop_sim::rng::Rng::new(1, 1);
+    let t = Training::new(&mut rng);
+    let office = crate::waves::table(3.0, Platform::CubicleFarm, &t);
+    let names: Vec<&str> = office.specs.iter().map(|s| s.name.as_str()).collect();
+    assert!(names.contains(&"Copilot") && names.contains(&"Ticket") && names.contains(&"Reply-All"), "{names:?}");
+    let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+    assert_eq!(unique.len(), names.len(), "no slop twice: {names:?}");
+    assert!(office.specs.iter().all(|s| matches!(s.look, SlopLook::Archetype(a) if a.chapter() == 1)), "nothing from the Feed in the Office");
+    let late = crate::waves::table(6.0, Platform::ServerRoom, &t);
+    assert!(late.specs.len() > office.specs.len(), "more of the roster as capability climbs");
+    let old = crate::waves::table(4.0, Platform::OldFeed, &t);
+    assert!(old.specs.iter().any(|s| matches!(s.look, SlopLook::Archetype(Archetype::ChadGpt))), "the Old Feed remembers");
+    let bosses: std::collections::BTreeSet<_> = Chapter::ALL.iter().map(|c| c.def().boss as usize).collect();
+    assert_eq!(bosses.len(), 5, "five chapters, five bosses");
+    for c in Chapter::ALL {
+        assert!(c.def().biomes.iter().all(|b| b.chapter() == c as usize), "{}", c.def().name);
+    }
+}
+
+// REQ: AUTO-04
+#[test]
+fn unplug_stops_automation_fires_the_agents_and_costs_half_your_health() {
+    let mut run = Run::new(16, Hero::Boomer);
+    run.automation = 40;
+    run.weapons[0].agent = true;
+    let max = run.stats().max_mental_health;
+    let unplug = GLITCHES.iter().position(|g| g.name == "Unplug").unwrap();
+    run.phase = Phase::Glitch(vec![unplug]);
+    run.take_glitch(0).unwrap();
+    assert!(run.unplugged && run.weapons.iter().all(|w| !w.agent));
+    assert!(run.stats().max_mental_health < max * 0.6, "half the resource goes");
+    let before = run.automation;
+    run.phase = Phase::LevelUp(vec![Choice::Delegate(crate::run::Delegate::AutoPick)]);
+    run.pending_levels = 1;
+    run.choose(0).unwrap();
+    assert_eq!(run.automation, before, "Automation does not rise this chapter");
+    // It is only offered once there is something to unplug.
+    let mut fresh = Run::new(17, Hero::Boomer);
+    for _ in 0..40 {
+        assert!(!fresh.glitch_offers(3).contains(&unplug));
+    }
+}
+
+// REQ: END-01, LESSON-01
+#[test]
+fn the_title_replays_your_build_and_a_takeover_closes_the_chapter() {
+    let run = Run::showcase_build(3, Hero::Artist, 5.0, &[(2, 4), (5, 2)]);
+    assert!(run.weapons.iter().any(|w| w.def == 2 && w.level == 4) && run.weapons.iter().any(|w| w.def == 5 && w.level == 2));
+    let mut run = Run::new(18, Hero::Teacher);
+    run.automation = 100;
+    run.phase = Phase::Playing;
+    run.step(Default::default());
+    assert_eq!(run.chapters.len(), 1, "the chapter the takeover cut short is on the record");
+    assert_eq!(run.chapters[0].killer.as_ref().map(|k| k.0.as_str()), Some("Automation"));
+    let m = run.remembered();
+    assert_eq!(m.hero, Some(Hero::Teacher as usize));
+    assert!(!m.build.is_empty());
+}

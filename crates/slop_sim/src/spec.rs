@@ -82,6 +82,8 @@ pub enum Movement {
     Flee,
     /// Crosses the map in a straight line and is gone (a swarm).
     Sweep,
+    /// Wanders until it sees you, then rushes (voters, citizens).
+    Wander,
     Boss(BossKind),
 }
 
@@ -105,6 +107,8 @@ pub enum Attack {
     Stomp,
     /// A banana peel: you slip if it hits you.
     Peel,
+    /// A copy of one of your own weapons (Your Agent, Your Replacement).
+    Copy,
 }
 
 impl Attack {
@@ -120,6 +124,7 @@ impl Attack {
             Attack::Needles => 170,
             Attack::Stomp => 300,
             Attack::Peel => 190,
+            Attack::Copy => 150,
         }
     }
 
@@ -194,6 +199,35 @@ impl SlopSpec {
             Archetype::GlassFruit => (Movement::Rush, None, Traits::ICON | Traits::SHARDS),
             Archetype::RingLight => (Movement::Stand, Some(Attack::Fan), Traits::ICON | Traits::NO_KNOCKBACK | Traits::BUFF_AURA),
             Archetype::LootGoblin => (Movement::Flee, None, Traits::NO_KNOCKBACK),
+            // The Office.
+            Archetype::Copilot => (Movement::Kite, Some(Attack::Fan), 0),
+            Archetype::Ticket => (Movement::Pack, None, 0),
+            Archetype::SlackPing => (Movement::Hop, None, 0),
+            Archetype::MeetingInvite => (Movement::Grab, None, 0),
+            Archetype::KpiDashboard => (Movement::Stand, None, Traits::BUFF_AURA | Traits::NO_KNOCKBACK),
+            Archetype::ReplyAll => (Movement::Rush, None, Traits::SPLIT),
+            Archetype::PerformanceReview => (Movement::Lance, None, 0),
+            // The Boardroom.
+            Archetype::Analyst => (Movement::Kite, Some(Attack::Toast), 0),
+            Archetype::Consultant => (Movement::Follow, None, Traits::AGREE),
+            Archetype::DiligenceDrone => (Movement::Pack, None, 0),
+            Archetype::QuarterlyReport => (Movement::Rush, None, Traits::FRONT_SHIELD | Traits::NO_KNOCKBACK),
+            Archetype::ActivistInvestor => (Movement::Charge, None, 0),
+            Archetype::GoldenParachute => (Movement::Flee, None, Traits::NO_KNOCKBACK | Traits::FLIES),
+            // The Campaign.
+            Archetype::Voter => (Movement::Wander, None, 0),
+            Archetype::Pollster => (Movement::Kite, Some(Attack::Fan), 0),
+            Archetype::AttackAd => (Movement::Kite, Some(Attack::Arrow), Traits::DOOMSCROLL),
+            Archetype::Deepfake => (Movement::Blink, None, 0),
+            Archetype::FactChecker => (Movement::Rush, None, Traits::FRONT_SHIELD),
+            Archetype::SuperPac => (Movement::Rush, None, Traits::GROWS | Traits::RATIO),
+            // The Resistance.
+            Archetype::Drone => (Movement::Kite, Some(Attack::Bomb), Traits::FLIES),
+            Archetype::ComplianceUnit => (Movement::Rush, None, Traits::FRONT_SHIELD | Traits::NO_KNOCKBACK),
+            Archetype::Citizen => (Movement::Wander, None, 0),
+            Archetype::YourAgent => (Movement::Kite, Some(Attack::Copy), 0),
+            Archetype::FormerExec => (Movement::Lance, None, 0),
+            Archetype::Camera => (Movement::Stand, None, Traits::SUMMONER | Traits::NO_KNOCKBACK),
         };
         let chatbot = if a.is_chatbot() { Traits::CHATBOT } else { 0 };
         SlopSpec {

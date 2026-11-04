@@ -204,7 +204,7 @@ fn synth(sound: Sound) -> Vec<f32> {
     s
 }
 
-fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
+fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>, over: Res<crate::assets::Overrides>) {
     let all = [
         Sound::Hit,
         Sound::Death,
@@ -231,7 +231,14 @@ fn setup(mut commands: Commands, mut sources: ResMut<Assets<AudioSource>>) {
         Sound::Shield,
         Sound::Swarm,
     ];
-    let clips = all.iter().map(|&s| (s, sources.add(AudioSource { bytes: wav(&synth(s)).into() }))).collect();
+    // A file in assets/sfx/ named after the sound stands in for it (ASSET-01).
+    let clips = all
+        .iter()
+        .map(|&s| {
+            let bytes = over.sound(&format!("{s:?}").to_lowercase()).unwrap_or_else(|| wav(&synth(s)));
+            (s, sources.add(AudioSource { bytes: bytes.into() }))
+        })
+        .collect();
     commands.insert_resource(Sounds { clips });
 }
 

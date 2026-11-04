@@ -78,6 +78,10 @@ pub struct Memory {
     pub killer_count: u32,
     /// The best score (END-01).
     pub best_score: u32,
+    /// Last run's hero and build (weapon index, level): the title demo
+    /// replays it (END-01).
+    pub hero: Option<usize>,
+    pub build: Vec<(usize, u8)>,
 }
 
 impl Memory {
@@ -112,6 +116,13 @@ score={}
             Some(SlopLook::Brainrot { body, object, accessory }) => out += &format!("look=b:{},{},{}\n", body as usize, object as usize, accessory as usize),
             _ => {}
         }
+        if let Some(h) = self.hero {
+            out += &format!("hero={h}\n");
+        }
+        if !self.build.is_empty() {
+            let parts: Vec<String> = self.build.iter().map(|(d, l)| format!("{d}:{l}")).collect();
+            out += &format!("build={}\n", parts.join(","));
+        }
         out
     }
 
@@ -128,6 +139,8 @@ score={}
                 "favourite" => m.favourite = value.parse().ok().filter(|f| *f < 4),
                 "killer" => m.killer = Some(value.to_string()),
                 "look" => m.killer_look = parse_look(value),
+                "hero" => m.hero = value.parse().ok().filter(|h| *h < crate::Hero::ALL.len()),
+                "build" => m.build = value.split(',').filter_map(|p| p.split_once(':')).filter_map(|(d, l)| Some((d.parse().ok()?, l.parse().ok()?))).collect(),
                 _ => {}
             }
         }
@@ -165,8 +178,11 @@ mod tests {
             killer_look: Some(SlopLook::Archetype(Archetype::GlassFruit)),
             killer_count: 2,
             best_score: 1234,
+            hero: Some(3),
+            build: vec![(2, 4), (7, 1)],
         };
         assert_eq!(Memory::from_text(&m.to_text()), m);
+        assert_eq!(Memory::from_text("hero=99\nbuild=1:2,x:y,3:4").build, vec![(1, 2), (3, 4)]);
         let rot = Memory { killer: Some("X".into()), killer_look: Some(SlopLook::Brainrot { body: Body::Frog, object: Object::Cactus, accessory: Accessory::Crown }), ..Memory::default() };
         assert_eq!(Memory::from_text(&rot.to_text()), rot);
         assert_eq!(Memory::from_text("garbage\nrice=3\nfavourite=9\nlook=a:999"), Memory::default());

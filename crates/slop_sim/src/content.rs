@@ -337,6 +337,35 @@ pub enum Archetype {
     RingLight,
     /// The loot goblin: a Crypto Bro who runs off with a bag of Clout.
     LootGoblin,
+    // The Office (CH-02): what a job is made of.
+    Copilot,
+    Ticket,
+    SlackPing,
+    MeetingInvite,
+    KpiDashboard,
+    ReplyAll,
+    PerformanceReview,
+    // The Boardroom.
+    Analyst,
+    Consultant,
+    DiligenceDrone,
+    QuarterlyReport,
+    ActivistInvestor,
+    GoldenParachute,
+    // The Campaign.
+    Voter,
+    Pollster,
+    AttackAd,
+    Deepfake,
+    FactChecker,
+    SuperPac,
+    // The Resistance.
+    Drone,
+    ComplianceUnit,
+    Citizen,
+    YourAgent,
+    FormerExec,
+    Camera,
 }
 
 impl Archetype {
@@ -356,7 +385,7 @@ impl Archetype {
         Archetype::RingLight,
     ];
 
-    pub const ALL: [Archetype; 29] = [
+    pub const ALL: [Archetype; 54] = [
         Archetype::ChadGpt,
         Archetype::Clawed,
         Archetype::YesBot,
@@ -386,7 +415,51 @@ impl Archetype {
         Archetype::GlassFruit,
         Archetype::RingLight,
         Archetype::LootGoblin,
+        Archetype::Copilot,
+        Archetype::Ticket,
+        Archetype::SlackPing,
+        Archetype::MeetingInvite,
+        Archetype::KpiDashboard,
+        Archetype::ReplyAll,
+        Archetype::PerformanceReview,
+        Archetype::Analyst,
+        Archetype::Consultant,
+        Archetype::DiligenceDrone,
+        Archetype::QuarterlyReport,
+        Archetype::ActivistInvestor,
+        Archetype::GoldenParachute,
+        Archetype::Voter,
+        Archetype::Pollster,
+        Archetype::AttackAd,
+        Archetype::Deepfake,
+        Archetype::FactChecker,
+        Archetype::SuperPac,
+        Archetype::Drone,
+        Archetype::ComplianceUnit,
+        Archetype::Citizen,
+        Archetype::YourAgent,
+        Archetype::FormerExec,
+        Archetype::Camera,
     ];
+
+    /// The swarm of each chapter: what packs, hatchlings and summons are made of.
+    pub const SWARMS: [Archetype; 5] = [Archetype::ListicleDrone, Archetype::Ticket, Archetype::DiligenceDrone, Archetype::Voter, Archetype::Citizen];
+
+    /// The chapter this slop belongs to, 0 to 4.
+    pub fn chapter(self) -> usize {
+        match self as usize {
+            0..=28 => 0,
+            29..=35 => 1,
+            36..=41 => 2,
+            42..=47 => 3,
+            _ => 4,
+        }
+    }
+
+    /// The loot goblins: they run, and they pay out if caught.
+    pub fn is_goblin(self) -> bool {
+        matches!(self, Archetype::LootGoblin | Archetype::GoldenParachute)
+    }
 
     pub fn is_icon(self) -> bool {
         Archetype::ICONS.contains(&self)
@@ -394,7 +467,7 @@ impl Archetype {
 
     /// Chatbots share one trained base model and are stunned by CAPTCHAs.
     pub fn is_chatbot(self) -> bool {
-        matches!(self, Archetype::ChadGpt | Archetype::Clawed | Archetype::YesBot | Archetype::Hallucinator | Archetype::ListicleDrone)
+        matches!(self, Archetype::ChadGpt | Archetype::Clawed | Archetype::YesBot | Archetype::Hallucinator | Archetype::ListicleDrone | Archetype::Copilot | Archetype::YourAgent)
     }
 
     pub fn def(self) -> &'static ArchetypeDef {
@@ -421,7 +494,7 @@ const fn arch(name: &'static str, role: Role, hp: f32, speed: f32, radius: f32, 
 }
 
 /// The lesson of each archetype, in `Archetype` order (LESSON-01).
-const LESSONS: [&str; 29] = [
+const LESSONS: [&str; 54] = [
     "Its bubbles are slow. Walk between them, or shoot them down.",
     "It aims before it throws. Step off the line.",
     "Kill the Yes-Bot first: everything near it hits harder.",
@@ -451,6 +524,31 @@ const LESSONS: [&str; 29] = [
     "Its shards fly out when it dies. Kill it at range.",
     "It buffs the slop near it. Delete the tripod.",
     "It runs. It was never going to hurt you.",
+    "Its suggestions are slow. Walk between them.",
+    "Close ticket #1 and the sprint scatters.",
+    "They come in bursts. Dash through the gap.",
+    "Meetings let go when you dash.",
+    "It buffs everything near it. Delete the dashboard.",
+    "It splits once when hit. Finish both.",
+    "It aims before it files. Step off the line.",
+    "Its sheets fly straight. Sidestep.",
+    "Delete the consultant first: everything near it hits harder.",
+    "Delete drone 1 and the audit scatters.",
+    "Its cover blocks the front. Flank it, or use Fact.",
+    "It aims, then sprints. Sidestep the line.",
+    "It floats away. It was never going to hurt you.",
+    "They only chase what they see. Keep your distance.",
+    "Polls are slow. Walk between them.",
+    "Its arrows drag you. Dodge sideways.",
+    "It marks a spot behind you, then appears. Watch your back.",
+    "Its clipboard blocks the front. Flank it.",
+    "It grows with every voter who falls near it. Delete it early.",
+    "Its drops are marked. Leave the circle.",
+    "Its shield blocks the front. Flank it, or dash past.",
+    "They only chase what they see. Stay out of sight.",
+    "It fires your weapons back. You know how to dodge those.",
+    "It aims before it throws. Step off the line.",
+    "It calls for help while it can see you. Delete it, or stay out of view.",
 ];
 
 impl ArchetypeDef {
@@ -462,7 +560,7 @@ impl ArchetypeDef {
 }
 
 /// In `Archetype` order.
-const ARCHETYPES: [ArchetypeDef; 29] = [
+const ARCHETYPES: [ArchetypeDef; 54] = [
     arch("ChadGPT", Role::Shooter, 26.0, 85.0, 20.0, 5.0, 2, "Keeps its distance and fires fans of speech bubbles."),
     arch("Clawed", Role::Shooter, 34.0, 95.0, 20.0, 6.0, 2, "Aims, then throws a long em-dash. It's not a lance, it's a journey."),
     arch("Yes-Bot", Role::Support, 24.0, 105.0, 18.0, 4.0, 3, "Agrees with nearby slop. Each agreement gives them 10% more damage."),
@@ -492,6 +590,35 @@ const ARCHETYPES: [ArchetypeDef; 29] = [
     arch("Glass Fruit", Role::Swarmer, 18.0, 90.0, 16.0, 5.0, 2, "Satisfying to cut. Bursts into glass shards that fly at you."),
     arch("Ring Light", Role::Support, 60.0, 0.0, 22.0, 4.0, 4, "A tripod that never moves. Buffs the slop around it and fires notification bubbles."),
     arch("Crypto Bro", Role::Special, 160.0, 175.0, 19.0, 0.0, 10, "A loot goblin. Runs off with a bag of Clout; catch him before he gets away."),
+    // The Office.
+    arch("Copilot", Role::Shooter, 30.0, 90.0, 20.0, 5.0, 2, "Suggests things you did not ask for. Fires fans of autocomplete."),
+    arch("Ticket", Role::Swarmer, 12.0, 140.0, 13.0, 5.0, 1, "Comes in sprints of five. Close #1 and the rest get deprioritized."),
+    arch("Slack Ping", Role::Swarmer, 8.0, 185.0, 11.0, 4.0, 1, "A notification with legs. Comes in bursts, at 11 p.m."),
+    arch("Meeting Invite", Role::Swarmer, 16.0, 165.0, 15.0, 0.0, 1, "Holds you in a meeting that could have been an email."),
+    arch("KPI Dashboard", Role::Support, 70.0, 0.0, 24.0, 4.0, 4, "Never moves. Every number near it goes up, including the damage."),
+    arch("Reply-All", Role::Swarmer, 20.0, 120.0, 17.0, 5.0, 1, "Splits in two when hit. Then everyone replies."),
+    arch("Performance Review", Role::Shooter, 40.0, 85.0, 21.0, 7.0, 3, "Aims, then files a long form at you. \"Areas for growth.\""),
+    // The Boardroom.
+    arch("Analyst", Role::Shooter, 32.0, 88.0, 20.0, 5.0, 2, "Fires spreadsheets. Each one has a tab you have not seen."),
+    arch("Consultant", Role::Support, 28.0, 105.0, 19.0, 4.0, 3, "Agrees with whoever is nearest. Each synergy gives them 10% more damage."),
+    arch("Due Diligence Drone", Role::Swarmer, 12.0, 145.0, 13.0, 5.0, 1, "Drones in packs of five, checking everything. Delete number 1."),
+    arch("Quarterly Report", Role::Tank, 130.0, 45.0, 28.0, 8.0, 4, "The numbers block the front. Flank it, or fact-check it."),
+    arch("Activist Investor", Role::Swarmer, 34.0, 125.0, 18.0, 8.0, 2, "Aims a letter to the board, then sprints at you."),
+    arch("Golden Parachute", Role::Special, 180.0, 170.0, 20.0, 0.0, 10, "An exec floating off with a bag of severance. Catch it before it lands."),
+    // The Campaign.
+    arch("Voter", Role::Swarmer, 10.0, 150.0, 12.0, 4.0, 1, "Undecided until it sees you. Then it is very decided."),
+    arch("Pollster", Role::Shooter, 30.0, 90.0, 20.0, 5.0, 2, "Fires polls. Margin of error: your Approval."),
+    arch("Attack Ad", Role::Shooter, 34.0, 85.0, 21.0, 5.0, 2, "A red arrow with your name on it. It drags you in."),
+    arch("Deepfake", Role::Special, 24.0, 150.0, 16.0, 9.0, 3, "Looks like you. Appears behind you."),
+    arch("Fact-Checker", Role::Tank, 80.0, 70.0, 22.0, 6.0, 4, "\"Actually,\" it says, holding a clipboard in front of its face."),
+    arch("Super PAC", Role::Support, 40.0, 95.0, 20.0, 6.0, 3, "Grows with every voter who falls near it. Unlimited."),
+    // The Resistance.
+    arch("Drone", Role::Shooter, 36.0, 120.0, 20.0, 6.0, 3, "Flies over walls. Marks where it drops."),
+    arch("Compliance Unit", Role::Tank, 140.0, 50.0, 28.0, 9.0, 5, "A riot shield with a smile. \"Compliance is kindness.\""),
+    arch("Citizen", Role::Swarmer, 14.0, 135.0, 14.0, 4.0, 1, "Reports you when it sees you. It was told that was the right thing."),
+    arch("Your Agent", Role::Shooter, 44.0, 100.0, 20.0, 6.0, 3, "One of yours. It has your weapons, and your aim."),
+    arch("Former Exec", Role::Shooter, 42.0, 85.0, 21.0, 7.0, 3, "You optimized its job. It has a severance letter and your address."),
+    arch("Surveillance Camera", Role::Support, 60.0, 0.0, 20.0, 4.0, 3, "Never moves. Calls in Citizens while it can see you."),
 ];
 
 /// Brainrot bodies set how it moves (BRAIN-01).
@@ -622,7 +749,9 @@ impl Accessory {
     }
 }
 
-/// The six parody platforms a run can take place on (PLAT-01).
+/// The biomes of the map (PLAT-01, BIOME-01, CH-02): the six parody
+/// platforms of the Feed, and six places for each later chapter. A biome
+/// sets the floor, the local slop, the hazard and the words.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Platform {
     FaceSlop,
@@ -631,44 +760,262 @@ pub enum Platform {
     Thredd,
     InstaSlop,
     ClockTok,
+    // The Office.
+    CubicleFarm,
+    MeetingRooms,
+    Kitchen,
+    ServerRoom,
+    HumanResources,
+    ParkingLot,
+    // The Boardroom.
+    Lobby,
+    TradingFloor,
+    BoardRoom,
+    Rooftop,
+    ParkingGarage,
+    GolfCourse,
+    // The Campaign.
+    RallyGround,
+    DebateStage,
+    Diner,
+    SwingState,
+    Fundraiser,
+    Newsroom,
+    // The Resistance.
+    Checkpoint,
+    DroneCorridor,
+    SafeHouses,
+    Blackout,
+    DataCenter,
+    OldFeed,
+}
+
+/// What a biome's hazard does; the words differ per biome.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HazardKind {
+    /// Something crosses the biome and hurts (chain letters, memos, headlines).
+    Letters,
+    /// Slow bands sweep through.
+    Banners,
+    /// Slow patches on the floor.
+    Buffering,
+    /// Slow zones in every shape.
+    Downvotes,
+    /// Zones that shield the slop.
+    Filters,
+    /// Zones that flip your controls on the beat.
+    Brainrot,
+}
+
+/// A floor's look: background, panel, accent, and a motif.
+pub struct Palette {
+    pub bg: u32,
+    pub panel: u32,
+    pub accent: u32,
+    pub motif: Motif,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Motif {
+    Panels,
+    Grid,
+    Tiles,
+    Stripes,
+    Dots,
+    Rings,
 }
 
 impl Platform {
+    /// The Feed's six.
     pub const ALL: [Platform; 6] =
         [Platform::FaceSlop, Platform::LinkedOut, Platform::MeTube, Platform::Thredd, Platform::InstaSlop, Platform::ClockTok];
+    pub const OFFICE: [Platform; 6] = [Platform::CubicleFarm, Platform::MeetingRooms, Platform::Kitchen, Platform::ServerRoom, Platform::HumanResources, Platform::ParkingLot];
+    pub const BOARDROOM: [Platform; 6] = [Platform::Lobby, Platform::TradingFloor, Platform::BoardRoom, Platform::Rooftop, Platform::ParkingGarage, Platform::GolfCourse];
+    pub const CAMPAIGN: [Platform; 6] = [Platform::RallyGround, Platform::DebateStage, Platform::Diner, Platform::SwingState, Platform::Fundraiser, Platform::Newsroom];
+    pub const RESISTANCE: [Platform; 6] = [Platform::Checkpoint, Platform::DroneCorridor, Platform::SafeHouses, Platform::Blackout, Platform::DataCenter, Platform::OldFeed];
+    /// Every biome there is.
+    pub const EVERY: [Platform; 30] = [
+        Platform::FaceSlop,
+        Platform::LinkedOut,
+        Platform::MeTube,
+        Platform::Thredd,
+        Platform::InstaSlop,
+        Platform::ClockTok,
+        Platform::CubicleFarm,
+        Platform::MeetingRooms,
+        Platform::Kitchen,
+        Platform::ServerRoom,
+        Platform::HumanResources,
+        Platform::ParkingLot,
+        Platform::Lobby,
+        Platform::TradingFloor,
+        Platform::BoardRoom,
+        Platform::Rooftop,
+        Platform::ParkingGarage,
+        Platform::GolfCourse,
+        Platform::RallyGround,
+        Platform::DebateStage,
+        Platform::Diner,
+        Platform::SwingState,
+        Platform::Fundraiser,
+        Platform::Newsroom,
+        Platform::Checkpoint,
+        Platform::DroneCorridor,
+        Platform::SafeHouses,
+        Platform::Blackout,
+        Platform::DataCenter,
+        Platform::OldFeed,
+    ];
 
     pub fn name(self) -> &'static str {
-        ["FaceSlop", "LinkedOut", "MeTube", "Thredd", "InstaSlop", "ClockTok"][self as usize]
+        [
+            "FaceSlop", "LinkedOut", "MeTube", "Thredd", "InstaSlop", "ClockTok",
+            "Cubicle Farm", "Meeting Rooms", "The Kitchen", "Server Room", "HR", "Parking Lot",
+            "The Lobby", "Trading Floor", "The Board Room", "The Rooftop", "Parking Garage", "Golf Course",
+            "Rally Ground", "Debate Stage", "The Diner", "Swing State", "Fundraiser", "Newsroom",
+            "Checkpoint", "Drone Corridor", "Safe Houses", "Blackout", "Data Center", "The Old Feed",
+        ][self as usize]
     }
 
     pub fn hazard(self) -> &'static str {
         [
             "Chain letters roll across the arena.",
-            "\"Open to Work\" banners sweep through and push you.",
-            "Mid-roll ads dim the arena and open pop-ups.",
+            "\"Open to Work\" banners sweep through and slow you.",
+            "Buffering patches slow you down.",
             "Downvote zones slow you down.",
             "Filter zones give slop inside a beauty shield.",
             "Brainrot zones pulse to the beat: stand in one when it drops and your controls flip.",
+            "Reply-all storms sweep the floor.",
+            "Meetings: zones that slow you. They could have been emails.",
+            "Spilled coffee slows you.",
+            "Firewalls shield the slop inside.",
+            "Policy memos cross the floor. They hurt.",
+            "Potholes slow you.",
+            "Press lines sweep the lobby.",
+            "Volatility: zones where slop take less damage.",
+            "Motions on the floor slow you.",
+            "Drones drop memos. They hurt.",
+            "Oil slicks slow you.",
+            "Sand traps slow you.",
+            "Crowd waves sweep the ground.",
+            "Soundbites cross the stage. They hurt.",
+            "Coffee spills slow you.",
+            "Undecided zones shield the slop inside.",
+            "Velvet ropes slow you.",
+            "Headlines cross the newsroom. They hurt.",
+            "Scanner zones shield the slop inside.",
+            "Drone fire crosses the corridor.",
+            "Rubble slows you.",
+            "Dark zones slow you.",
+            "Cooling zones shield the slop inside.",
+            "Old brainrot zones still pulse. Stand in one on the beat and your controls flip.",
         ][self as usize]
+    }
+
+    /// What the hazard does.
+    pub fn hazard_kind(self) -> HazardKind {
+        use HazardKind::*;
+        [
+            Letters, Banners, Buffering, Downvotes, Filters, Brainrot,
+            Banners, Downvotes, Buffering, Filters, Letters, Buffering,
+            Banners, Filters, Downvotes, Letters, Buffering, Downvotes,
+            Banners, Letters, Buffering, Filters, Downvotes, Letters,
+            Filters, Letters, Buffering, Downvotes, Filters, Brainrot,
+        ][self as usize]
+    }
+
+    /// The words on the hazard that crosses or sweeps, where it has words.
+    pub fn hazard_words(self) -> &'static str {
+        match self {
+            Platform::LinkedOut => "#OPENTOWORK",
+            Platform::CubicleFarm => "RE: RE: RE: FWD:",
+            Platform::Lobby => "NO COMMENT",
+            Platform::RallyGround => "FOUR MORE YEARS",
+            _ => "",
+        }
     }
 
     pub fn house_rule(self) -> &'static str {
-        [
-            "Support slop is more common.",
-            "Slop gets 1% faster every wave.",
-            "Shooters are more common.",
-            "Slop that dies may come back as a repost.",
-            "Tanks are more common.",
-            "All slop is generated brainrot.",
-        ][self as usize]
+        match self {
+            Platform::FaceSlop => "Support slop is more common.",
+            Platform::LinkedOut => "Slop gets 1% faster every wave.",
+            Platform::MeTube => "Shooters are more common.",
+            Platform::Thredd => "Slop that dies may come back as a repost.",
+            Platform::InstaSlop => "Tanks are more common.",
+            Platform::ClockTok => "All slop is generated brainrot.",
+            _ => "",
+        }
     }
 
+    /// The Feed's platform bosses; later chapters bring their own.
     pub fn boss(self) -> BossKind {
-        [BossKind::CrustaceanSaviour, BossKind::HustleGuru, BossKind::ContentFarm, BossKind::RepostHydra, BossKind::Influencer, BossKind::SupremeBrainrot]
-            [self as usize]
+        match self {
+            Platform::FaceSlop => BossKind::CrustaceanSaviour,
+            Platform::LinkedOut => BossKind::HustleGuru,
+            Platform::MeTube => BossKind::ContentFarm,
+            Platform::Thredd => BossKind::RepostHydra,
+            Platform::InstaSlop => BossKind::Influencer,
+            Platform::ClockTok => BossKind::SupremeBrainrot,
+            p => [BossKind::TheModel, BossKind::YourReplacement, BossKind::TheBoard, BossKind::TheCandidate, BossKind::TheState][p.chapter()],
+        }
     }
 
-    /// Slop that belongs to this platform.
+    /// The chapter the biome belongs to, 0 to 4.
+    pub fn chapter(self) -> usize {
+        self as usize / 6
+    }
+
+    /// The tint of the scraps and seams on its floor, as RGB.
+    pub fn tint(self) -> [f32; 3] {
+        match self {
+            Platform::FaceSlop => [0.6, 0.72, 1.0],
+            Platform::LinkedOut => [0.55, 0.8, 1.0],
+            Platform::MeTube => [1.0, 0.6, 0.6],
+            Platform::Thredd => [1.0, 0.72, 0.5],
+            Platform::InstaSlop => [1.0, 0.7, 0.92],
+            Platform::ClockTok => [0.6, 1.0, 1.0],
+            _ => {
+                let p = self.palette();
+                let c = p.accent;
+                [((c >> 16) & 255) as f32 / 255.0, ((c >> 8) & 255) as f32 / 255.0, (c & 255) as f32 / 255.0]
+            }
+        }
+    }
+
+    /// The floor's look, for biomes drawn from a palette.
+    pub fn palette(self) -> Palette {
+        use Motif::*;
+        let (bg, panel, accent, motif) = match self {
+            Platform::CubicleFarm => (0x2A2C33, 0x363944, 0x8A94B0, Grid),
+            Platform::MeetingRooms => (0x27292F, 0x33363E, 0x6FA8DC, Panels),
+            Platform::Kitchen => (0x2E2A26, 0x3B3630, 0xE0C080, Tiles),
+            Platform::ServerRoom => (0x1C2230, 0x25304A, 0x3CC8B4, Stripes),
+            Platform::HumanResources => (0x2C2730, 0x3A3340, 0xC89AD8, Panels),
+            Platform::ParkingLot => (0x26272A, 0x303236, 0xE8D86A, Stripes),
+            Platform::Lobby => (0x2B2A30, 0x3B3942, 0xD8C8A0, Tiles),
+            Platform::TradingFloor => (0x1F2228, 0x2A2F38, 0x5DBB4F, Grid),
+            Platform::BoardRoom => (0x2A2420, 0x3A322A, 0xB08850, Panels),
+            Platform::Rooftop => (0x1E2634, 0x2A3446, 0x8CC8F2, Dots),
+            Platform::ParkingGarage => (0x242426, 0x2E2E31, 0xF2C230, Stripes),
+            Platform::GolfCourse => (0x24322A, 0x2E4034, 0x6FCB5A, Rings),
+            Platform::RallyGround => (0x2E2428, 0x3E3034, 0xE23B3B, Dots),
+            Platform::DebateStage => (0x202030, 0x2C2C40, 0x6A6AE0, Panels),
+            Platform::Diner => (0x2C2A28, 0x3A3632, 0xF28C38, Tiles),
+            Platform::SwingState => (0x282A2E, 0x34373C, 0xC8C8D8, Grid),
+            Platform::Fundraiser => (0x2A2630, 0x383240, 0xF2C230, Rings),
+            Platform::Newsroom => (0x26282C, 0x323438, 0xE8E4D8, Stripes),
+            Platform::Checkpoint => (0x202226, 0x2C2E34, 0xFF2E94, Stripes),
+            Platform::DroneCorridor => (0x1C1E24, 0x26282F, 0x9B6BFF, Grid),
+            Platform::SafeHouses => (0x262220, 0x322C28, 0xC0A070, Panels),
+            Platform::Blackout => (0x121216, 0x1A1A1F, 0x3A3A48, Dots),
+            Platform::DataCenter => (0x161C26, 0x1E2838, 0x3CC8B4, Stripes),
+            Platform::OldFeed => (0x221E2D, 0x2C2838, 0x9B6BFF, Rings),
+            _ => (0x29324A, 0x313C58, 0x4267B2, Panels),
+        };
+        Palette { bg, panel, accent, motif }
+    }
+
+    /// Slop that belongs to this biome.
     pub fn locals(self) -> &'static [Archetype] {
         match self {
             Platform::FaceSlop => &[Archetype::EngagementBait, Archetype::GrandmaCake, Archetype::SixFingerHand, Archetype::GlassFruit],
@@ -677,6 +1024,30 @@ impl Platform {
             Platform::Thredd => &[Archetype::RepostBot, Archetype::KarmaFarmer, Archetype::Assassinello],
             Platform::InstaSlop => &[Archetype::FilterInfluencer, Archetype::SixFingerHand, Archetype::Ballerina],
             Platform::ClockTok => &[Archetype::TonkSahur, Archetype::Tralalelo, Archetype::Gusello],
+            Platform::CubicleFarm => &[Archetype::ReplyAll, Archetype::SlackPing],
+            Platform::MeetingRooms => &[Archetype::MeetingInvite, Archetype::KpiDashboard],
+            Platform::Kitchen => &[Archetype::SlackPing, Archetype::ReplyAll],
+            Platform::ServerRoom => &[Archetype::KpiDashboard, Archetype::PerformanceReview],
+            Platform::HumanResources => &[Archetype::PerformanceReview, Archetype::MeetingInvite],
+            Platform::ParkingLot => &[Archetype::SlackPing, Archetype::MeetingInvite],
+            Platform::Lobby => &[Archetype::Consultant, Archetype::ActivistInvestor],
+            Platform::TradingFloor => &[Archetype::ActivistInvestor, Archetype::Analyst],
+            Platform::BoardRoom => &[Archetype::QuarterlyReport, Archetype::Consultant],
+            Platform::Rooftop => &[Archetype::ActivistInvestor, Archetype::GoldenParachute],
+            Platform::ParkingGarage => &[Archetype::QuarterlyReport, Archetype::Analyst],
+            Platform::GolfCourse => &[Archetype::Consultant, Archetype::QuarterlyReport],
+            Platform::RallyGround => &[Archetype::SuperPac, Archetype::AttackAd],
+            Platform::DebateStage => &[Archetype::FactChecker, Archetype::Deepfake],
+            Platform::Diner => &[Archetype::Pollster, Archetype::FactChecker],
+            Platform::SwingState => &[Archetype::AttackAd, Archetype::SuperPac],
+            Platform::Fundraiser => &[Archetype::SuperPac, Archetype::Deepfake],
+            Platform::Newsroom => &[Archetype::Deepfake, Archetype::AttackAd],
+            Platform::Checkpoint => &[Archetype::ComplianceUnit, Archetype::Camera],
+            Platform::DroneCorridor => &[Archetype::Drone, Archetype::YourAgent],
+            Platform::SafeHouses => &[Archetype::FormerExec, Archetype::Camera],
+            Platform::Blackout => &[Archetype::YourAgent, Archetype::ComplianceUnit],
+            Platform::DataCenter => &[Archetype::YourAgent, Archetype::Drone],
+            Platform::OldFeed => &[Archetype::FormerExec, Archetype::ChadGpt, Archetype::ThoughtLeader],
         }
     }
 }
@@ -690,10 +1061,15 @@ pub enum BossKind {
     Influencer,
     SupremeBrainrot,
     TheModel,
+    // The later chapters' bosses (CH-02).
+    YourReplacement,
+    TheBoard,
+    TheCandidate,
+    TheState,
 }
 
 impl BossKind {
-    pub const ALL: [BossKind; 7] = [
+    pub const ALL: [BossKind; 11] = [
         BossKind::CrustaceanSaviour,
         BossKind::HustleGuru,
         BossKind::ContentFarm,
@@ -701,6 +1077,10 @@ impl BossKind {
         BossKind::Influencer,
         BossKind::SupremeBrainrot,
         BossKind::TheModel,
+        BossKind::YourReplacement,
+        BossKind::TheBoard,
+        BossKind::TheCandidate,
+        BossKind::TheState,
     ];
 
     pub fn name(self) -> &'static str {
@@ -712,6 +1092,10 @@ impl BossKind {
             "The Influencer Who Doesn't Exist",
             "The Supreme Brainrot",
             "The Model",
+            "Your Replacement",
+            "The Board",
+            "The Candidate",
+            "The State",
         ][self as usize]
     }
 
@@ -725,6 +1109,10 @@ impl BossKind {
             "Only the real one casts a shadow. Its filter blocks hits from the front.",
             "Built from the brainrot that did best against you. Read the beat.",
             "Trained on your whole run. A varied build makes it collapse.",
+            "It does your job, better: every ticket it closes heals it. Close them first.",
+            "It cannot be voted out while it has a quorum. Delete the seats.",
+            "Its promises land where you are going. Change direction.",
+            "It is the Model, and it governs. It only listens while it thinks.",
         ][self as usize]
     }
 
@@ -738,6 +1126,10 @@ impl BossKind {
             BossKind::Influencer => (1200.0, 46.0, 90.0),
             BossKind::SupremeBrainrot => (1900.0, 60.0, 75.0),
             BossKind::TheModel => (5200.0, 72.0, 40.0),
+            BossKind::YourReplacement => (1500.0, 50.0, 85.0),
+            BossKind::TheBoard => (1900.0, 64.0, 0.0),
+            BossKind::TheCandidate => (1500.0, 52.0, 95.0),
+            BossKind::TheState => (5600.0, 72.0, 40.0),
         }
     }
 }

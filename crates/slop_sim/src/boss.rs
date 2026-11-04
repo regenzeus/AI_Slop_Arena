@@ -17,6 +17,17 @@ const AD_TICKS: u16 = 300;
 const MODEL_CYCLE: u32 = 600;
 const MODEL_THINK: u32 = 150;
 const MODEL_ANSWER: u32 = 390;
+/// Your Replacement closes a ticket near it this often, and heals this much.
+const CLOSE_EVERY: u32 = 90;
+const CLOSE_RANGE: f32 = 340.0;
+const CLOSE_HEAL: f32 = 0.03;
+/// The Board's seats, and how many make a quorum.
+const BOARD_SEATS: u32 = 5;
+const QUORUM: usize = 3;
+/// A promise lands this far ahead of you, this big, after this long.
+const PROMISE_LEAD: f32 = 1.1;
+const PROMISE_RADIUS: f32 = 95.0;
+const PROMISE_WARNING: u16 = 110;
 
 impl World {
     /// Places the boss of a boss wave and whatever it starts with.
@@ -24,7 +35,7 @@ impl World {
         let Movement::Boss(kind) = self.setup.specs[spec].movement else { return };
         let me = self.player.pos;
         let at = match kind {
-            BossKind::ContentFarm => self.map.resolve(me + V2::new(0.0, 600.0), 80.0),
+            BossKind::ContentFarm | BossKind::TheBoard => self.map.resolve(me + V2::new(0.0, 600.0), 80.0),
             _ => self.map.resolve(me + V2::new(0.0, 520.0), 80.0),
         };
         if kind == BossKind::Influencer {
@@ -66,6 +77,10 @@ impl World {
                 self.ensure_spec(clone)
             }
             BossKind::TheModel => self.ensure_spec(SlopSpec::archetype(Archetype::ChadGpt)),
+            BossKind::YourReplacement => self.ensure_spec(SlopSpec::archetype(Archetype::Ticket)),
+            BossKind::TheBoard => self.ensure_spec(SlopSpec::archetype(Archetype::Analyst)),
+            BossKind::TheCandidate => self.ensure_spec(SlopSpec::archetype(Archetype::Voter)),
+            BossKind::TheState => self.ensure_spec(SlopSpec::archetype(Archetype::Drone)),
         };
         if kind == BossKind::CrustaceanSaviour {
             let mut totem = SlopSpec::archetype(Archetype::EngagementBait);
@@ -75,6 +90,20 @@ impl World {
             for k in 0..4 {
                 let spot = at + V2::from_angle(k as f32 * std::f32::consts::FRAC_PI_2 + 0.6) * 280.0;
                 self.place(totem, spot, 0, 1);
+            }
+        }
+        if kind == BossKind::TheBoard {
+            // Five seats around the table: each heals it while it sits, and
+            // three of them are a quorum.
+            let mut seat = SlopSpec::archetype(Archetype::Consultant);
+            seat.name = "Board Member".into();
+            seat.movement = Movement::Stand;
+            seat.hp = 90.0;
+            seat.traits = Traits(Traits::HEAL_BOSS | Traits::NO_KNOCKBACK);
+            let seat = self.ensure_spec(seat);
+            for k in 0..BOARD_SEATS {
+                let spot = at + V2::from_angle(k as f32 * std::f32::consts::TAU / BOARD_SEATS as f32 + 0.3) * 250.0;
+                self.place(seat, spot, 0, 1);
             }
         }
         self.boss = Some(BossState { id, kind, phase: 0, timer: 180, timer2: 240, regenerated: false, minion, shielded: 0 });
@@ -233,7 +262,115 @@ impl World {
                     self.apply_status(StatusKind::BrainrotWarning);
                 }
             }
-            BossKind::TheModel => {
+            BossKind::YourReplacement => {
+                // It does your job: it kites, it raises tickets, and it closes
+                // them before you can. Each one closed heals it.
+                let dist = to.length();
+                want = if dist > 460.0 {
+                    dir * speed
+                } else if dist < 300.0 {
+                    -dir * speed
+                } else {
+                    dir.perp() * speed * 0.5
+                };
+                if b.timer <= 0 {
+                    b.timer = if b.phase == 1 { 300 } else { 420 };
+                    for k in 0..3 {
+                        self.pending.push((b.minion, pos + V2::from_angle(k as f32 * 2.1 + self.tick as f32 * 0.01) * 90.0, 0.0, 0, 1));
+                    }
+                }
+                if self.tick % CLOSE_EVERY == 0 {
+                    let boss_id = b.id;
+                    let specs = &self.setup.specs;
+                    let ticket = self
+                        .slop
+                        .iter()
+                        .filter(|s| s.id != boss_id && s.hp > 0.0 && !specs[s.spec as usize].traits.has(Traits::HEAL_BOSS) && !matches!(specs[s.spec as usize].movement, Movement::Boss(_)))
+                        .filter(|s| s.pos.distance_sq(pos) < CLOSE_RANGE * CLOSE_RANGE)
+                        .min_by(|a, c| a.pos.distance_sq(pos).total_cmp(&c.pos.distance_sq(pos)))
+                        .map(|s| s.id);
+                    if let Some(id) = ticket {
+                        if let Some(t) = self.slop.iter_mut().find(|s| s.id == id) {
+                            t.hp = 0.0;
+                            t.vanish = true;
+                            let at = t.pos;
+                            self.events.push(Event::Closed { at });
+                        }
+                        let boss = &mut self.slop[i];
+                        boss.hp = (boss.hp + boss.max_hp * CLOSE_HEAL).min(boss.max_hp);
+                        self.events.push(Event::Healed { at: pos });
+                    }
+                }
+                if b.phase == 1 && b.timer2 <= 0 {
+                    b.timer2 = 45;
+                    let copies: Vec<Look> = self.setup.model.copies.iter().flatten().copied().collect();
+                    let look = copies.get((self.tick / 45) as usize % copies.len().max(1)).copied().unwrap_or(Look::Staple);
+                    self.hostile_shot(pos + dir * 60.0, dir * 400.0, 9.0, look, NO_LINE, spec);
+                }
+            }
+            BossKind::TheBoard => {
+                // It sits. While three seats are filled it has a quorum and
+                // takes half damage; every vote is a volley from each seat.
+                want = V2::ZERO;
+                let specs = &self.setup.specs;
+                let seats: Vec<V2> = self.slop.iter().filter(|s| specs[s.spec as usize].traits.has(Traits::HEAL_BOSS) && s.hp > 0.0).map(|s| s.pos).collect();
+                if seats.len() >= QUORUM {
+                    armor = 0.5;
+                    b.shielded = 1;
+                } else {
+                    b.shielded = 0;
+                }
+                if b.timer <= 0 {
+                    b.timer = if b.phase == 1 { 300 } else { 480 };
+                    self.events.push(Event::Vote { at: pos, seats: seats.len() as u8 });
+                    for seat in &seats {
+                        let d = (me - *seat).normalized();
+                        for n in -1..=1 {
+                            let at = *seat + d * 30.0 + d.perp() * (n as f32 * 34.0);
+                            self.hostile_shot(at, d * 170.0, 8.0, Look::Post, NO_LINE, spec);
+                        }
+                    }
+                    if seats.is_empty() {
+                        // No quorum: it calls in analysts to fill the room.
+                        for k in 0..3 {
+                            self.pending.push((b.minion, pos + V2::from_angle(k as f32 * 2.1) * 120.0, 0.0, 0, 1));
+                        }
+                    }
+                }
+                if b.timer2 <= 0 {
+                    b.timer2 = 240;
+                    let line = self.rng_ai.below(BUBBLE_LINES.len() as u32) as u16;
+                    self.bubble_ring(pos, if b.phase == 1 { 10 } else { 6 }, self.tick as f32 * 0.07, 7.0, line, spec);
+                }
+            }
+            BossKind::TheCandidate => {
+                // It keeps its distance, makes promises that land where you
+                // are going, and holds rallies.
+                let dist = to.length();
+                want = if dist > 440.0 {
+                    dir * speed
+                } else if dist < 320.0 {
+                    -dir * speed
+                } else {
+                    dir.perp() * speed * 0.6
+                };
+                if b.timer <= 0 {
+                    b.timer = if b.phase == 1 { 200 } else { 360 };
+                    let at = me + self.player.vel * PROMISE_LEAD;
+                    self.blast(at, PROMISE_RADIUS, PROMISE_WARNING, 14.0, spec);
+                    self.events.push(Event::Promise { at });
+                }
+                if b.timer2 <= 0 {
+                    b.timer2 = 900;
+                    let count = if b.phase == 1 { 10 } else { 6 };
+                    for k in 0..count {
+                        let spot = me + V2::from_angle(k as f32 * std::f32::consts::TAU / count as f32) * 420.0;
+                        self.pending.push((b.minion, spot, 0.0, 0, 1));
+                    }
+                    self.events.push(Event::Rally { at: me });
+                }
+            }
+            BossKind::TheModel | BossKind::TheState => {
                 let collapse = self.setup.model.collapse;
                 let c = self.tick % MODEL_CYCLE;
                 let dist = to.length();
@@ -263,6 +400,13 @@ impl World {
                 if self.tick % 900 == 0 {
                     for k in 0..3 {
                         self.pending.push((b.minion, pos + V2::from_angle(k as f32 * 2.1) * 120.0, 0.0, 0, 1));
+                    }
+                }
+                if b.kind == BossKind::TheState && self.tick % 1200 == 600 {
+                    // It sends your own agents after you.
+                    let agent = self.ensure_spec(SlopSpec::archetype(Archetype::YourAgent));
+                    for k in 0..2 {
+                        self.pending.push((agent, pos + V2::from_angle(k as f32 * 3.1 + 1.0) * 160.0, 0.0, 0, 1));
                     }
                 }
             }

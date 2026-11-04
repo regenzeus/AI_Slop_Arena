@@ -2,7 +2,7 @@
 //! zones, filter zones and the beat. And on every platform, maintenance:
 //! parts of the map are fenced off for a while (MAP-04).
 
-use crate::content::{Look, Platform};
+use crate::content::{HazardKind, Look, Platform};
 use crate::events::Event;
 use crate::vec::V2;
 use crate::world::*;
@@ -37,25 +37,28 @@ impl World {
             return;
         }
         let me = self.player.pos;
-        self.hazard_timer = match platform {
-            Platform::FaceSlop => {
+        // The behaviour is the biome's hazard kind; the words are its own.
+        let words = platform.hazard_words();
+        self.hazard_timer = match platform.hazard_kind() {
+            HazardKind::Letters => {
                 let edge = self.near(me, 880.0, 940.0);
                 let dir = (me - edge).normalized();
                 self.hostile_shot(edge, dir * LETTER_SPEED, LETTER_DAMAGE, Look::Letter, NO_LINE, NO_SPEC);
                 420
             }
-            Platform::LinkedOut => {
+            HazardKind::Banners => {
                 let below = self.rng_ai.chance(0.5);
                 let y = me.y + if below { -620.0 } else { 620.0 };
                 let id = self.id();
                 let mut z = Zone::new(id, ZoneKind::Banner, V2::new(me.x, y), 45.0, 1200);
                 z.shape = Shape::Rect(V2::new(3000.0, 45.0));
                 z.vel = V2::new(0.0, if below { BANNER_SPEED } else { -BANNER_SPEED });
+                z.words = words;
                 self.zones.push(z);
                 600
             }
-            Platform::MeTube => {
-                // Buffering patches on the floor: they slow you, they never
+            HazardKind::Buffering => {
+                // Slow patches on the floor: they slow you, they never
                 // cover the screen (FAIR-05).
                 for _ in 0..2 {
                     let at = self.near(me, 160.0, 480.0);
@@ -65,8 +68,8 @@ impl World {
                 self.events.push(Event::AdBreak);
                 540
             }
-            Platform::Thredd => {
-                // Downvotes come in every shape: puddles, strips and rings.
+            HazardKind::Downvotes => {
+                // Slow zones come in every shape: puddles, strips and rings.
                 for _ in 0..3 {
                     let at = self.near(me, 180.0, 520.0);
                     let id = self.id();
@@ -90,7 +93,7 @@ impl World {
                 }
                 480
             }
-            Platform::InstaSlop => {
+            HazardKind::Filters => {
                 for _ in 0..2 {
                     let at = self.near(me, 250.0, 600.0);
                     let id = self.id();
@@ -103,7 +106,7 @@ impl World {
                 }
                 600
             }
-            Platform::ClockTok => {
+            HazardKind::Brainrot => {
                 // Brainrot zones pulse to the beat; when the drop comes,
                 // whoever stands inside has their controls flipped.
                 if !self.player.perks.fluent {

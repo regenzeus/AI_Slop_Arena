@@ -258,27 +258,27 @@ pub fn biome_centre(c: (i32, i32)) -> V2 {
 
 /// Which platform's part of the map a point is in. Neighbours always differ,
 /// so walking a while always takes you somewhere new.
-pub fn biome_at(seed: u64, p: V2) -> crate::content::Platform {
-    biome_of_cell(seed, biome_cell(p))
+pub fn biome_at(seed: u64, p: V2, biomes: &[crate::content::Platform]) -> crate::content::Platform {
+    biome_of_cell(seed, biome_cell(p), biomes)
 }
 
 /// The biome of a point at least `margin` inside its square, or None near
 /// an edge: crossing counts once you are properly in.
-pub fn biome_settled(seed: u64, p: V2, margin: f32) -> Option<crate::content::Platform> {
+pub fn biome_settled(seed: u64, p: V2, margin: f32, biomes: &[crate::content::Platform]) -> Option<crate::content::Platform> {
     let c = biome_cell(p);
     let d = p - biome_centre(c);
     let inner = BIOME / 2.0 - margin;
-    (d.x.abs() < inner && d.y.abs() < inner).then(|| biome_of_cell(seed, c))
+    (d.x.abs() < inner && d.y.abs() < inner).then(|| biome_of_cell(seed, c, biomes))
 }
 
-pub fn biome_of_cell(seed: u64, c: (i32, i32)) -> crate::content::Platform {
-    use crate::content::Platform;
-    // A checkerboard of two families of three: squares that share a side
-    // always come from different families.
+pub fn biome_of_cell(seed: u64, c: (i32, i32), biomes: &[crate::content::Platform]) -> crate::content::Platform {
+    // A checkerboard of two families: squares that share a side always
+    // come from different halves of the list.
+    let half = (biomes.len() / 2).max(1);
     let family = (c.0 + c.1).rem_euclid(2) as usize;
     let h = chunk_seed(seed ^ 0xB10E, c);
-    let pick = (h % 3) as usize;
-    Platform::ALL[family * 3 + pick]
+    let pick = (h % half as u64) as usize;
+    biomes[(family * half + pick).min(biomes.len() - 1)]
 }
 
 /// Chunk coordinates of a point.

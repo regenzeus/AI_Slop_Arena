@@ -178,8 +178,8 @@ pub struct MainCamera;
 #[derive(Component)]
 struct Root;
 
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let art = Art::build(&mut images);
+fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>, over: Res<crate::assets::Overrides>) {
+    let art = Art::build(&mut images, &over);
     let centre = Vec2::ZERO;
     // Any window shows at least 1440 x 810 of the Feed (UI-07).
     let projection = OrthographicProjection { scaling_mode: ScalingMode::AutoMin { min_width: VIEW.x, min_height: VIEW.y }, ..OrthographicProjection::default_2d() };
@@ -327,11 +327,23 @@ fn spawn_slop(commands: &mut Commands, art: &Art, world: &World, s: &Slop) -> Sl
         SlopLook::Archetype(Archetype::ListicleDrone) => {
             text(commands, s.number.to_string(), 18.0, Color::WHITE, Vec3::new(0.0, -size * 0.07, 0.1), root);
         }
+        SlopLook::Archetype(Archetype::Ticket) => {
+            text(commands, format!("#{}", s.number), 14.0, theme::INK, Vec3::new(0.0, 0.0, 0.1), root);
+        }
+        SlopLook::Archetype(Archetype::DiligenceDrone) => {
+            text(commands, s.number.to_string(), 14.0, Color::WHITE, Vec3::new(0.0, -size * 0.3, 0.1), root);
+        }
         SlopLook::Archetype(Archetype::EngagementBait) => {
             text(commands, "TYPE\nAMEN", 12.0, theme::INK, Vec3::new(0.0, size * 0.07, 0.1), root);
         }
         SlopLook::Archetype(Archetype::SubscribePopup) => {
             text(commands, "SUBSCRIBE", 11.0, Color::WHITE, Vec3::new(0.0, size * 0.02, 0.1), root);
+        }
+        SlopLook::Archetype(Archetype::KpiDashboard) => {
+            text(commands, "KPI", 11.0, Color::srgb(0.4, 0.9, 0.6), Vec3::new(0.0, size * 0.3, 0.1), root);
+        }
+        SlopLook::Archetype(Archetype::ComplianceUnit) => {
+            text(commands, "COMPLY", 10.0, Color::WHITE, Vec3::new(0.0, -size * 0.3, 0.1), root);
         }
         _ => {}
     }
@@ -437,7 +449,7 @@ fn spawn_shot(commands: &mut Commands, art: &Art, look: Look, line: u16, hostile
 
 /// A zone in its shape (ZONE-02): circles use their picture; rectangles and
 /// rings are drawn as tinted areas with a word on them.
-fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, shape: Shape, sunflowers: bool) -> Entity {
+fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, shape: Shape, sunflowers: bool, words: &str) -> Entity {
     let tint = match kind {
         ZoneKind::Downvote => Color::srgba(1.0, 0.35, 0.1, 0.26),
         ZoneKind::Filter => Color::srgba(1.0, 0.55, 0.85, 0.22),
@@ -482,8 +494,9 @@ fn spawn_zone(commands: &mut Commands, art: &Art, kind: ZoneKind, radius: f32, s
         }
         ZoneKind::Banner => {
             let root = commands.spawn((Root, Sprite::from_color(Color::srgba(0.25, 0.65, 0.35, 0.35), Vec2::new(6000.0, radius * 2.0)), Transform::default())).id();
+            let words = if words.is_empty() { "#OPENTOWORK" } else { words };
             for x in [-800.0, -400.0, 0.0, 400.0, 800.0] {
-                text(commands, "#OPENTOWORK", 22.0, Color::srgba(0.1, 0.4, 0.2, 0.9), Vec3::new(x, 0.0, 0.05), root);
+                text(commands, words, 22.0, Color::srgba(0.1, 0.4, 0.2, 0.9), Vec3::new(x, 0.0, 0.05), root);
             }
             return root;
         }
@@ -861,7 +874,7 @@ fn sync(
         // Sunflower patches look like sunflowers; other seed patches like seeds.
         let sunflowers = matches!(z.kind, ZoneKind::Seed { .. })
             && world.player.weapons.get(z.spec as usize).is_some_and(|w| matches!(w.def().name, "Sunflower Patch" | "Rewilding" | "Hurricane Season"));
-        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius, z.shape, sunflowers));
+        let e = *views.zones.entry(z.id).or_insert_with(|| spawn_zone(&mut commands, &art, z.kind, z.radius, z.shape, sunflowers, z.words));
         if let Ok((mut tf, mut sprite)) = sprite_roots.get_mut(e) {
             tf.translation = Vec3::new(z.pos.x, z.pos.y, Z_ZONE + (z.id % 50) as f32 * 0.001);
             let left = z.ticks as f32 / z.max_ticks.max(1) as f32;
@@ -1213,7 +1226,7 @@ fn map_views(
     }
     for c in &cells {
         views.biomes.entry(*c).or_insert_with(|| {
-            let platform = slop_sim::map::biome_of_cell(seed, *c);
+            let platform = slop_sim::map::biome_of_cell(seed, *c, &world.setup.biomes);
             let size = slop_sim::map::BIOME;
             let centre = Vec2::new(c.0 as f32 * size, c.1 as f32 * size);
             let floor = commands
@@ -1261,7 +1274,7 @@ fn map_views(
                     let i = rng.below(crate::feed_art::DECOR as u32) as usize;
                     let size = rng.range(90.0, 200.0);
                     // Tinted for the biome the scrap lies in.
-                    let tint = theme::platform_tint(slop_sim::map::biome_at(seed, slop_sim::V2::new(at.x, at.y)));
+                    let tint = theme::platform_tint(slop_sim::map::biome_at(seed, slop_sim::V2::new(at.x, at.y), &world.setup.biomes));
                     commands
                         .spawn((
                             Sprite { image: art.decor[i].clone(), custom_size: Some(Vec2::splat(size)), color: tint, ..default() },

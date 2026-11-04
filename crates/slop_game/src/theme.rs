@@ -43,13 +43,6 @@ pub fn type_text(t: DamageType) -> Color {
 
 /// Each platform's accent, for the feed scraps on its floor.
 pub fn platform_tint(p: slop_sim::Platform) -> Color {
-    use slop_sim::Platform::*;
-    match p {
-        FaceSlop => Color::srgb(0.6, 0.72, 1.0),
-        LinkedOut => Color::srgb(0.55, 0.8, 1.0),
-        MeTube => Color::srgb(1.0, 0.6, 0.6),
-        Thredd => Color::srgb(1.0, 0.72, 0.5),
-        InstaSlop => Color::srgb(1.0, 0.7, 0.92),
-        ClockTok => Color::srgb(0.6, 1.0, 1.0),
-    }
+    let t = p.tint();
+    Color::srgb(t[0], t[1], t[2])
 }

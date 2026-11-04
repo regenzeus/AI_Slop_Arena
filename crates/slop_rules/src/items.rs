@@ -200,6 +200,8 @@ pub enum Mod {
     CloutDamage(f32),
     /// More slop, and more Likes and Clout from it.
     Curse(f32),
+    /// Automation stops for the chapter and the agents go (AUTO-04).
+    Unplug,
     /// Weapons of this type are never offered.
     NoType(DamageType),
     /// New weapons start at this level.
@@ -368,6 +370,7 @@ pub const GLITCHES: &[ItemDef] = &[
     item("Thick Skull", Defence, 4, &[Mod::Stat(Boundaries, 60.0), Mod::Stat(Speed, -10.0)], "+60 Boundaries, -10% Speed", "Nothing gets through. Including ideas."),
     item("Plot Armour", Defence, 4, &[Mod::SecondWind, Mod::SecondWind], "Twice per platform, survive a killing blow", "Main characters don't die in episode one."),
     item("Touch Grass Forever", Healthy, 4, &[Mod::Stat(SelfCare, 8.0), Mod::TypeBonus(DamageType::Grass, 0.25)], "+8 Self-Care, +25% Grass damage", "You live outside now."),
+    item("Unplug", Risky, 4, &[Mod::Unplug], "Automation stops rising this chapter. Your agents quit. Half your max Mental Health goes with them", "Pull it out of the wall. See what is left of you."),
 ];
 
 /// The bad half of a risky item: it counts once, whatever the item's level.

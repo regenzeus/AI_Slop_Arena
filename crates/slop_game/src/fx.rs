@@ -343,6 +343,24 @@ fn spawn_fx(
             Event::Reposted { .. } => {}
             Event::Split { .. } => {}
             Event::Hatched { .. } => {}
+            // The later bosses' moves, shown where they happen (CH-02).
+            Event::Closed { at } => {
+                ring(&mut commands, &art, v(at), 50.0, Color::srgba(0.4, 0.8, 1.0, 0.7), 0.35);
+                say(&mut commands, "CLOSED", v(at) + Vec2::Y * 24.0, 14.0, Color::srgb(0.5, 0.85, 1.0), 0.9);
+            }
+            Event::Vote { at, seats } => {
+                ring(&mut commands, &art, v(at), 120.0, Color::srgba(1.0, 0.85, 0.3, 0.6), 0.5);
+                let words = if seats >= 3 { format!("MOTION CARRIED ({seats} seats)") } else { "NO QUORUM".to_string() };
+                say(&mut commands, &words, v(at) + Vec2::Y * 70.0, 16.0, Color::srgb(1.0, 0.85, 0.3), 1.4);
+            }
+            Event::Promise { at } => {
+                let line = ["A PLAN FOR EVERY FAMILY", "I HEAR YOU", "TOGETHER", "THE DATA IS CLEAR"][(n / 3) as usize % 4];
+                say(&mut commands, line, v(at) + Vec2::Y * 30.0, 14.0, Color::srgb(1.0, 0.5, 0.5), 1.6);
+            }
+            Event::Rally { at } => {
+                ring(&mut commands, &art, v(at), 420.0, Color::srgba(1.0, 0.4, 0.4, 0.5), 0.7);
+                say(&mut commands, "RALLY", v(at) + Vec2::Y * 60.0, 18.0, Color::srgb(1.0, 0.5, 0.5), 1.2);
+            }
             Event::Grabbed => {}
             Event::LancerAim { from, dir } => {
                 let (from, dir) = (v(from), v(dir));

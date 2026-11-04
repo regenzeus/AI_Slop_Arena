@@ -157,12 +157,12 @@ fn the_map_is_a_patchwork_of_platforms() {
     for seed in [1, 7, 42] {
         for x in -3..3 {
             for y in -3..3 {
-                let here = map::biome_of_cell(seed, (x, y));
-                assert_ne!(here, map::biome_of_cell(seed, (x + 1, y)), "neighbours differ");
-                assert_ne!(here, map::biome_of_cell(seed, (x, y + 1)));
+                let here = map::biome_of_cell(seed, (x, y), &Platform::ALL);
+                assert_ne!(here, map::biome_of_cell(seed, (x + 1, y), &Platform::ALL), "neighbours differ");
+                assert_ne!(here, map::biome_of_cell(seed, (x, y + 1), &Platform::ALL));
             }
         }
-        assert!(map::biome_settled(seed, V2::ZERO, 160.0).is_some(), "a run starts in the middle of a square");
+        assert!(map::biome_settled(seed, V2::ZERO, 160.0, &Platform::ALL).is_some(), "a run starts in the middle of a square");
     }
     // Walking into the next square changes where you are, once you are in.
     let mut setup = WaveSetup::sandbox();
@@ -445,4 +445,93 @@ fn agents_hit_harder_and_smart_targeting_prefers_the_biggest() {
     let p = w.projectiles.first().expect("fired");
     let target = w.slop.iter().find(|s| s.id == big).unwrap().pos;
     assert!(p.vel.dot(target - w.player.pos) > 0.0, "it aimed at the big one, not the near one");
+}
+
+// REQ: CH-02
+#[test]
+fn the_later_chapters_slop_wander_copy_your_weapons_and_pack_like_the_feeds() {
+    let mut w = sandbox();
+    let me = w.player.pos;
+    // A voter minds its own business until you are in sight.
+    let far = w.spawn_archetype(Archetype::Voter, me + V2::new(700.0, 0.0));
+    let near = w.spawn_archetype(Archetype::Citizen, me + V2::new(250.0, 0.0));
+    w.player.invulnerable = u16::MAX;
+    run(&mut w, 60);
+    let far_now = w.slop.iter().find(|s| s.id == far).unwrap().pos.distance(me);
+    let near_now = w.slop.iter().find(|s| s.id == near).unwrap().pos.distance(me);
+    assert!(far_now > 640.0, "the voter wanders, {far_now}");
+    assert!(near_now < 200.0, "the citizen saw you and comes, {near_now}");
+    // Your Agent fires whatever you handed over.
+    let mut w = sandbox();
+    w.setup.model.copies = [Some(Look::Brick), None, None];
+    w.player.invulnerable = u16::MAX;
+    put(&mut w, Archetype::YourAgent, V2::new(300.0, 0.0));
+    let mut brick = false;
+    for _ in 0..400 {
+        w.step(Input::default());
+        w.drain_events();
+        brick |= w.projectiles.iter().any(|p| p.hostile && p.look == Look::Brick);
+    }
+    assert!(brick, "it has your Brick");
+    // Summoners and hatchlings are made of the chapter's swarm.
+    let mut w = sandbox();
+    w.setup.platform = Some(Platform::Checkpoint);
+    w.player.invulnerable = u16::MAX;
+    put(&mut w, Archetype::Camera, V2::new(300.0, 0.0));
+    run(&mut w, 320);
+    let specs = &w.setup.specs;
+    assert!(w.slop.iter().any(|s| specs[s.spec as usize].name == "Citizen"), "a camera calls in citizens");
+    assert_eq!(Archetype::Ticket.chapter(), 1);
+    assert_eq!(Archetype::Camera.chapter(), 4);
+    assert!(Archetype::GoldenParachute.is_goblin());
+}
+
+// REQ: CH-02
+#[test]
+fn the_later_bosses_pose_their_puzzles() {
+    // The Board sits with five seats; three are a quorum and halve its damage.
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    w.summon_boss(SlopSpec::boss(BossKind::TheBoard, 2000.0), ModelSetup::default());
+    run(&mut w, 2);
+    let seats: Vec<u32> = w.slop.iter().filter(|s| w.setup.specs[s.spec as usize].name == "Board Member").map(|s| s.id).collect();
+    assert_eq!(seats.len(), 5);
+    let boss_id = w.boss.as_ref().unwrap().id;
+    let armor = |w: &World| w.slop.iter().find(|s| s.id == boss_id).unwrap().armor;
+    assert_eq!(armor(&w), 0.5, "a quorum shields it");
+    for id in &seats[..3] {
+        w.slop.iter_mut().find(|s| s.id == *id).unwrap().hp = 0.0;
+    }
+    run(&mut w, 2);
+    assert_eq!(armor(&w), 1.0, "two seats are no quorum");
+    let events = run(&mut w, 500);
+    assert!(events.iter().any(|e| matches!(e, Event::Vote { .. })), "it still votes");
+    // Your Replacement raises tickets and closes them, and heals for each.
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    w.summon_boss(SlopSpec::boss(BossKind::YourReplacement, 2000.0), ModelSetup::default());
+    run(&mut w, 1);
+    let boss_id = w.boss.as_ref().unwrap().id;
+    let k = w.slop.iter().position(|s| s.id == boss_id).unwrap();
+    w.slop[k].hp = 500.0;
+    let events = run(&mut w, 700);
+    assert!(events.iter().any(|e| matches!(e, Event::Closed { .. })), "it closed a ticket");
+    assert!(w.slop.iter().find(|s| s.id == boss_id).unwrap().hp > 500.0, "and healed");
+    // The Candidate makes promises that land ahead of you, and holds rallies.
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    w.summon_boss(SlopSpec::boss(BossKind::TheCandidate, 2000.0), ModelSetup::default());
+    let events = run(&mut w, 960);
+    assert!(events.iter().any(|e| matches!(e, Event::Promise { .. })));
+    assert!(events.iter().any(|e| matches!(e, Event::Rally { .. })));
+    assert!(w.slop.iter().filter(|s| w.setup.specs[s.spec as usize].name == "Voter").count() >= 6, "a rally brings voters");
+    // The State is the Model, governing: it sends your agents.
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    w.summon_boss(SlopSpec::boss(BossKind::TheState, 6000.0), ModelSetup::default());
+    run(&mut w, 1300);
+    assert!(w.slop.iter().any(|s| w.setup.specs[s.spec as usize].name == "Your Agent"));
+    for b in BossKind::ALL {
+        assert!(!b.puzzle().is_empty() && b.base().0 > 0.0);
+    }
 }

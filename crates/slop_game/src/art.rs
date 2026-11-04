@@ -17,6 +17,7 @@ use slop_rules::Hero;
 use slop_sim::content::WEAPONS;
 use slop_sim::DamageType;
 
+use crate::assets::Overrides;
 use crate::{draw, feed_art, icons};
 use slop_sim::map::{PropKind, WallKind};
 use slop_sim::world::PickupKind;
@@ -209,6 +210,12 @@ impl Canvas {
     }
 
     /// The same silhouette in solid white, for hit flashes.
+    /// From RGBA bytes, such as a PNG someone drew (ASSET-01).
+    pub fn from_rgba8(w: usize, h: usize, bytes: &[u8]) -> Canvas {
+        let px = bytes.chunks_exact(4).take(w * h).map(|p| [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0, p[3] as f32 / 255.0]).collect();
+        Canvas { w, h, px }
+    }
+
     pub fn whitened(&self) -> Canvas {
         let px = self.px.iter().map(|p| [1.0, 1.0, 1.0, p[3]]).collect();
         Canvas { w: self.w, h: self.h, px }
@@ -384,23 +391,29 @@ pub struct Art {
 }
 
 impl Art {
-    pub fn build(images: &mut Assets<Image>) -> Art {
+    /// Draws everything, unless a file in `assets/` stands in (ASSET-01).
+    pub fn build(images: &mut Assets<Image>, over: &Overrides) -> Art {
+        let slug = Overrides::slug;
         let mut human = HashMap::new();
         let mut human_flash = HashMap::new();
         for hero in Hero::ALL {
-            let faces: Vec<Canvas> = (0..FACES).map(|f| draw::human(f, hero)).collect();
+            let faces: Vec<Canvas> = (0..FACES).map(|f| over.canvas(&format!("hero_{}_{f}", slug(hero.def().name))).unwrap_or_else(|| draw::human(f, hero))).collect();
             human_flash.insert(hero, images.add(faces[0].whitened().image()));
             human.insert(hero, [images.add(faces[0].image()), images.add(faces[1].image()), images.add(faces[2].image()), images.add(faces[3].image())]);
         }
         let mut pair = |c: Canvas| (images.add(c.image()), images.add(c.whitened().image()));
-        let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(draw::archetype(a)))).collect();
-        let icon_frames = Archetype::ICONS.iter().chain([Archetype::LootGoblin].iter()).map(|&a| (a, (0..draw::ICON_FRAMES).map(|f| pair(draw::icon(a, f))).collect())).collect();
+        let archetypes = Archetype::ALL.iter().map(|&a| (a, pair(over.canvas(&format!("slop_{}", slug(a.def().name))).unwrap_or_else(|| draw::archetype(a))))).collect();
+        let icon_frames = Archetype::ICONS
+            .iter()
+            .chain([Archetype::LootGoblin].iter())
+            .map(|&a| (a, (0..draw::ICON_FRAMES).map(|f| pair(over.canvas(&format!("slop_{}_{f}", slug(a.def().name))).unwrap_or_else(|| draw::icon(a, f)))).collect()))
+            .collect();
         let bodies = Body::ALL.iter().map(|&b| (b, pair(draw::body(b)))).collect();
         let objects = Object::ALL.iter().map(|&o| (o, pair(draw::object(o)))).collect();
         let accessories = Accessory::ALL.iter().map(|&a| (a, pair(draw::accessory(a)))).collect();
-        let bosses = BossKind::ALL.iter().map(|&b| (b, pair(draw::boss(b)))).collect();
+        let bosses = BossKind::ALL.iter().map(|&b| (b, pair(over.canvas(&format!("boss_{}", slug(b.name()))).unwrap_or_else(|| draw::boss(b))))).collect();
         let mut add = |c: Canvas| images.add(c.image());
-        let floors = Platform::ALL.iter().map(|&p| (p, add(draw::floor(p)))).collect();
+        let floors = Platform::EVERY.iter().map(|&p| (p, add(over.canvas(&format!("floor_{}", slug(p.name()))).unwrap_or_else(|| draw::floor(p))))).collect();
         let shots = Look::ALL.iter().filter(|l| **l != Look::Bubble && **l != Look::Post).map(|&l| (l, add(draw::shot(l)))).collect();
         Art {
             human,

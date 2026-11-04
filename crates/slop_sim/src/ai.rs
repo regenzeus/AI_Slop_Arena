@@ -1,7 +1,7 @@
 //! What the slop does each tick: move by its movement, fire its attack,
 //! use its traits, and touch you (SLOP-01 to SLOP-05).
 
-use crate::content::{Archetype, Look, AGREE_LINES, BUBBLE_LINES, POST_LINES};
+use crate::content::{Look, AGREE_LINES, BUBBLE_LINES, POST_LINES};
 use crate::events::{Event, StatusKind};
 use crate::spec::{Attack, Movement, SlopSpec, Traits};
 use crate::stats::DamageType;
@@ -57,6 +57,8 @@ const NEEDLES: u32 = 10;
 const TALK_CHANCE: f32 = 0.2;
 /// Ticks between a Summoner elite's calls.
 const SUMMON_EVERY: u32 = 300;
+/// How close a wanderer (a Voter, a Citizen) must be to notice you.
+const WANDER_SIGHT: f32 = 380.0;
 
 /// The parts of a spec the AI needs, copied so the slop can be borrowed mutably.
 #[derive(Clone, Copy)]
@@ -266,6 +268,17 @@ impl World {
                     }
                 }
                 Movement::Sweep => want = s.aim * speed,
+                Movement::Wander => {
+                    // Minds its own business until you are in sight; then it
+                    // has seen you, and it does not forget.
+                    if dist < WANDER_SIGHT || s.timer < 0 {
+                        s.timer = -1;
+                        want = dir * speed;
+                    } else {
+                        let turn = ((self.tick / 90) + s.id * 13) as f32 * 1.7;
+                        want = V2::from_angle(turn) * (speed * 0.45);
+                    }
+                }
                 Movement::Flee => {
                     // Runs from you, weaving a little; gone when time is up.
                     let weave = dir.perp() * (side * 0.4 * (self.tick as f32 * 0.03 + s.id as f32).sin());
@@ -376,6 +389,12 @@ impl World {
                             }
                         }
                         Attack::Peel => shots.push((s.pos + dir * b.radius, dir * 300.0, b.contact * 0.8 * k, Look::Banana, NO_LINE, spec)),
+                        // Your own weapons, fired back at you (CH-02).
+                        Attack::Copy => {
+                            let copies: Vec<Look> = self.setup.model.copies.iter().flatten().copied().collect();
+                            let look = copies.get((s.id as usize + self.tick as usize / 150) % copies.len().max(1)).copied().unwrap_or(Look::Bullet);
+                            shots.push((s.pos + dir * b.radius, dir * 360.0, b.contact * 1.3 * k, look, NO_LINE, spec));
+                        }
                     }
                 }
             }
@@ -410,12 +429,12 @@ impl World {
                     }
                 }
                 Queued::Hatch { at, pack, number } => {
-                    let drone = self.ensure_spec(SlopSpec::archetype(Archetype::ListicleDrone));
+                    let drone = self.ensure_spec(SlopSpec::archetype(self.swarm()));
                     self.pending.push((drone, at, 0.0, pack, number));
                 }
                 Queued::Blast { at, radius, ticks, damage, spec } => self.blast(at, radius, ticks, damage, spec),
                 Queued::Summon { at, hp } => {
-                    let drone = self.ensure_spec(SlopSpec::archetype(Archetype::ListicleDrone));
+                    let drone = self.ensure_spec(SlopSpec::archetype(self.swarm()));
                     for n in 0..3u8 {
                         let p = at + V2::from_angle(n as f32 * 2.1) * 40.0;
                         self.pending.push((drone, p, hp.max(8.0), 0, 1));

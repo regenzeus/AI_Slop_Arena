@@ -336,7 +336,7 @@ impl Run {
     /// A run that starts in the part of the map where you stand: that
     /// platform's boss comes first.
     pub fn new(seed: u64, hero: Hero) -> Run {
-        let first = slop_sim::map::biome_at(seed, V2::ZERO);
+        let first = slop_sim::map::biome_at(seed, V2::ZERO, Chapter::Feed.def().biomes);
         Run::on(seed, hero, first, Rng::new(seed, 7))
     }
 
@@ -371,7 +371,7 @@ impl Run {
         let weapon = weapon_index(def.weapon).expect("hero weapons exist");
         let item = item_index(def.item).expect("hero items exist");
         let training = Training::new(&mut rng);
-        let mut rest: Vec<Platform> = Platform::ALL.iter().copied().filter(|p| *p != first).collect();
+        let mut rest: Vec<Platform> = Chapter::Feed.def().biomes.iter().copied().filter(|p| *p != first).collect();
         for i in (1..rest.len()).rev() {
             let j = rng.below(i as u32 + 1) as usize;
             rest.swap(i, j);
@@ -450,6 +450,7 @@ impl Run {
         setup.specs.clear();
         setup.seconds = 0.0;
         setup.platform = Some(first);
+        setup.biomes = Chapter::Feed.def().biomes.to_vec();
         run.world = Some(World::new(seed, setup, &run.loadout()));
         run.retune();
         run
@@ -458,14 +459,28 @@ impl Run {
     /// A run `minutes` in, with a few levelled weapons and plenty of Mental
     /// Health: the bots play it behind the title screen.
     pub fn showcase(seed: u64, hero: Hero, minutes: f32) -> Run {
+        Run::showcase_build(seed, hero, minutes, &[])
+    }
+
+    /// A showcase of `build` (weapon index and level): the title replays
+    /// your last run's build (END-01). An empty build is made up.
+    pub fn showcase_build(seed: u64, hero: Hero, minutes: f32, build: &[(usize, u8)]) -> Run {
         let mut run = Run::new(seed, hero);
+        for &(def, level) in build.iter().filter(|(d, _)| *d < WEAPONS.len()).take(WEAPON_SLOTS) {
+            match run.weapons.iter_mut().find(|w| w.def == def) {
+                Some(w) => w.level = level.clamp(1, MAX_LEVEL),
+                None => run.weapons.push(OwnedWeapon { def, level: level.clamp(1, MAX_LEVEL), agent: false }),
+            }
+        }
         while run.weapons.len() < 4 {
             let def = run.rng.below(WEAPONS.len() as u32) as usize;
             if !WEAPONS[def].evolved && run.weapons.iter().all(|w| w.def != def) {
                 run.weapons.push(OwnedWeapon { def, level: 4, agent: false });
             }
         }
-        run.weapons[0].level = 6;
+        if build.is_empty() {
+            run.weapons[0].level = 6;
+        }
         run.base.max_mental_health += 400.0;
         run.base.conviction += 1.5;
         run.offset = minutes * 60.0;
@@ -1206,8 +1221,9 @@ impl Run {
     }
 
     /// `n` different glitches you do not have yet.
-    fn glitch_offers(&mut self, n: usize) -> Vec<usize> {
-        let mut pool: Vec<usize> = (0..GLITCHES.len()).filter(|g| !self.glitches.contains(g)).collect();
+    pub(crate) fn glitch_offers(&mut self, n: usize) -> Vec<usize> {
+        // Unplug (AUTO-04) is only worth offering once there is something to unplug.
+        let mut pool: Vec<usize> = (0..GLITCHES.len()).filter(|g| !self.glitches.contains(g)).filter(|&g| !GLITCHES[g].mods.contains(&Mod::Unplug) || (self.automation >= 25 && !self.unplugged)).collect();
         let mut out = Vec::new();
         while out.len() < n && !pool.is_empty() {
             out.push(pool.swap_remove(self.rng.below(pool.len() as u32) as usize));
@@ -1314,6 +1330,9 @@ impl Run {
             Choice::Glitch(g) => {
                 if !self.glitches.contains(&g) {
                     self.glitches.push(g);
+                }
+                if GLITCHES[g].mods.contains(&Mod::Unplug) {
+                    self.unplug();
                 }
             }
             Choice::Delegate(d) => self.delegate(d),
@@ -1528,6 +1547,9 @@ impl Run {
             m.killer = Some(name);
             m.killer_look = Some(look);
         }
+        // The title demo replays this build (END-01).
+        m.hero = Some(self.hero as usize);
+        m.build = self.weapons.iter().map(|w| (w.def, w.level)).collect();
         m
     }
 
@@ -1865,8 +1887,8 @@ impl Run {
         // A new map.
         let seed = self.seed.wrapping_add(c as u64 * 7919);
         let mut rng = Rng::new(seed, 7);
-        let first = slop_sim::map::biome_at(seed, V2::ZERO);
-        let mut rest: Vec<Platform> = Platform::ALL.iter().copied().filter(|p| *p != first).collect();
+        let first = slop_sim::map::biome_at(seed, V2::ZERO, def.biomes);
+        let mut rest: Vec<Platform> = def.biomes.iter().copied().filter(|p| *p != first).collect();
         for i in (1..rest.len()).rev() {
             let j = rng.below(i as u32 + 1) as usize;
             rest.swap(i, j);
@@ -1879,6 +1901,11 @@ impl Run {
         setup.specs.clear();
         setup.seconds = 0.0;
         setup.platform = Some(first);
+        setup.biomes = def.biomes.to_vec();
+        // In the Resistance your agents fire your own weapons back (CH-02).
+        for (k, d) in self.defected.iter().take(3).enumerate() {
+            setup.model.copies[k] = Some(waves::weapon_look(*d));
+        }
         let mut w = World::new(seed, setup, &self.loadout());
         w.hallucinate = self.temperature.hallucination();
         self.world = Some(w);
@@ -1898,6 +1925,12 @@ impl Run {
 
     /// Your role has been automated (END-01).
     fn start_takeover(&mut self) {
+        // Automation reached 100 mid-chapter: that chapter ends here too.
+        if self.chapters.last().map(|c| c.chapter) != Some(self.chapter) {
+            let seconds = self.seconds() - self.chapter_since;
+            let kills = self.kills();
+            self.chapters.push(ChapterResult { chapter: self.chapter, seconds, kills, killer: Some(("Automation".into(), "Every Delegate card was the strongest choice. That was the point.".into())) });
+        }
         if let Some(w) = self.world.as_mut() {
             w.outcome = Outcome::Running;
             let p = &mut w.player;
