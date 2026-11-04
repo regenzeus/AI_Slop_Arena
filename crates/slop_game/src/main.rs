@@ -7,6 +7,7 @@
 //!   --screenshots DIR                save a screenshot of every kind of screen
 //!   --exit-on-end                    close when the run ends
 //!   --speed N                        autoplay fast-forward (default 8)
+//!   --luddite                        the bot never takes a Delegate card, so it reaches every chapter
 //! slop_game --windowed               start in a window (autoplay always does)
 //!   --size WxH                       the window's size (default 1600x900)
 //! ```
@@ -47,12 +48,13 @@ struct Args {
     screenshots: Option<PathBuf>,
     seed: Option<u64>,
     speed: u32,
+    luddite: bool,
     windowed: bool,
     size: (u32, u32),
 }
 
 fn parse_args() -> Args {
-    let mut a = Args { autoplay: false, exit_on_end: false, screenshots: None, seed: None, speed: 8, windowed: false, size: (1600, 900) };
+    let mut a = Args { autoplay: false, exit_on_end: false, screenshots: None, seed: None, speed: 8, luddite: false, windowed: false, size: (1600, 900) };
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         match arg.as_str() {
@@ -61,6 +63,7 @@ fn parse_args() -> Args {
             "--screenshots" => a.screenshots = it.next().map(PathBuf::from),
             "--seed" => a.seed = it.next().and_then(|v| v.parse().ok()),
             "--speed" => a.speed = it.next().and_then(|v| v.parse().ok()).unwrap_or(8),
+            "--luddite" => a.luddite = true,
             "--windowed" => a.windowed = true,
             "--size" => {
                 if let Some((w, h)) = it.next().as_deref().and_then(|v| v.split_once('x')).and_then(|(w, h)| Some((w.parse().ok()?, h.parse().ok()?))) {
@@ -79,6 +82,7 @@ fn main() {
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(1, |d| d.as_secs() % 1_000_000);
     let mut game = Game::new(args.seed.unwrap_or(clock_seed));
+    game.luddite = args.luddite;
     // Autoplay plays against a blank memory and never writes to it.
     if !args.autoplay {
         game.memory = state::load_memory();

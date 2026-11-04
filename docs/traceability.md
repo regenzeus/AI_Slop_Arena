@@ -28,6 +28,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | BRAIN-01 | `brainrot_parts_shape_the_spec` | crates/slop_sim/src/tests.rs |
 | BRAIN-02 | `names_are_fake_italian_and_varied` | crates/slop_rules/src/training.rs |
 | BUB-01 | `your_shots_pop_bubbles` | crates/slop_sim/src/tests.rs |
+| CAP-01 | `no_build_outlasts_a_chapters_overtime` | crates/slop_rules/src/tests_v4.rs |
 | CARD-01 | `what_killed_you_comes_back_and_the_card_tells_the_truth` | crates/slop_rules/src/tests_v4.rs |
 | CH-01 | `death_is_the_next_chapter_and_the_build_starts_over` | crates/slop_rules/src/tests_v4.rs |
 | CH-02 | `every_chapter_is_complete_and_in_order` | crates/slop_rules/src/chapters.rs |
@@ -161,7 +162,6 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 - ART-05
 - BAL-01
 - BRAIN-03
-- CAP-01
 - EVENT-03
 - FAIR-04
 - FEEL-01

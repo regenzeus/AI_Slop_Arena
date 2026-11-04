@@ -180,7 +180,8 @@ fn step(time: Res<Time>, controls: Res<Controls>, mut game: ResMut<Game>, mut rn
         // The bots choose after a beat during autoplay, so it can be seen.
         let wait = if matches!(run.phase, Phase::Chest(_)) { 3.2 } else { 0.5 };
         if bot && game.since_choice > wait {
-            slop_rules::bot::decide(run, Policy::Heuristic, &mut rng.0);
+            let policy = if game.luddite { Policy::Luddite } else { Policy::Heuristic };
+            slop_rules::bot::decide(run, policy, &mut rng.0);
             game.since_choice = 0.0;
             game.dirty = true;
         }

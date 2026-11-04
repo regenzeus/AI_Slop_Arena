@@ -150,7 +150,8 @@ fn extras(
     }
     if let Ok(mut t) = texts.p5().single_mut() {
         let driving = if run.autopilot_now() { "   AUTOPILOT: the model is driving" } else { "" };
-        **t = format!("{}   Automation {}%{driving}", run.version(), run.automation);
+        let worn = if run.worn { "   WEARING YOU DOWN" } else { "" };
+        **t = format!("{}   Automation {}%{driving}{worn}", run.version(), run.automation);
     }
     if let Ok(mut t) = texts.p6().single_mut() {
         let want = run.chapter.def().resource.to_uppercase();

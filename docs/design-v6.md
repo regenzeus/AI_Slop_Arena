@@ -47,8 +47,14 @@ losing it change per chapter ("Burnout", "Fired", "Voted out", "Conceded", "Loca
 Every chapter has a visible **capability version** on the HUD ("Slop v2.4", "Copilot
 v3.8", "Algorithm v4.2"...) that ticks up every 30 s. Enemy HP, damage and numbers scale
 with capability, and it never stops, so death is certain; survival time is the score.
-Capability grows faster the more you have automated: rate × (1 + Automation / 100). The
+Capability grows faster the more you have automated: rate × (1 + Automation / 200). The
 card for every delegate option says this: "The AI learns from you."
+
+Later chapters start with a head start of capability (one to four minutes' worth) and a
+few level-up picks up front, so you are never level 1 against nothing. Past the tenth
+minute of a chapter the model stops being patient: capability climbs ever faster and
+your resource drains a little more every second ("Copilot v2.20 has learned enough. It is
+wearing you down now."). No build outlasts a chapter; a good one gets fifteen minutes.
 
 ### Automation: the thesis as a meter
 

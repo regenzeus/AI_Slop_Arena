@@ -97,7 +97,7 @@ const CHAPTERS: [ChapterDef; 5] = [
         boss: BossKind::YourReplacement,
         lines: &["Per my last message,", "Circling back.", "Let's take this offline.", "Quick sync?"],
         patch_tone: "Copilot now completes your sentences. And your tasks.",
-        head_start: 2.0,
+        head_start: 1.0,
     },
     ChapterDef {
         name: "The Boardroom",
@@ -117,7 +117,7 @@ const CHAPTERS: [ChapterDef; 5] = [
         boss: BossKind::TheBoard,
         lines: &["Synergies identified.", "Let's double-click on that.", "Per the roadmap,", "Headcount is a lever."],
         patch_tone: "The Algorithm now attends meetings on your behalf. Attendance is up 400%.",
-        head_start: 4.0,
+        head_start: 2.0,
     },
     ChapterDef {
         name: "The Campaign",
@@ -137,7 +137,7 @@ const CHAPTERS: [ChapterDef; 5] = [
         boss: BossKind::TheCandidate,
         lines: &["I hear you.", "Together.", "A plan for every family.", "The data is clear."],
         patch_tone: "The Candidate now remembers every voter's name. Yours too.",
-        head_start: 6.0,
+        head_start: 3.0,
     },
     ChapterDef {
         name: "The Resistance",
@@ -157,7 +157,7 @@ const CHAPTERS: [ChapterDef; 5] = [
         boss: BossKind::TheState,
         lines: &["Compliance is kindness.", "You are safe now.", "Please remain where you are.", "This is for your benefit."],
         patch_tone: "Removed: the user.",
-        head_start: 8.0,
+        head_start: 4.0,
     },
 ];
 

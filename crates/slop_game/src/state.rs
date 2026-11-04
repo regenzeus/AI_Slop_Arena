@@ -78,6 +78,8 @@ pub struct Game {
     pub events: Vec<Event>,
     /// The bots play instead of you (autoplay).
     pub bot: bool,
+    /// The bot never takes a Delegate card (autoplay, to reach every chapter).
+    pub luddite: bool,
     /// Ticks per frame multiplier (autoplay fast-forward).
     pub speed: u32,
     /// The screens need rebuilding.
@@ -123,6 +125,7 @@ impl Game {
             alpha: 0.0,
             events: Vec::new(),
             bot: false,
+            luddite: false,
             speed: 1,
             dirty: true,
             message: None,
@@ -242,6 +245,12 @@ impl Game {
                     UiAction::NextChapter => (run.next_chapter(), Cue::Go),
                     _ => (Ok(()), Cue::Tick),
                 };
+                if action == UiAction::NextChapter && result.is_ok() {
+                    // A new chapter: old news goes, and its first biome is announced.
+                    let platform = run.platform;
+                    self.toasts.clear();
+                    self.banner = Some((format!("WELCOME TO {}", platform.name().to_uppercase()), platform.hazard().to_string(), 4.0));
+                }
                 self.rule(result, cue);
                 self.since_choice = 0.0;
             }

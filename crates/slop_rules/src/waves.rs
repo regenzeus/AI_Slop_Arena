@@ -22,8 +22,14 @@ pub fn stage(minutes: f32) -> f32 {
 
 pub fn capability(minutes: f32, head_start: f32, automation: u32) -> f32 {
     let learned = 1.0 + automation as f32 / 200.0;
-    1.0 + (head_start + minutes * learned) * 0.62
+    // Past the tenth minute of a chapter the model stops being patient:
+    // every chapter ends, however good the build (the player always loses).
+    let overtime = (minutes - OVERTIME_AFTER).max(0.0);
+    1.0 + (head_start + (minutes + overtime * overtime * 0.5) * learned) * 0.62
 }
+
+/// Minutes into a chapter after which capability climbs ever faster.
+pub const OVERTIME_AFTER: f32 = 10.0;
 
 /// The version string on the HUD: it ticks up every 30 s.
 pub fn version(ai: &str, chapter: usize, minutes: f32) -> String {

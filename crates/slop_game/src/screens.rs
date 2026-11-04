@@ -1000,8 +1000,13 @@ fn pause(p: &mut ChildSpawnerCommands, run: &Run, art: &Art, pad: bool) {
 
 fn over(p: &mut ChildSpawnerCommands, run: &Run, _victory: bool, art: &Art, pad: bool) {
     backdrop(p, Color::srgba(0.07, 0.07, 0.1, 0.9));
-    // The end is always the same one (END-01).
-    let (title, sub, color) = ("AUTOMATED", "Your role has been automated. No human required.", DELEGATE);
+    // The end is always a loss (END-01): automated, or located by the State
+    // with whatever humanity you kept.
+    let (title, sub, color) = if run.automation >= 100 {
+        ("AUTOMATED", "Your role has been automated. No human required.".to_string(), DELEGATE)
+    } else {
+        ("LOCATED", format!("There was never a way to win this. You kept {}% of yourself. It noticed.", run.humanity()), theme::DANGER)
+    };
     icon(p, &art.human[&run.hero][3], 70.0);
     label(p, title, 58.0, color);
     label(p, sub, 22.0, theme::QUIET);

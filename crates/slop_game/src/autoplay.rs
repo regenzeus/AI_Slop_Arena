@@ -12,7 +12,7 @@ use crate::play::END_PAUSE;
 use crate::state::{Game, Screen, UiAction};
 use crate::ui::Nav;
 
-/// Minutes into the Feed worth a screenshot, latest first.
+/// Minutes into a chapter worth a screenshot, latest first.
 const FEED_SHOTS: [f32; 7] = [27.0, 20.0, 14.0, 9.0, 5.0, 2.0, 0.5];
 
 #[derive(Resource)]
@@ -35,7 +35,7 @@ pub struct Autoplay {
 
 impl Autoplay {
     pub fn new(shots: Option<PathBuf>, exit_on_end: bool, speed: u32) -> Autoplay {
-        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None, release: false, limit: 30.0 }
+        Autoplay { shots, exit_on_end, speed: speed.max(1), frames: 0, wait: 0, taken: Vec::new(), count: 0, holding: None, release: false, limit: 75.0 }
     }
 
     fn shoot(&mut self, commands: &mut Commands, name: &str) {
@@ -112,6 +112,10 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
             let Some(run) = game.run.as_ref() else { return };
             let minutes = run.minutes();
             let settled = game.since_end > END_PAUSE + 0.1;
+            // Shots of the Feed are named by minute; later chapters by their
+            // number and minutes into them (CH-01).
+            let chapter = run.chapter.number();
+            let in_chapter = run.chapter_minutes();
             let name = match &run.phase {
                 Phase::Playing if minutes >= 3.0 && auto.wants("pause") => {
                     // The pause screen, with the build so far.
@@ -121,7 +125,8 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                     auto.wait = 12;
                     return;
                 }
-                Phase::Playing => FEED_SHOTS.iter().find(|&&m| minutes >= m).map(|m| format!("feed_{m:04.1}min")),
+                Phase::Playing if chapter == 1 => FEED_SHOTS.iter().find(|&&m| minutes >= m).map(|m| format!("feed_{m:04.1}min")),
+                Phase::Playing => FEED_SHOTS.iter().find(|&&m| in_chapter >= m).map(|m| format!("ch{chapter}_{m:04.1}min")),
                 Phase::LevelUp(_) => Some("levelup".into()),
                 Phase::Chest(_) if game.chest_opened < 2.8 => None,
                 Phase::Chest(r) if r.merged.is_some() => Some("merge".into()),
@@ -130,14 +135,18 @@ fn drive(mut commands: Commands, mut game: ResMut<Game>, mut auto: ResMut<Autopl
                 Phase::Shrine { .. } => Some("shrine".into()),
                 Phase::Glitch(_) => Some("glitch".into()),
                 Phase::Recycle { .. } => Some("recycle".into()),
-                Phase::ChapterCard(_) => Some("chapter".into()),
+                Phase::ChapterCard(c) if game.since_choice < crate::screens::DEATH_HOLD => Some(format!("death_{}", c.number() - 1)),
+                Phase::ChapterCard(c) => Some(format!("chapter_{}", c.number())),
                 Phase::Takeover { left } if *left < 15.0 && *left > 12.0 => Some("takeover".into()),
                 Phase::Takeover { .. } => None,
                 Phase::Over { .. } if settled => Some("over".into()),
                 Phase::Over { .. } => None,
             };
             let over = run.is_over();
-            if let Some(name) = name.filter(|n| auto.wants(n) && !auto.taken.iter().any(|t| t.starts_with("feed_") && n.starts_with("feed_") && t >= n)) {
+            // Of the timed shots, only later ones than those taken in the same chapter.
+            let prefix = |s: &str| s.split('_').next().unwrap_or("").to_string();
+            let timed = |s: &str| s.ends_with("min");
+            if let Some(name) = name.filter(|n| auto.wants(n) && !auto.taken.iter().any(|t| timed(t) && timed(n) && prefix(t) == prefix(n) && t >= n)) {
                 // Hold the screen still while it is captured.
                 game.frozen = true;
                 game.dirty = true;

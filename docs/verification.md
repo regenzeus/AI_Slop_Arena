@@ -98,12 +98,27 @@ anyone played it. Every requirement CH-01 to ASSET-01 has a test (`tools/trace.s
 them), the lab's `story` command plays whole five-chapter runs with three bots, and
 autoplay screenshots every chapter, the takeover and the model card.
 
-Story runs at Temperature 0.7 (see the tuning notes at the end of this file for the
-numbers of the build you are reading): the heuristic bot takes every Delegate card and
-ends automated; the Luddite bot never does and reaches the Resistance; the random bot
-dies sooner in every chapter. The target of 8 to 14 minutes per chapter is a heuristic,
-not a promise: the later chapters start with a head start of capability, so a fresh
-level-1 build meets slop that is already strong.
+Story runs at Temperature 0.7, four runs per bot (`slop_lab story 4 1`), after tuning:
+
+| Bot | Feed | Office | Boardroom | Campaign | Resistance | Automation at the end | Score |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Heuristic (every Delegate card) | 8.0 | 2.8 | (3 runs end here) | | | 100% | 809 |
+| Luddite (never) | 9.8 | 13.7 | 11.0 | 10.8 | 10.6 | 0% | 6750 |
+| Random | 9.4 | 11.9 | 9.1 | 5.8 | 0.0 | 100% | 2102 |
+
+Minutes per chapter, means. The Luddite meets the 8 to 14 minute target in every chapter;
+the heuristic bot is automated before the Boardroom, which is the thesis in numbers. What
+made this work, in order: head starts halved to 1 to 4 minutes; a few level-up picks at
+the start of a chapter; and overtime (CAP-01): past the tenth minute of a chapter the
+model climbs ever faster and the resource bar itself shrinks, because before that a bot
+with a good build and Boundaries sat in the Office for 44 minutes at level 394, healing on
+every level-up. Most Luddite chapters still end by wear rather than by a slop; a person
+who kites less perfectly than the bot should meet the slop first.
+
+Determinism: seed 42 twice over six minutes, identical. Bench: 600 slop and 409
+projectiles at 1.5 ms per tick. Autoplay with `--luddite` walks all five chapters
+(`shots_v11`): chapter cards, every chapter's biomes and bosses, the death hold is
+skipped for bots, the model card lists five chapters.
 
 Not verified by a person: everything in this version, in particular the feel of the
 takeover, the death hold, the music, and whether the later chapters read as their

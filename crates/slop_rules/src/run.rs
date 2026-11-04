@@ -32,6 +32,13 @@ use crate::waves::{self, Affix};
 pub const WEAPON_SLOTS: usize = 6;
 pub const ITEM_SLOTS: usize = 6;
 const CHOICES: usize = 3;
+/// Share of your max resource lost per second for each squared minute of a
+/// chapter's overtime (CAP-01).
+const WEAR: f32 = 0.001;
+/// Clout that comes with you into the next chapter (CH-01).
+const CLOUT_CARRIED: u32 = 100;
+/// The lesson when the wear, not a slop, ended a chapter.
+pub const WEAR_LESSON: &str = "Ten minutes is a chapter. After that it wears you down, whatever you built.";
 /// Seconds between retunes of the spawn table, retraining, and elites.
 const RETUNE_EVERY: f32 = 20.0;
 const RETRAIN_EVERY: f32 = 120.0;
@@ -320,6 +327,13 @@ pub struct Run {
     pub delegated: Vec<Delegate>,
     /// Unplugged: Automation does not rise this chapter (AUTO-04).
     pub unplugged: bool,
+    /// The chapter ran past its overtime: the model is wearing you down,
+    /// and it said so (CAP-01).
+    pub worn: bool,
+    /// The wear, not a slop, emptied the bar.
+    worn_out: bool,
+    /// What is left of your max resource in a chapter's overtime, 1 to 0.
+    wear: f32,
     /// Thresholds already announced, as bits.
     told: u8,
     /// The bot's pick on this level-up, when Automation suggests (AUTO-03).
@@ -434,6 +448,9 @@ impl Run {
             automation: 0,
             delegated: Vec::new(),
             unplugged: false,
+            worn: false,
+            worn_out: false,
+            wear: 1.0,
             told: 0,
             suggested: None,
             defected: Vec::new(),
@@ -591,7 +608,8 @@ impl Run {
                 l.perks.grass_heal += 1.0;
             }
         }
-        l.stats.max_mental_health = l.stats.max_mental_health.max(MIN_MENTAL_HEALTH);
+        // Overtime wears the bar itself down (CAP-01).
+        l.stats.max_mental_health = (l.stats.max_mental_health * self.wear).max(MIN_MENTAL_HEALTH);
         l
     }
 
@@ -601,7 +619,7 @@ impl Run {
     }
 
     /// Hands your loadout to the world without resetting it.
-    fn sync(&mut self) {
+    pub(crate) fn sync(&mut self) {
         let l = self.loadout();
         // A Cursed Feed brings more slop (GLITCH-01).
         let curse: f32 = self.mods().iter().map(|m| if let Mod::Curse(v) = m { *v } else { 0.0 }).sum();
@@ -707,9 +725,29 @@ impl Run {
         // Automation drives, or helps, when you let it (AUTO-01, AUTO-03).
         let auto = self.autopilot_now();
         let input = self.steer_input(input, auto);
+        // Past a chapter's overtime the model wears you down: no build
+        // outlasts it, so every chapter ends (CAP-01). Said once, then shown.
+        let over = self.chapter_minutes() - waves::OVERTIME_AFTER;
+        if over > 0.0 && !self.worn {
+            self.worn = true;
+            self.toasts.push(format!("{} has learned enough. It is wearing you down now.", self.version()));
+        }
         let Some(world) = self.world.as_mut() else { return false };
         world.player.autopilot = auto;
         world.step(input);
+        if over > 0.0 && world.outcome == Outcome::Running {
+            // The bar itself shrinks, so no heal brings it back; when it is
+            // gone, so are you.
+            self.wear = (self.wear - WEAR * over * over / TICK_RATE as f32).max(0.0);
+            if self.wear <= 0.0 {
+                self.worn_out = true;
+                world.player.mental_health = 0.0;
+                world.outcome = Outcome::Burnout;
+            } else if world.tick % 30 == 0 {
+                self.sync();
+            }
+        }
+        let Some(world) = self.world.as_mut() else { return false };
         if world.outcome != Outcome::Running {
             self.sync();
             self.chapter_over();
@@ -1568,6 +1606,8 @@ impl Run {
             let m = r.seconds as u32;
             let word = r.chapter.def().death.to_lowercase();
             match &r.killer {
+                Some((name, _)) if name == "Automation" => card.push(format!("{}: {}:{:02}, automated.", r.chapter.def().name, m / 60, m % 60)),
+                Some((name, lesson)) if lesson == WEAR_LESSON => card.push(format!("{}: {}:{:02}, worn down by {name}.", r.chapter.def().name, m / 60, m % 60)),
                 Some((name, lesson)) => card.push(format!("{}: {}:{:02}, {word} by {name}. {lesson}", r.chapter.def().name, m / 60, m % 60)),
                 None => card.push(format!("{}: {}:{:02}, {word}.", r.chapter.def().name, m / 60, m % 60)),
             }
@@ -1813,6 +1853,10 @@ impl Run {
 
     /// What deleted you, with its lesson (LESSON-01).
     fn cause_of_death(&self) -> Option<(String, String)> {
+        if self.worn_out {
+            let d = self.chapter.def();
+            return Some((format!("the {}", d.ai), WEAR_LESSON.into()));
+        }
         let w = self.world.as_ref()?;
         let sp = w.setup.specs.get(w.last_hurt as usize)?;
         let name = sp.name.strip_prefix("Nemesis ").unwrap_or(&sp.name).to_string();
@@ -1855,6 +1899,11 @@ impl Run {
         self.chapter_since = t;
         self.chapter_bosses = 0;
         self.unplugged = false;
+        self.worn = false;
+        self.worn_out = false;
+        self.wear = 1.0;
+        // Clout is the old job's money: a little comes with you.
+        self.clout = self.clout.min(CLOUT_CARRIED);
         // Agents come with you; in the Resistance they defect.
         let mut agents: Vec<OwnedWeapon> = self.weapons.iter().filter(|w| w.agent).copied().collect();
         if c == Chapter::Resistance {
@@ -1874,7 +1923,9 @@ impl Run {
         self.blessings.clear();
         self.level = 1;
         self.xp = 0;
-        self.pending_levels = 0;
+        // A promotion comes with a few picks up front: the chapter starts
+        // ahead, and so do you.
+        self.pending_levels = c as u32;
         self.xp_seen = 0;
         self.clout_seen = 0;
         self.base = hero_base(self.hero);

@@ -161,7 +161,7 @@ The spec is [design-v6.md](design-v6.md), the plan [plan-v6.md](plan-v6.md).
 | --- | --- | --- |
 | CH-01 | A run is five chapters in order (the Feed, the Office, the Boardroom, the Campaign, the Resistance); death in one starts the next with a fresh build, carrying Automation, the agents, the glitches and what the model learned; the resource is renamed and recoloured per chapter. | T, D |
 | CH-02 | Each chapter has its own six biomes, roster, hazards, boss at a fixed time, lines and patch-note tone. Bosses: Your Replacement closes tickets to heal; The Board needs a quorum; The Candidate's promises land ahead of you; The State is the Model governing, with your agents. | T, D |
-| CAP-01 | Capability (the version on the HUD) climbs every 30 s and scales the slop; it climbs faster with Automation; later chapters start ahead; it never stops. | T |
+| CAP-01 | Capability (the version on the HUD) climbs every 30 s and scales the slop; it climbs faster with Automation; later chapters start ahead; it never stops. Past the tenth minute of a chapter it climbs ever faster and wears your resource down, said once and shown on the HUD, so no build outlasts a chapter. | T |
 | AUTO-01 | Delegate cards are offered on level-ups, are the strongest option by the bot's own evaluation, and raise Automation as stated. | T |
 | AUTO-02 | Agent weapons level themselves and cannot be levelled, merged or recycled by you; they carry across chapters; in the Resistance they defect and fire your weapons back. | T |
 | AUTO-03 | At 25 a card is suggested and rerolls are gone; at 50 level-ups pick themselves after 2 s and the dash is handled; at 75 the model drives for part of every minute; at 100 you are automated. Each is said once. | T |
