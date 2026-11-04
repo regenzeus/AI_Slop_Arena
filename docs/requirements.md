@@ -188,7 +188,7 @@ The spec is [design-v6.md](design-v6.md), the plan [plan-v6.md](plan-v6.md).
 | UI-11 | Chests, merges, vending machines and shrines each have their own overlay. | D |
 | UI-12 | End screen with time survived, level, kills, bosses, kills by damage type and your best weapons. | D |
 | UI-13 | Pause shows your whole build with levels, blessings and stats; details of what is highlighted appear in a fixed panel. | T, D |
-| UI-14 | Every screen works by arrows/WASD or stick/d-pad to move the focus, Enter or A to press, Space or Start to continue. | T, D |
+| UI-14 | Every screen works by arrows/WASD or stick/d-pad to move the focus, Enter or A to press, Space or Start to continue. Left and right stay in the focused element's row and wrap at its ends; up and down prefer the same column and never leave the focus stranded on a bar from a side press. | T, D |
 | UI-15 | Behind the title and hero screens the bots play the Feed, silently. | D |
 | UI-16 | The game starts fullscreen; Alt+Enter or F11 switches to a window and back; F12 saves a screenshot to Pictures\AI Slop Arena. | D |
 | UI-17 | Gamepads (such as the Xbox 360 controller) work everywhere: left stick or d-pad to move and choose, A to confirm, B to go back, X for the other action, Y to reroll, Start to pause. Hint bars name the gamepad's buttons when it was used last. | D |

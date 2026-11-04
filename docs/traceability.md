@@ -138,7 +138,7 @@ Requirements verified by demonstration (D) or inspection (I) are listed in
 | UI-08 | `actions_walk_from_title_into_the_feed_and_report_rule_errors` | crates/slop_game/src/state.rs |
 | UI-13 | `a_ready_merge_is_announced_and_brings_a_chest_closer` | crates/slop_rules/src/tests_v4.rs |
 | UI-13 | `every_stat_explains_its_current_effect` | crates/slop_rules/src/items.rs |
-| UI-14 | `arrows_pick_the_nearest_element_in_their_direction` | crates/slop_game/src/ui.rs |
+| UI-14 | `arrows_stay_in_their_row_and_wrap_at_its_end` | crates/slop_game/src/ui.rs |
 | WAVE-01 | `a_wave_clears_on_time_and_burnout_ends_it` | crates/slop_sim/src/tests.rs |
 | WAVE-02 | `the_wave_ramps_up_and_elites_drop_loot_boxes` | crates/slop_sim/src/tests.rs |
 | WAVE-04 | `house_rules_shape_the_spawn_table` | crates/slop_rules/src/waves.rs |

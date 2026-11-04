@@ -132,26 +132,43 @@ fn rect(node: &ComputedNode, tf: &UiGlobalTransform) -> (Vec2, Vec2) {
     (tf.translation * node.inverse_scale_factor, node.size() * node.inverse_scale_factor)
 }
 
-/// The best element from `from` in direction `dir`: near along the direction,
-/// and much nearer across it.
+/// The best element from `from` in direction `dir` (UI-14). Left and right
+/// stay in the row: only elements whose vertical span overlaps ours count,
+/// and at the row's end the focus wraps to its other end rather than
+/// dropping to some bar below. Up and down prefer the same column, and take
+/// the nearest column when there is none.
 fn pick(from: (Vec2, Vec2), dir: Vec2, all: &[(u32, Vec2, Vec2)]) -> Option<u32> {
     let (c, size) = from;
-    all.iter()
-        .filter_map(|&(key, p, s)| {
+    let horizontal = dir.y == 0.0;
+    // Where each element lies: ahead along `dir`, and how far off the line
+    // once the two elements' extents across it are allowed for.
+    let placed: Vec<(u32, f32, bool)> = all
+        .iter()
+        .map(|&(key, p, s)| {
             let d = p - c;
             let along = d.dot(dir);
-            // Ahead of us, beyond our own half-size.
-            let reach = (size * dir.abs()).length() / 2.0 + (s * dir.abs()).length() / 2.0;
-            if along <= 1.0 || along < reach * 0.25 {
-                return None;
-            }
             let across = (d - dir * along).length();
             let overlap = (size * dir.perp().abs()).length() / 2.0 + (s * dir.perp().abs()).length() / 2.0;
-            let across = (across - overlap).max(0.0);
-            Some((key, along + across * 3.0))
+            (key, along, across < overlap)
         })
-        .min_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(k, _)| k)
+        .collect();
+    let ahead = |&(_, along, _): &(u32, f32, bool)| along > 1.0;
+    if horizontal {
+        let in_row = placed.iter().filter(|(_, _, same)| *same);
+        let next = in_row.clone().filter(|e| ahead(e)).min_by(|a, b| a.1.total_cmp(&b.1));
+        // Nothing further this way: wrap to the row's other end.
+        next.or_else(|| in_row.filter(|(_, along, _)| *along < -1.0).min_by(|a, b| a.1.total_cmp(&b.1))).map(|e| e.0)
+    } else {
+        placed
+            .iter()
+            .filter(|e| ahead(e))
+            .map(|&(key, along, same)| {
+                let off = if same { 0.0 } else { all.iter().find(|a| a.0 == key).map_or(0.0, |a| (a.1 - c).dot(dir.perp()).abs()) };
+                (key, along + if same { 0.0 } else { 10_000.0 + off })
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(k, _)| k)
+    }
 }
 
 fn navigate(
@@ -294,13 +311,26 @@ mod tests {
 
     // REQ: UI-14
     #[test]
-    fn arrows_pick_the_nearest_element_in_their_direction() {
+    fn arrows_stay_in_their_row_and_wrap_at_its_end() {
         let at = |x: f32, y: f32| (Vec2::new(x, y), Vec2::new(100.0, 60.0));
-        let row = [(1, Vec2::new(0.0, 0.0), Vec2::new(100.0, 60.0)), (2, Vec2::new(120.0, 0.0), Vec2::new(100.0, 60.0)), (3, Vec2::new(240.0, 0.0), Vec2::new(100.0, 60.0)), (4, Vec2::new(130.0, 200.0), Vec2::new(300.0, 60.0))];
+        // Three cards in a row, a wide bar below them, and a second row of
+        // small buttons under the bar (the hero screen's Temperature picker).
+        let row = [
+            (1, Vec2::new(0.0, 0.0), Vec2::new(100.0, 60.0)),
+            (2, Vec2::new(120.0, 0.0), Vec2::new(100.0, 60.0)),
+            (3, Vec2::new(240.0, 0.0), Vec2::new(100.0, 60.0)),
+            (4, Vec2::new(130.0, 200.0), Vec2::new(300.0, 60.0)),
+            (5, Vec2::new(60.0, 300.0), Vec2::new(80.0, 40.0)),
+            (6, Vec2::new(200.0, 300.0), Vec2::new(80.0, 40.0)),
+        ];
         assert_eq!(pick(at(0.0, 0.0), Vec2::X, &row), Some(2));
         assert_eq!(pick(at(120.0, 0.0), Vec2::NEG_X, &row), Some(1));
-        assert_eq!(pick(at(240.0, 0.0), Vec2::X, &row), None);
+        assert_eq!(pick(at(240.0, 0.0), Vec2::X, &row), Some(1), "the row wraps");
+        assert_eq!(pick(at(0.0, 0.0), Vec2::NEG_X, &row), Some(3), "left at the row's start never drops to the bar below");
+        assert_eq!(pick(at(60.0, 300.0), Vec2::NEG_X, &row), Some(6), "a two-button row wraps too");
         assert_eq!(pick(at(240.0, 0.0), Vec2::Y, &row), Some(4), "a wide element below is reachable from any column");
-        assert_eq!(pick(at(130.0, 200.0), Vec2::NEG_Y, &row), Some(2));
+        assert_eq!(pick(at(130.0, 200.0), Vec2::NEG_Y, &row), Some(2), "up takes the card in the same column");
+        assert_eq!(pick(at(130.0, 200.0), Vec2::Y, &row), Some(5), "down takes the nearest column when none lines up");
+        assert_eq!(pick(at(0.0, 0.0), Vec2::NEG_Y, &row), None, "nothing above: the focus stays");
     }
 }
