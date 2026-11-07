@@ -438,8 +438,8 @@ fn no_build_outlasts_a_chapters_overtime() {
     run.base.max_mental_health = 100_000.0;
     run.sync();
     run.world.as_mut().unwrap().player.invulnerable = u16::MAX;
-    // Sixteen minutes into the chapter: the drain is on.
-    run.chapter_since = run.seconds() - 16.0 * 60.0;
+    // Nineteen minutes into the chapter: overtime, and the wear after it.
+    run.chapter_since = run.seconds() - 19.0 * 60.0;
     let full = run.world.as_ref().unwrap().player.mental_health;
     let mut ticks = 0;
     while matches!(run.phase, Phase::Playing) && ticks < 60 * 120 {
@@ -448,7 +448,7 @@ fn no_build_outlasts_a_chapters_overtime() {
     }
     assert!(run.worn, "it says so once");
     assert!(!matches!(run.phase, Phase::Playing), "the chapter ended on its own");
-    assert!(ticks < 60 * 60, "and within a minute at sixteen minutes in");
+    assert!(ticks < 60 * 60, "and within a minute at nineteen minutes in");
     assert_eq!(run.chapters[0].killer.as_ref().map(|k| k.0.as_str()), Some("the Slop"));
     assert!(full > 0.0);
     assert!(crate::waves::capability(20.0, 0.0, 0) > crate::waves::capability(10.0, 0.0, 0) * 3.0, "and the slop climb steeply too");

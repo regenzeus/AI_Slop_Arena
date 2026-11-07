@@ -46,6 +46,11 @@ const RING_LIGHT_TICKS: u16 = 1500;
 const GOD_EVERY: u16 = 720;
 const GOD_TICKS: u16 = 120;
 
+/// The most of your Mental Health that hits can take before they fade, and
+/// how fast they fade each tick (FAIR-06).
+const BURST: f32 = 0.22;
+const BURST_FADE: f32 = 0.98;
+
 impl World {
     pub(crate) fn move_player(&mut self, input: Input) {
         self.dash(input);
@@ -265,6 +270,11 @@ impl World {
         }
         self.last_hurt = spec;
         let amount = self.absorb(amount);
+        // No burst takes more than BURST of you before it fades (FAIR-06):
+        // from full health you always get a couple of seconds to react.
+        let room = (self.player.stats.max_mental_health * BURST - self.player.recent).max(0.0);
+        let amount = amount.min(room.max(self.player.stats.max_mental_health * 0.02));
+        self.player.recent += amount;
         self.player.mental_health -= amount;
         self.player.invulnerable = HIT_INVULNERABLE;
         self.tally.damage_taken += amount;
@@ -299,6 +309,7 @@ impl World {
     /// Boundaries come back; timed items fire (DEF-01, ITEM-03).
     pub(crate) fn tick_defence(&mut self) {
         let p = &mut self.player;
+        p.recent *= BURST_FADE;
         let max = p.stats.boundaries.max(0.0);
         p.shield = p.shield.min(max);
         if p.shield_wait > 0 {

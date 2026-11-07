@@ -135,7 +135,9 @@ version 3 is in [design-v3.md](design-v3.md), version 4 in [design-v4.md](design
 | UI-19 | Reroll sits below the build, out of the arrow-key path between cards; R, Y or a click rerolls. | D |
 | UI-20 | An Xbox controller keeps playing while the game window is in the background (XInput), and the game keeps running at full speed there. | D |
 | FAIR-05 | Nothing takes control away or covers the Feed: no reversed controls, no drags or shoves, no screen-covering pop-ups or ads; such effects slow you instead. Effects on you are shown on you (an aura, a bubble, a flash), not announced in words. | T, D |
-| ELITE-02 | Elites come every 30 s, more of them later, with seven affixes (Summoner and Hulking added); each glows in its affix's colour. Fewer than half carry a chest; split copies never do. | T, D |
+| SLOP-07 | Slop made from other slop (split halves, viral pieces, summoned minions, boss reposts) are copies: they never split, burst or repost and pay no elite reward, so no combination of traits can chain into a flood. |
+| FAIR-06 | You always see death coming: no burst of hits takes more than 22% of your maximum before it fades (about a second), so from full health you have seconds to react; at most 90 hostile shots are in the air at once. Measured by `slop_lab playtest` ("cheap deaths": chapter ends from above 70% health three seconds before). | T, L |
+| ELITE-02 | Elites come every 30 s, more of them later, with seven affixes (Summoner and Hulking added); each glows in its affix's colour. Whether one carries a chest is CHEST-03; split copies never do. | T, D |
 | EVENT-03 | The crowd surges: calm, build-up, a burst of melee slop, a lull, every 75 s, and every fourth burst is a horde. | T |
 | CHEST-02 | Once nothing can be upgraded, chests pay Clout and a heal without stopping the game, and level-ups offer small stat-ups. | T |
 | MAP-05 | One or two things to use per chunk; new: recycle bins (throw an item away for Clout), fine-tuning stations (buy a weapon level), data brokers (sell Mental Health for a rare item), power outlets (dashes refill, run faster). | T, D |
@@ -159,9 +161,9 @@ The spec is [design-v6.md](design-v6.md), the plan [plan-v6.md](plan-v6.md).
 
 | ID | Requirement | Verified by |
 | --- | --- | --- |
-| CH-01 | A run is five chapters in order (the Feed, the Office, the Boardroom, the Campaign, the Resistance); death in one starts the next with a fresh build, carrying Automation, the agents, the glitches and what the model learned; the resource is renamed and recoloured per chapter. | T, D |
+| CH-01 | A run is five chapters in order (the Feed, the Office, the Boardroom, the Campaign, the Resistance); death in one starts the next with a fresh build, carrying only what the AI holds: Automation, the agents and what the model learned (your glitches stay with the old job); the resource is renamed and recoloured per chapter. | T, D |
 | CH-02 | Each chapter has its own six biomes, roster, hazards, boss at a fixed time, lines and patch-note tone. Bosses: Your Replacement closes tickets to heal; The Board needs a quorum; The Candidate's promises land ahead of you; The State is the Model governing, with your agents. | T, D |
-| CAP-01 | Capability (the version on the HUD) climbs every 30 s and scales the slop; it climbs faster with Automation; later chapters start ahead; it never stops. Past the tenth minute of a chapter it climbs ever faster and wears your resource down, said once and shown on the HUD, so no build outlasts a chapter. | T |
+| CAP-01 | Capability (the version on the HUD) climbs every 30 s and scales the slop; it climbs faster with Automation; later chapters start ahead; it never stops. The spawn rate stops growing at 16 credits a second, so past that capability makes the slop tougher, not more numerous. Past the tenth minute of a chapter capability climbs ever faster; three minutes later the resource bar itself starts to shrink, said once and shown on the HUD, so no build outlasts a chapter but the slop get the first chance. | T, L |
 | AUTO-01 | Delegate cards are offered on level-ups, are the strongest option by the bot's own evaluation, and raise Automation as stated. | T |
 | AUTO-02 | Agent weapons level themselves and cannot be levelled, merged or recycled by you; they carry across chapters; in the Resistance they defect and fire your weapons back. | T |
 | AUTO-03 | At 25 a card is suggested and rerolls are gone; at 50 level-ups pick themselves after 2 s and the dash is handled; at 75 the model drives for part of every minute; at 100 you are automated. Each is said once. | T |
@@ -170,7 +172,7 @@ The spec is [design-v6.md](design-v6.md), the plan [plan-v6.md](plan-v6.md).
 | LESSON-01 | Every archetype has a lesson; the chapter card and the model card name what deleted you and the lesson; the last frame holds for two seconds with the killer named. | T, D |
 | MUSIC-01 | Each chapter has its own generated loop, crossfaded on change; Automation quantizes it, until at 100% the grid plays itself. | T, D |
 | ASSET-01 | Files in `assets/` (sprites, music, sfx) replace drawn sprites, generated music and synthesised sounds; the game runs with none. | T |
-| CHEST-03 | A chest is an event: an elite pays one only when none lies on the floor and a minute has passed since the last (a Loot Box build skips the wait); otherwise it pays Clout and Likes. Bosses, loot goblins, a Nemesis and the map's challenges always pay, and golden chests come only from them. | T |
+| CHEST-03 | A chest is an event: an elite pays one only when none lies on the floor and two minutes have passed since the last (a Loot Box build skips the wait); otherwise it pays Clout and Likes. Bosses, loot goblins, a Nemesis and the map's challenges always pay, and golden chests come only from them. There is never more than one chest on the floor: a new one goes into the one already there, which keeps the better of the two. | T |
 
 ## Client
 

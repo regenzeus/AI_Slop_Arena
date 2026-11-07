@@ -102,9 +102,12 @@ the game with your hands on the controls, and you still lose.
 
 ### What carries between chapters
 
-- Automation, agent weapons ("your agents were promoted too"), glitches, the model's
-  learned resistances, Temperature.
-- Not: items, non-agent weapons, level. Each chapter starts a fresh build from the
+- Only what the AI holds: Automation, agent weapons ("your agents were promoted too"),
+  the model's learned resistances, Temperature.
+- Not: items, non-agent weapons, glitches, level. Glitches carried at first; their
+  drawbacks stacked until every later chapter was played on the minimum resource, and
+  "only what you automated comes with you" says the thesis better anyway. Each chapter
+  starts a fresh build from the
   chapter's starting weapon, so every chapter's level-ups matter and a new player is never
   buried in a build they do not understand.
 - In chapter 5 every Agent defects at the start: it is removed from you and its pattern

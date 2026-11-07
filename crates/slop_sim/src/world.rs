@@ -53,7 +53,7 @@ const SPAWN_CLOSEST: f32 = 480.0;
 const SPAWN_STOP: f32 = 2.0;
 const LIKE_PULL_SPEED: f32 = 700.0;
 /// Pickups on the floor at most; old Clout makes room.
-const MAX_PICKUPS: usize = 160;
+const MAX_PICKUPS: usize = 120;
 /// Likes on the floor at most.
 const MAX_LIKES: usize = 300;
 /// Ticks a Server Outage freezes the slop.
@@ -63,7 +63,7 @@ const SCATTER_TICKS: u16 = 90;
 /// none is lying on the floor and this many ticks have passed since the
 /// last; otherwise it pays Clout and Likes. Bosses, goblins, a Nemesis and
 /// the map's challenges always pay, and they are where golden chests come from.
-const CHEST_EVERY: u32 = 60 * 60;
+const CHEST_EVERY: u32 = 120 * 60;
 /// Ticks a Power Outlet's charge lasts after you step out.
 const CHARGED_TICKS: u16 = 600;
 /// Ticks a Prompt Injection lasts, how often it bites, and the share of a
@@ -290,6 +290,9 @@ pub struct Player {
     /// Last direction moved.
     pub facing: V2,
     pub mental_health: f32,
+    /// Damage taken lately, fading in about a second: no burst may take
+    /// more than a share of you before you can react (FAIR-06).
+    pub recent: f32,
     pub stats: Stats,
     pub perks: Perks,
     pub invulnerable: u16,
@@ -339,6 +342,7 @@ impl Player {
             vel: V2::ZERO,
             facing: V2::new(1.0, 0.0),
             mental_health: stats.max_mental_health,
+            recent: 0.0,
             stats,
             perks: loadout.perks.clone(),
             invulnerable: 0,
@@ -430,6 +434,10 @@ pub struct Slop {
     pub reposted: bool,
     pub dodged: bool,
     pub split: bool,
+    /// Made from another slop (a split half, a viral piece, a summoned
+    /// minion): it never splits, bursts or reposts, and pays no elite reward,
+    /// so nothing can chain into a flood (SLOP-07).
+    pub copy: bool,
     pub born: u32,
     /// Mental Health it took from you, for training.
     pub dealt: f32,
@@ -1033,6 +1041,7 @@ impl World {
             reposted: false,
             dodged: false,
             split: false,
+            copy: false,
             born: self.tick,
             dealt: 0.0,
             tag: 0,
@@ -1114,6 +1123,7 @@ impl World {
         let dir = V2::from_angle(self.rng_spawn.range(0.0, std::f32::consts::TAU));
         let start = me - dir * 950.0;
         let across = dir.perp();
+        let count = count.min(MAX_SLOP.saturating_sub(self.slop.len()) as u32);
         for k in 0..count {
             let off = (k as f32 - (count as f32 - 1.0) / 2.0) * 34.0;
             let jitter = dir * self.rng_spawn.range(-120.0, 120.0);
@@ -1269,6 +1279,10 @@ impl World {
             }
         });
         for (spec, pos, pack, number, elite, tag) in ready {
+            // Events queue their slop as warnings too; none may pass the cap.
+            if self.slop.len() >= MAX_SLOP {
+                break;
+            }
             let spec = if elite { self.elite_spec(spec as usize) } else { spec as usize };
             let id = self.place(spec, pos, pack, number);
             if tag != 0 {
@@ -1353,6 +1367,8 @@ impl World {
                 if let Some(s) = self.slop.iter_mut().find(|s| s.id == id) {
                     s.hp = hp;
                     s.max_hp = hp;
+                    s.copy = true;
+                    s.split = true;
                 }
             }
         }
@@ -1455,9 +1471,23 @@ impl World {
 
     /// Something drops at `at`.
     pub(crate) fn drop_pickup(&mut self, kind: PickupKind, at: V2, value: u32) {
+        // A chest already lies somewhere: the new one goes into it, and it
+        // keeps the better of the two (CHEST-03).
+        if kind == PickupKind::Chest {
+            if let Some(c) = self.pickups.iter_mut().find(|p| p.kind == PickupKind::Chest) {
+                c.value = c.value.max(value);
+                return;
+            }
+        }
+        // Past the cap the oldest coin goes, or failing that the oldest of
+        // anything but a chest: the floor never fills up (CHEST-03).
         if self.pickups.len() >= MAX_PICKUPS {
-            if let Some(i) = self.pickups.iter().position(|p| p.kind == PickupKind::Clout) {
-                self.pickups.remove(i);
+            let old = self.pickups.iter().position(|p| p.kind == PickupKind::Clout).or_else(|| self.pickups.iter().position(|p| p.kind != PickupKind::Chest));
+            match old {
+                Some(i) => {
+                    self.pickups.remove(i);
+                }
+                None => return,
             }
         }
         let id = self.id();
@@ -1478,7 +1508,7 @@ impl World {
         let mut kill_blasts = Vec::new();
         let mut kills_now = 0u32;
         let mut boss_died = None;
-        let coin_chance = (25.0 * (1.0 + self.player.stats.hustle.max(0.0) / 100.0)) as u32;
+        let coin_chance = (17.0 * (1.0 + self.player.stats.hustle.max(0.0) / 100.0)) as u32;
         for s in self.slop.iter().filter(|s| s.hp <= 0.0) {
             let sp = &self.setup.specs[s.spec as usize];
             if let Some(t) = self.spec_tally.get_mut(s.spec as usize) {
@@ -1500,7 +1530,7 @@ impl World {
                 }
                 drops.push((s.pos, value));
                 kills_now += 1;
-                if sp.elite && !s.reposted {
+                if sp.elite && !s.reposted && !s.copy {
                     self.tally.loot_boxes += 1;
                     // One chest at a time, and not more than one a minute, so a
                     // chest stays an event (CHEST-03). A Loot Box build skips
@@ -1531,7 +1561,7 @@ impl World {
                     loot.push((PickupKind::Chest, s.pos, if golden { 3 } else { 1 }));
                     self.events.push(Event::RareDrop { at: s.pos });
                 }
-                if sp.traits.has(Traits::SPONSORED) {
+                if sp.traits.has(Traits::SPONSORED) && !s.copy {
                     loot.push((PickupKind::Clout, s.pos, 25));
                     for _ in 0..3 {
                         loot.push((PickupKind::Clout, s.pos, 4));
@@ -1569,7 +1599,7 @@ impl World {
                     let p = &mut self.player;
                     p.mental_health = (p.mental_health + heal).min(p.stats.max_mental_health);
                 }
-                if sp.traits.has(Traits::VIRAL) && !s.reposted {
+                if sp.traits.has(Traits::VIRAL) && !s.reposted && !s.copy {
                     virals.push((s.spec, s.pos));
                 }
             }
@@ -1584,7 +1614,7 @@ impl World {
                 scatter.push((s.pack, s.pos));
             }
             let boss = matches!(sp.movement, Movement::Boss(_));
-            if !s.reposted && !clone && !boss && (sp.traits.has(Traits::RESPAWN) || self.rng_combat.chance(self.setup.repost_chance)) {
+            if !s.reposted && !s.copy && !clone && !boss && (sp.traits.has(Traits::RESPAWN) || self.rng_combat.chance(self.setup.repost_chance)) {
                 reposts.push((s.spec, s.pos));
             }
         }
@@ -1642,6 +1672,8 @@ impl World {
                 let id = self.place(spec as usize, at + V2::from_angle(k as f32 * 1.57) * 30.0, 0, 1);
                 if let Some(s) = self.slop.iter_mut().find(|s| s.id == id) {
                     s.reposted = true;
+                    s.copy = true;
+                    s.split = true;
                     s.hp *= 0.15;
                     s.max_hp *= 0.15;
                     s.radius *= 0.6;

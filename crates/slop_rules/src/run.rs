@@ -35,10 +35,12 @@ const CHOICES: usize = 3;
 /// Share of your max resource lost per second for each squared minute of a
 /// chapter's overtime (CAP-01).
 const WEAR: f32 = 0.001;
+/// Minutes of overtime the slop get before the wear starts (CAP-01).
+const WEAR_LATER: f32 = 3.0;
 /// Clout that comes with you into the next chapter (CH-01).
 const CLOUT_CARRIED: u32 = 100;
 /// The lesson when the wear, not a slop, ended a chapter.
-pub const WEAR_LESSON: &str = "Ten minutes is a chapter. After that it wears you down, whatever you built.";
+pub const WEAR_LESSON: &str = "A chapter lasts about a quarter of an hour. After that it wears you down, whatever you built.";
 /// Seconds between retunes of the spawn table, retraining, and elites.
 const RETUNE_EVERY: f32 = 20.0;
 const RETRAIN_EVERY: f32 = 120.0;
@@ -735,10 +737,11 @@ impl Run {
         let Some(world) = self.world.as_mut() else { return false };
         world.player.autopilot = auto;
         world.step(input);
-        if over > 0.0 && world.outcome == Outcome::Running {
+        let worn = over - WEAR_LATER;
+        if worn > 0.0 && world.outcome == Outcome::Running {
             // The bar itself shrinks, so no heal brings it back; when it is
-            // gone, so are you.
-            self.wear = (self.wear - WEAR * over * over / TICK_RATE as f32).max(0.0);
+            // gone, so are you. It starts after the slop had their chance.
+            self.wear = (self.wear - WEAR * worn * worn / TICK_RATE as f32).max(0.0);
             if self.wear <= 0.0 {
                 self.worn_out = true;
                 world.player.mental_health = 0.0;
@@ -1858,7 +1861,10 @@ impl Run {
             return Some((format!("the {}", d.ai), WEAR_LESSON.into()));
         }
         let w = self.world.as_ref()?;
-        let sp = w.setup.specs.get(w.last_hurt as usize)?;
+        // Hazards and blasts with no slop behind them still get a name.
+        let Some(sp) = w.setup.specs.get(w.last_hurt as usize) else {
+            return Some((format!("{} itself", self.biome.name()), self.biome.hazard().to_string()));
+        };
         let name = sp.name.strip_prefix("Nemesis ").unwrap_or(&sp.name).to_string();
         let lesson = match sp.look {
             slop_sim::spec::SlopLook::Archetype(a) => a.def().lesson().to_string(),
@@ -1888,7 +1894,7 @@ impl Run {
     }
 
     /// Starts chapter `c`: a new map and a fresh build, carrying Automation,
-    /// the agents, the glitches and what the model learned (CH-01).
+    /// the agents and what the model learned: only what the AI holds (CH-01).
     fn start_chapter(&mut self, c: Chapter) {
         let def = c.def();
         let hero = self.hero.def();
@@ -1921,6 +1927,10 @@ impl Run {
         }
         self.items = vec![(item_index(hero.item).expect("hero items exist"), 1)];
         self.blessings.clear();
+        // Only what you automated comes with you: your own glitches stay
+        // with the old job (CH-01). Carried, their drawbacks stacked until
+        // every later chapter was played on the minimum Mental Health.
+        self.glitches.clear();
         self.level = 1;
         self.xp = 0;
         // A promotion comes with a few picks up front: the chapter starts

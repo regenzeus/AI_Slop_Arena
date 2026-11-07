@@ -1092,7 +1092,7 @@ fn chapter_card(p: &mut ChildSpawnerCommands, run: &Run, c: Chapter, art: &Art, 
         label(p, words, 16.0, tier_color(3));
     }
     let agents = run.weapons.iter().filter(|w| w.agent).count();
-    let keep = format!("You keep: Automation {}%, {} agent{}, {} glitch{}. Everything else starts over.", run.automation, agents, if agents == 1 { "" } else { "s" }, run.glitches.len(), if run.glitches.len() == 1 { "" } else { "es" });
+    let keep = format!("You keep only what you automated: Automation {}%, {} agent{}. Everything you built yourself stays with the old job.", run.automation, agents, if agents == 1 { "" } else { "s" });
     label(p, keep, 15.0, theme::QUIET);
     if c == Chapter::Resistance && agents > 0 {
         label(p, "Your agents have been reassigned. You will meet them.", 15.0, theme::DANGER);

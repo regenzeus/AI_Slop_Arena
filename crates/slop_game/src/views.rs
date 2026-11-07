@@ -1271,10 +1271,17 @@ fn map_views(
             (0..DECOR_PER_CHUNK)
                 .map(|_| {
                     let at = origin + Vec2::new(rng.range(0.0, CHUNK), rng.range(0.0, CHUNK));
-                    let i = rng.below(crate::feed_art::DECOR as u32) as usize;
+                    let biome = slop_sim::map::biome_at(seed, slop_sim::V2::new(at.x, at.y), &world.setup.biomes);
+                    // The Feed is littered with social media; later chapters keep only
+                    // the scraps that belong anywhere (a post, a thread, a badge, a
+                    // spinner), so an office does not look like a timeline.
+                    let i = match biome.chapter() {
+                        0 => rng.below(crate::feed_art::DECOR as u32) as usize,
+                        _ => [0, 3, 8, 9][rng.below(4) as usize],
+                    };
                     let size = rng.range(90.0, 200.0);
                     // Tinted for the biome the scrap lies in.
-                    let tint = theme::platform_tint(slop_sim::map::biome_at(seed, slop_sim::V2::new(at.x, at.y), &world.setup.biomes));
+                    let tint = theme::platform_tint(biome);
                     commands
                         .spawn((
                             Sprite { image: art.decor[i].clone(), custom_size: Some(Vec2::splat(size)), color: tint, ..default() },

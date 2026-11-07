@@ -10,8 +10,9 @@ use crate::items::StatKind;
 /// late ones about a minute.
 pub fn xp_for(level: u32) -> u32 {
     let n = level as f32;
-    // The horde is dense: levels have to be earned.
-    (5.0 + 5.0 * n + 0.55 * n * n) as u32
+    // The horde is dense: levels have to be earned, and late ones much more
+    // (about two a minute through a chapter, not four).
+    (6.0 + 6.0 * n + 0.9 * n * n + 0.03 * n * n * n) as u32
 }
 
 /// One stat-up, of a stat not in `skip`.

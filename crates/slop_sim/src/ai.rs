@@ -55,6 +55,8 @@ const BONK_WARNING: u16 = 42;
 const NEEDLES: u32 = 10;
 /// Share of ChadGPT fans whose middle bubble says something.
 const TALK_CHANCE: f32 = 0.2;
+/// Hostile shots in the air at most (FAIR-06).
+const MAX_HOSTILE_SHOTS: usize = 90;
 /// Ticks between a Summoner elite's calls.
 const SUMMON_EVERY: u32 = 300;
 /// How close a wanderer (a Voter, a Citizen) must be to notice you.
@@ -465,6 +467,10 @@ impl World {
 
     /// Fires a projectile at you.
     pub(crate) fn hostile_shot(&mut self, pos: V2, vel: V2, damage: f32, look: Look, line: u16, spec: u16) {
+        // A screen of bullets is noise, not a fight: past the cap, slop hold fire.
+        if self.projectiles.iter().filter(|p| p.hostile).count() >= MAX_HOSTILE_SHOTS {
+            return;
+        }
         let id = self.id();
         let (radius, life) = match look {
             Look::Bubble => (BUBBLE_RADIUS, BUBBLE_LIFE),

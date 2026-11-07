@@ -113,6 +113,13 @@ sh tools/check.sh
   minute.
 - `slop_lab story` plays whole five-chapter runs with the heuristic, Luddite and random
   bots and prints minutes per chapter, Automation at the end and what deleted them.
+- `slop_lab playtest [runs]` is the stand-in player: it measures whole runs the way a
+  person would notice them (stops for choices, chests and pickups on the floor, shots on
+  screen, crowd size, runaway levels and Clout, deaths by a slop versus the timer, deaths
+  with no warning) and prints PASS or FAIL against limits from the human playtests.
+- `slop_lab ledger [seed] [0 Luddite, 1 random]` traces one run minute by minute:
+  level, Clout, coins, kills, the crowd, items, and which slop died most.
+- The [dev log](docs/devlog.md) records each loop of playing, finding and fixing.
 - `tools/check.sh` runs clippy and every test, and regenerates the traceability table.
 
 ## Your own art, music and sounds

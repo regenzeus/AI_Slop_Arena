@@ -25,7 +25,7 @@ pub fn capability(minutes: f32, head_start: f32, automation: u32) -> f32 {
     // Past the tenth minute of a chapter the model stops being patient:
     // every chapter ends, however good the build (the player always loses).
     let overtime = (minutes - OVERTIME_AFTER).max(0.0);
-    1.0 + (head_start + (minutes + overtime * overtime * 0.5) * learned) * 0.62
+    1.0 + (head_start + (minutes + overtime * overtime * 1.2) * learned) * 0.62
 }
 
 /// Minutes into a chapter after which capability climbs ever faster.
@@ -53,8 +53,13 @@ pub fn scaling(stage: f32, platform: Platform) -> (f32, f32, f32) {
 /// Spawn credits per second at `stage`; a credit buys 20 base HP of slop.
 pub fn rate(stage: f32) -> f32 {
     let w = stage - 1.0;
-    1.8 + 0.85 * w + 0.07 * w * w
+    // The crowd stops growing at RATE_MAX: past it, capability makes the
+    // slop tougher, not more numerous, so a strong build cannot farm a flood.
+    (1.8 + 0.85 * w + 0.07 * w * w).min(RATE_MAX)
 }
+
+/// Spawn credits per second at most.
+pub const RATE_MAX: f32 = 16.0;
 
 /// How hard the crowd surges `seconds` into the run (EVENT-03): a calm, a
 /// build-up, a burst of slop, a short lull, every 75 s; every fourth cycle

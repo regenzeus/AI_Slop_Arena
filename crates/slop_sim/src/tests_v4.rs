@@ -538,7 +538,7 @@ fn the_later_bosses_pose_their_puzzles() {
 
 // REQ: CHEST-03
 #[test]
-fn a_chest_is_an_event_one_on_the_floor_and_one_a_minute() {
+fn a_chest_is_an_event_one_on_the_floor_and_one_at_a_time() {
     let mut w = sandbox();
     w.player.invulnerable = u16::MAX;
     let elite = w.add_spec(SlopSpec::archetype(Archetype::ChadGpt).elite());
@@ -553,11 +553,11 @@ fn a_chest_is_an_event_one_on_the_floor_and_one_a_minute() {
     }
     assert_eq!(chests(&w), 1, "six elites, one chest; the rest paid Clout");
     assert!(w.pickups.iter().filter(|p| p.kind == PickupKind::Clout).count() >= 5);
-    // Picked up and a minute gone: the next elite pays again.
+    // Picked up and two minutes gone: the next elite pays again.
     w.pickups.retain(|p| p.kind != PickupKind::Chest);
     kill(&mut w);
     assert_eq!(chests(&w), 0, "too soon");
-    w.tick += 60 * 60;
+    w.tick += 120 * 60;
     kill(&mut w);
     assert_eq!(chests(&w), 1);
     // A Loot Box build skips the wait but still never stacks chests.
@@ -566,4 +566,72 @@ fn a_chest_is_an_event_one_on_the_floor_and_one_a_minute() {
     kill(&mut w);
     kill(&mut w);
     assert_eq!(chests(&w), 1);
+}
+
+// REQ: FAIR-06
+#[test]
+fn you_always_see_death_coming() {
+    let mut w = sandbox();
+    let max = w.player.stats.max_mental_health;
+    // Five huge hits in a row, each landing the moment the last one allows.
+    for _ in 0..5 {
+        w.player.invulnerable = 0;
+        w.hurt(max, NO_SPEC);
+    }
+    assert!(w.player.mental_health >= max * 0.7, "a burst takes at most about a fifth: {}", w.player.mental_health / max);
+    // A second later the room is back: steady damage still kills, just not at once.
+    run(&mut w, 60);
+    assert!(w.player.recent < max * 0.1);
+    // Shots stop at the cap.
+    let mut w = sandbox();
+    for k in 0..200 {
+        w.hostile_shot(w.player.pos + V2::new(500.0, k as f32), V2::ZERO, 1.0, Look::Bubble, NO_LINE, NO_SPEC);
+    }
+    assert!(w.projectiles.iter().filter(|p| p.hostile).count() <= 90);
+}
+
+// REQ: SIM-04, CHEST-03
+#[test]
+fn the_crowd_and_the_floor_have_hard_caps() {
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    let me = w.player.pos;
+    // An event queues far more slop than fits.
+    for _ in 0..4 {
+        w.encircle(Archetype::ChadGpt as usize, 300, 600.0);
+    }
+    run(&mut w, 120);
+    assert!(w.slop.len() <= MAX_SLOP, "{} slop", w.slop.len());
+    w.sweep(Archetype::ListicleDrone as usize, 400);
+    assert!(w.slop.len() <= MAX_SLOP);
+    // A floor of food never grows past the cap either.
+    for k in 0..400 {
+        w.drop_pickup(PickupKind::Food, me + V2::new(2000.0 + k as f32, 0.0), 0);
+    }
+    assert!(w.pickups.len() <= 120, "{} pickups", w.pickups.len());
+}
+
+// REQ: SLOP-07
+#[test]
+fn a_split_viral_elite_cannot_chain_into_a_flood() {
+    let mut w = sandbox();
+    w.player.invulnerable = u16::MAX;
+    let mut spec = SlopSpec::archetype(Archetype::RecruiterBot).elite();
+    spec.traits.0 |= crate::spec::Traits::VIRAL;
+    let i = w.add_spec(spec);
+    w.place(i, w.player.pos + V2::new(300.0, 0.0), 0, 1);
+    // Hit everything again and again: the original splits once, its half
+    // never splits again, and the viral pieces of copies never burst.
+    for _ in 0..40 {
+        let ids: Vec<u32> = w.slop.iter().map(|s| s.id).collect();
+        for id in ids {
+            if let Some(j) = w.slop.iter().position(|s| s.id == id) {
+                let me = w.player.pos;
+                w.damage_slop(j, 4.0, DamageType::Analog, V2::ZERO, me, None);
+            }
+        }
+        run(&mut w, 2);
+    }
+    let kills = w.tally.kills;
+    assert!(kills + w.slop.len() as u32 <= 1 + 1 + 4, "one elite, one split half, four pieces at most: {kills} killed, {} alive", w.slop.len());
 }
